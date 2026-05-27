@@ -2,9 +2,9 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <!--<ApplicationIcon>Assets\icon.ico</ApplicationIcon>-->
     <AssemblyName>PCOptimizer</AssemblyName>
     <RootNamespace>PCOptimizer</RootNamespace>
   </PropertyGroup>
