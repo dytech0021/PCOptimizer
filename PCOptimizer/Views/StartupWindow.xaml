@@ -1,0 +1,110 @@
+<Window x:Class="PCOptimizer.Views.StartupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Gerenciar Inicialização" Height="500" Width="650"
+        WindowStartupLocation="CenterOwner"
+        Background="#1E1E2E" ResizeMode="CanResizeWithGrip">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,15">
+            <TextBlock Text="🚀 Programas na Inicialização" FontSize="20" FontWeight="Bold" Foreground="#CDD6F4"/>
+            <TextBlock Text="Desmarque os programas que você NÃO quer que iniciem com o Windows"
+                       FontSize="12" Foreground="#6C7086" Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <!-- Search -->
+        <Border Grid.Row="1" Background="#313244" CornerRadius="8" Padding="10,8" Margin="0,0,0,10">
+            <TextBox x:Name="TxtSearch" Background="Transparent" BorderThickness="0"
+                     Foreground="#CDD6F4" FontSize="13"
+                     TextChanged="TxtSearch_TextChanged">
+                <TextBox.Style>
+                    <Style TargetType="TextBox">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <VisualBrush Stretch="None" AlignmentX="Left">
+                                            <VisualBrush.Visual>
+                                                <TextBlock Text="🔍 Buscar programa..." Foreground="#585B70" FontSize="13" Margin="2,0,0,0"/>
+                                            </VisualBrush.Visual>
+                                        </VisualBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBox.Style>
+            </TextBox>
+        </Border>
+
+        <!-- List -->
+        <Border Grid.Row="2" Background="#181825" CornerRadius="10" Padding="5">
+            <ListView x:Name="LstStartup" Background="Transparent" BorderThickness="0"
+                      Foreground="#CDD6F4" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="#313244" CornerRadius="8" Padding="12,10" Margin="2,3" Width="580">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsEnabled}"
+                                          VerticalAlignment="Center" Margin="0,0,12,0"
+                                          Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="#CDD6F4"/>
+                                    <TextBlock Text="{Binding Command}" FontSize="10" Foreground="#585B70"
+                                               TextTrimming="CharacterEllipsis" MaxWidth="400"/>
+                                </StackPanel>
+
+                                <Border Grid.Column="2" Background="#45475A" CornerRadius="4"
+                                        Padding="8,3" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Source}" FontSize="10" Foreground="#A6ADC8"/>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="0"/>
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+        </Border>
+
+        <!-- Footer -->
+        <Grid Grid.Row="3" Margin="0,15,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="TxtCount" Grid.Column="0" FontSize="12" Foreground="#6C7086" VerticalAlignment="Center"/>
+
+            <Button Grid.Column="1" Content="Cancelar" Padding="20,8" Margin="0,0,10,0"
+                    Background="#45475A" Foreground="#CDD6F4" BorderThickness="0"
+                    FontSize="13" Cursor="Hand" Click="BtnCancel_Click"/>
+
+            <Button Grid.Column="2" Content="✅ Aplicar" Padding="20,8"
+                    Background="#A6E3A1" Foreground="#1E1E2E" BorderThickness="0"
+                    FontSize="13" FontWeight="Bold" Cursor="Hand" Click="BtnApply_Click"/>
+        </Grid>
+    </Grid>
+</Window>

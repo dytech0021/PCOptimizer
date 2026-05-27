@@ -1,89 +1,123 @@
 <Window x:Class="PCOptimizer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PC Optimizer" Height="600" Width="800"
+        Title="PC Optimizer" Height="650" Width="850"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E2E">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="80"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="60"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="70"/>
         </Grid.RowDefinitions>
 
         <!-- Header -->
         <Border Grid.Row="0" Background="#181825" Padding="20,0">
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="⚡" FontSize="32" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="PC Optimizer" FontSize="24" FontWeight="Bold" Foreground="#CDD6F4"/>
-                    <TextBlock Text="Otimize seu computador com um clique" FontSize="12" Foreground="#6C7086"/>
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="⚡" FontSize="32" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="PC Optimizer" FontSize="24" FontWeight="Bold" Foreground="#CDD6F4"/>
+                        <TextBlock Text="Otimize seu computador com um clique" FontSize="12" Foreground="#6C7086"/>
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
+            </Grid>
         </Border>
 
-        <!-- Content -->
-        <ScrollViewer Grid.Row="1" Margin="20" VerticalScrollBarVisibility="Auto">
+        <!-- Cards -->
+        <ScrollViewer Grid.Row="1" Margin="20,15" VerticalScrollBarVisibility="Auto">
             <WrapPanel HorizontalAlignment="Center">
-                <!-- Cards de otimização serão adicionados aqui -->
-                <Border Background="#313244" CornerRadius="10" Margin="10" Padding="20" Width="220" Height="180">
+
+                <Border Background="#313244" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        Cursor="Hand" MouseLeftButtonUp="Card_TempCleaner">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🗑️" FontSize="36" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Limpar Temporários" FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                        <TextBlock Text="Remove arquivos temporários do sistema" FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
+                        <TextBlock Text="Limpar Temporários" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Remove arquivos temporários do sistema e navegadores"
+                                   FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#313244" CornerRadius="10" Margin="10" Padding="20" Width="220" Height="180">
+                <Border Background="#313244" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        Cursor="Hand" MouseLeftButtonUp="Card_DiskCleaner">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="💾" FontSize="36" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Limpar Disco" FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                        <TextBlock Text="Libera espaço removendo caches e logs" FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
+                        <TextBlock Text="Limpar Disco" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Libera espaço removendo caches, logs e dumps"
+                                   FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#313244" CornerRadius="10" Margin="10" Padding="20" Width="220" Height="180">
+                <Border Background="#313244" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        Cursor="Hand" MouseLeftButtonUp="Card_Startup">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🚀" FontSize="36" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Otimizar Inicialização" FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                        <TextBlock Text="Gerencia programas que iniciam com o Windows" FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
+                        <TextBlock Text="Otimizar Inicialização" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Escolha quais programas iniciam com o Windows"
+                                   FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#313244" CornerRadius="10" Margin="10" Padding="20" Width="220" Height="180">
+                <Border Background="#313244" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        Cursor="Hand" MouseLeftButtonUp="Card_Services">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🛡️" FontSize="36" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Serviços do Windows" FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                        <TextBlock Text="Desativa serviços desnecessários" FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
+                        <TextBlock Text="Serviços do Windows" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Desativa serviços desnecessários para ganhar performance"
+                                   FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#313244" CornerRadius="10" Margin="10" Padding="20" Width="220" Height="180">
+                <Border Background="#313244" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        Cursor="Hand" MouseLeftButtonUp="Card_Network">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🌐" FontSize="36" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Otimizar Rede" FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                        <TextBlock Text="Limpa cache DNS e otimiza conexão" FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
+                        <TextBlock Text="Otimizar Rede" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Limpa cache DNS e otimiza configurações TCP"
+                                   FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#313244" CornerRadius="10" Margin="10" Padding="20" Width="220" Height="180">
+                <Border Background="#313244" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        Cursor="Hand" MouseLeftButtonUp="Card_Registry">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🔧" FontSize="36" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Registro do Windows" FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                        <TextBlock Text="Aplica tweaks de performance no registro" FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
+                        <TextBlock Text="Registro do Windows" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Aplica tweaks de performance no registro do sistema"
+                                   FontSize="11" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
+
             </WrapPanel>
         </ScrollViewer>
 
+        <!-- Log -->
+        <Border Grid.Row="2" Background="#181825" CornerRadius="8" Margin="20,0,20,10" Padding="10"
+                MaxHeight="120">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBlock x:Name="TxtLog" FontSize="11" Foreground="#A6ADC8" TextWrapping="Wrap"
+                           Text="Pronto para otimizar."/>
+            </ScrollViewer>
+        </Border>
+
         <!-- Footer -->
-        <Border Grid.Row="2" Background="#181825" Padding="20,0">
+        <Border Grid.Row="3" Background="#181825" Padding="20,0">
             <Grid>
-                <Button Content="⚡ Otimizar Tudo"
+                <ProgressBar x:Name="Progress" Height="4" VerticalAlignment="Top"
+                             Background="#313244" Foreground="#89B4FA" BorderThickness="0"
+                             Visibility="Collapsed"/>
+                <Button x:Name="BtnOptimizeAll" Content="⚡ Otimizar Tudo"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Padding="40,10" FontSize="16" FontWeight="Bold"
                         Background="#89B4FA" Foreground="#1E1E2E" BorderThickness="0"
-                        Cursor="Hand" x:Name="BtnOptimizeAll" Click="BtnOptimizeAll_Click"/>
+                        Cursor="Hand" Click="BtnOptimizeAll_Click"/>
             </Grid>
         </Border>
     </Grid>
