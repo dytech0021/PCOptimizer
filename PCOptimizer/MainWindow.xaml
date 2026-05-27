@@ -101,6 +101,18 @@
                     </StackPanel>
                 </Border>
 
+                <Border Background="#E0F5F1" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        BorderBrush="#B5DDD5" BorderThickness="1"
+                        Cursor="Hand" MouseLeftButtonUp="Card_Brightness">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="🌞" FontSize="36" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Brilho e Contraste" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#2D3142" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Ajusta brilho e contraste de todos os monitores juntos"
+                                   FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
             </WrapPanel>
         </ScrollViewer>
 

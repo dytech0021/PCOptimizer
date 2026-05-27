@@ -131,5 +131,12 @@ namespace PCOptimizer
             int tweaks = await Task.Run(() => RegistryOptimizer.Optimize());
             Log($"✅ {tweaks} tweaks aplicados");
         }
+
+        private void Card_Brightness(object sender, MouseButtonEventArgs e)
+        {
+            var window = new BrightnessWindow { Owner = this };
+            window.ShowDialog();
+            Log("✅ Janela de brilho e contraste fechada");
+        }
     }
 }

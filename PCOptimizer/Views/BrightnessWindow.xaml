@@ -1,0 +1,68 @@
+<Window x:Class="PCOptimizer.Views.BrightnessWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Brilho e Contraste" Height="380" Width="500"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F7FB" ResizeMode="NoResize">
+    <Grid Margin="25">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,15">
+            <TextBlock Text="🌞 Brilho e Contraste" FontSize="20" FontWeight="Bold" Foreground="#2D3142"/>
+            <TextBlock x:Name="TxtMonitorCount" FontSize="12" Foreground="#7A8194" Margin="0,5,0,0"
+                       Text="Detectando monitores..."/>
+        </StackPanel>
+
+        <!-- Brilho -->
+        <Border Grid.Row="1" Background="#FFFFFF" CornerRadius="10" Padding="20,15" Margin="0,0,0,12"
+                BorderBrush="#E4E7EF" BorderThickness="1">
+            <StackPanel>
+                <Grid>
+                    <TextBlock Text="☀️ Brilho" FontSize="14" FontWeight="SemiBold" Foreground="#2D3142"/>
+                    <TextBlock x:Name="TxtBrightnessValue" HorizontalAlignment="Right"
+                               FontSize="14" FontWeight="Bold" Foreground="#5B8DEF" Text="50%"/>
+                </Grid>
+                <Slider x:Name="SliderBrightness" Minimum="0" Maximum="100" Value="50"
+                        Margin="0,10,0,0" IsEnabled="False"
+                        ValueChanged="SliderBrightness_ValueChanged"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Contraste -->
+        <Border Grid.Row="2" Background="#FFFFFF" CornerRadius="10" Padding="20,15"
+                BorderBrush="#E4E7EF" BorderThickness="1">
+            <StackPanel>
+                <Grid>
+                    <TextBlock Text="🌗 Contraste" FontSize="14" FontWeight="SemiBold" Foreground="#2D3142"/>
+                    <TextBlock x:Name="TxtContrastValue" HorizontalAlignment="Right"
+                               FontSize="14" FontWeight="Bold" Foreground="#5B8DEF" Text="50%"/>
+                </Grid>
+                <Slider x:Name="SliderContrast" Minimum="0" Maximum="100" Value="50"
+                        Margin="0,10,0,0" IsEnabled="False"
+                        ValueChanged="SliderContrast_ValueChanged"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Footer -->
+        <Grid Grid.Row="4" Margin="0,15,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="TxtStatus" Grid.Column="0" FontSize="11"
+                       Foreground="#7A8194" VerticalAlignment="Center"/>
+
+            <Button Grid.Column="1" Content="Fechar" Padding="25,8"
+                    Background="#5B8DEF" Foreground="#FFFFFF" BorderThickness="0"
+                    FontSize="13" FontWeight="Bold" Cursor="Hand" Click="BtnClose_Click"/>
+        </Grid>
+    </Grid>
+</Window>
