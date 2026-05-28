@@ -87,6 +87,12 @@ namespace PCOptimizer.Views
             await Task.Run(() => MonitorService.SetContrastAll(value));
         }
 
+        private void Header_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ButtonState == MouseButtonState.Pressed)
+                DragMove();
+        }
+
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             Hide();
