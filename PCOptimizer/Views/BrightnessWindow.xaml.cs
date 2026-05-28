@@ -19,6 +19,26 @@ namespace PCOptimizer.Views
             InitializeComponent();
             Loaded += BrightnessWindow_Loaded;
             TxtHotkey.Text = SettingsService.Current.HotkeyDisplay;
+            RefreshPresetButtons();
+        }
+
+        private void RefreshPresetButtons()
+        {
+            var p1 = SettingsService.Current.Preset1;
+            var p2 = SettingsService.Current.Preset2;
+            var p3 = SettingsService.Current.Preset3;
+
+            TxtPreset1Icon.Text = p1.Icon;
+            TxtPreset1Name.Text = p1.Name;
+            TxtPreset1Values.Text = $"{p1.Brightness}% / {p1.Contrast}%";
+
+            TxtPreset2Icon.Text = p2.Icon;
+            TxtPreset2Name.Text = p2.Name;
+            TxtPreset2Values.Text = $"{p2.Brightness}% / {p2.Contrast}%";
+
+            TxtPreset3Icon.Text = p3.Icon;
+            TxtPreset3Name.Text = p3.Name;
+            TxtPreset3Values.Text = $"{p3.Brightness}% / {p3.Contrast}%";
         }
 
         private async void BrightnessWindow_Loaded(object sender, RoutedEventArgs e)
@@ -93,25 +113,44 @@ namespace PCOptimizer.Views
                 DragMove();
         }
 
-        private async void ApplyPreset(int brightness, int contrast, string name)
+        private async void ApplyPreset(PresetData preset)
         {
             if (!_initialized) return;
 
-            SliderBrightness.Value = brightness;
-            SliderContrast.Value = contrast;
+            SliderBrightness.Value = preset.Brightness;
+            SliderContrast.Value = preset.Contrast;
 
             await Task.Run(() =>
             {
-                MonitorService.SetBrightnessAll(brightness);
-                MonitorService.SetContrastAll(contrast);
+                MonitorService.SetBrightnessAll(preset.Brightness);
+                MonitorService.SetContrastAll(preset.Contrast);
             });
 
-            TxtStatus.Text = $"Preset \"{name}\" aplicado";
+            TxtStatus.Text = $"Preset \"{preset.Name}\" aplicado";
         }
 
-        private void PresetNoturno_Click(object sender, RoutedEventArgs e) => ApplyPreset(20, 40, "Noturno");
-        private void PresetNormal_Click(object sender, RoutedEventArgs e) => ApplyPreset(50, 50, "Normal");
-        private void PresetMaximo_Click(object sender, RoutedEventArgs e) => ApplyPreset(100, 80, "Máximo");
+        private void EditPreset(PresetData preset, System.Action<PresetData> save)
+        {
+            var editor = new PresetEditWindow(preset) { Owner = this };
+            if (editor.ShowDialog() == true)
+            {
+                save(editor.Result);
+                SettingsService.Save();
+                RefreshPresetButtons();
+                TxtStatus.Text = $"Preset \"{editor.Result.Name}\" salvo";
+            }
+        }
+
+        private void Preset1_Click(object sender, RoutedEventArgs e) => ApplyPreset(SettingsService.Current.Preset1);
+        private void Preset2_Click(object sender, RoutedEventArgs e) => ApplyPreset(SettingsService.Current.Preset2);
+        private void Preset3_Click(object sender, RoutedEventArgs e) => ApplyPreset(SettingsService.Current.Preset3);
+
+        private void Preset1_Edit(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+            EditPreset(SettingsService.Current.Preset1, p => SettingsService.Current.Preset1 = p);
+        private void Preset2_Edit(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+            EditPreset(SettingsService.Current.Preset2, p => SettingsService.Current.Preset2 = p);
+        private void Preset3_Edit(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+            EditPreset(SettingsService.Current.Preset3, p => SettingsService.Current.Preset3 = p);
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {

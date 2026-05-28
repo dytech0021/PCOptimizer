@@ -4,12 +4,24 @@ using System.Text.Json;
 
 namespace PCOptimizer.Services
 {
+    public class PresetData
+    {
+        public string Name { get; set; } = "";
+        public string Icon { get; set; } = "";
+        public int Brightness { get; set; }
+        public int Contrast { get; set; }
+    }
+
     public class AppSettings
     {
         public string Theme { get; set; } = "Light";
         public uint HotkeyModifiers { get; set; } = 0x0006; // MOD_CONTROL | MOD_SHIFT
         public uint HotkeyVk { get; set; } = 0x42;          // 'B'
         public string HotkeyDisplay { get; set; } = "Ctrl+Shift+B";
+
+        public PresetData Preset1 { get; set; } = new() { Name = "Noturno", Icon = "🌙", Brightness = 20, Contrast = 40 };
+        public PresetData Preset2 { get; set; } = new() { Name = "Normal", Icon = "☀️", Brightness = 50, Contrast = 50 };
+        public PresetData Preset3 { get; set; } = new() { Name = "Máximo", Icon = "🔆", Brightness = 100, Contrast = 80 };
     }
 
     public static class SettingsService
