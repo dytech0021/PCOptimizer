@@ -93,6 +93,26 @@ namespace PCOptimizer.Views
                 DragMove();
         }
 
+        private async void ApplyPreset(int brightness, int contrast, string name)
+        {
+            if (!_initialized) return;
+
+            SliderBrightness.Value = brightness;
+            SliderContrast.Value = contrast;
+
+            await Task.Run(() =>
+            {
+                MonitorService.SetBrightnessAll(brightness);
+                MonitorService.SetContrastAll(contrast);
+            });
+
+            TxtStatus.Text = $"Preset \"{name}\" aplicado";
+        }
+
+        private void PresetNoturno_Click(object sender, RoutedEventArgs e) => ApplyPreset(20, 40, "Noturno");
+        private void PresetNormal_Click(object sender, RoutedEventArgs e) => ApplyPreset(50, 50, "Normal");
+        private void PresetMaximo_Click(object sender, RoutedEventArgs e) => ApplyPreset(100, 80, "Máximo");
+
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             Hide();
