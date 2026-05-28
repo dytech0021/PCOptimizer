@@ -8,7 +8,9 @@
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     <AssemblyName>PCOptimizer</AssemblyName>
     <RootNamespace>PCOptimizer</RootNamespace>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Debug (F5): sem admin. Release (.exe publicado): exige admin. -->
+    <ApplicationManifest Condition="'$(Configuration)' == 'Debug'">app.debug.manifest</ApplicationManifest>
+    <ApplicationManifest Condition="'$(Configuration)' != 'Debug'">app.manifest</ApplicationManifest>
   </PropertyGroup>
 
 </Project>
