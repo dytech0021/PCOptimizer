@@ -22,6 +22,9 @@ namespace PCOptimizer.Services
         public PresetData Preset1 { get; set; } = new() { Name = "Noturno", Icon = "🌙", Brightness = 20, Contrast = 40 };
         public PresetData Preset2 { get; set; } = new() { Name = "Normal", Icon = "☀️", Brightness = 50, Contrast = 50 };
         public PresetData Preset3 { get; set; } = new() { Name = "Máximo", Icon = "🔆", Brightness = 100, Contrast = 80 };
+
+        public bool NightLightEnabled { get; set; }
+        public int NightLightIntensity { get; set; } = 40;
     }
 
     public static class SettingsService

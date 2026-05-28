@@ -20,6 +20,13 @@ namespace PCOptimizer.Views
             Loaded += BrightnessWindow_Loaded;
             TxtHotkey.Text = SettingsService.Current.HotkeyDisplay;
             RefreshPresetButtons();
+
+            // Restaura estado da luz noturna
+            SliderNightLight.Value = SettingsService.Current.NightLightIntensity;
+            if (SettingsService.Current.NightLightEnabled)
+            {
+                ChkNightLight.IsChecked = true;
+            }
         }
 
         private void RefreshPresetButtons()
@@ -151,6 +158,40 @@ namespace PCOptimizer.Views
             EditPreset(SettingsService.Current.Preset2, p => SettingsService.Current.Preset2 = p);
         private void Preset3_Edit(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
             EditPreset(SettingsService.Current.Preset3, p => SettingsService.Current.Preset3 = p);
+
+        private void ChkNightLight_Checked(object sender, RoutedEventArgs e)
+        {
+            NightLightPanel.Visibility = Visibility.Visible;
+            int intensity = (int)SliderNightLight.Value;
+            NightLightService.SetIntensity(intensity);
+            TxtStatus.Text = $"Luz noturna ativada ({intensity}%)";
+            SettingsService.Current.NightLightEnabled = true;
+            SettingsService.Current.NightLightIntensity = intensity;
+            SettingsService.Save();
+        }
+
+        private void ChkNightLight_Unchecked(object sender, RoutedEventArgs e)
+        {
+            NightLightPanel.Visibility = Visibility.Collapsed;
+            NightLightService.Reset();
+            TxtStatus.Text = "Luz noturna desativada";
+            SettingsService.Current.NightLightEnabled = false;
+            SettingsService.Save();
+        }
+
+        private void SliderNightLight_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (TxtNightLightValue == null || ChkNightLight == null) return;
+            int value = (int)e.NewValue;
+            TxtNightLightValue.Text = $"{value}%";
+
+            if (ChkNightLight.IsChecked == true)
+            {
+                NightLightService.SetIntensity(value);
+                SettingsService.Current.NightLightIntensity = value;
+                SettingsService.Save();
+            }
+        }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
