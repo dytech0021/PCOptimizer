@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "PC Optimizer",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/PCOptimizer/bin/Debug/net9.0-windows/PCOptimizer.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/PCOptimizer",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        }
+    ]
+}

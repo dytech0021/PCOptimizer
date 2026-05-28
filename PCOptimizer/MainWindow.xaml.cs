@@ -14,8 +14,12 @@ namespace PCOptimizer
         public MainWindow()
         {
             InitializeComponent();
-            Loaded += (_, _) => ((App)Application.Current).InitHotkey(this);
-            UpdateSelectedCount();
+            Loaded += (_, _) =>
+            {
+                ((App)Application.Current).InitHotkey(this);
+                ChkSelectAll.IsChecked = true;
+                UpdateSelectedCount();
+            };
         }
 
         private void Log(string message)
@@ -42,6 +46,11 @@ namespace PCOptimizer
 
         private void UpdateSelectedCount()
         {
+            if (TxtSelected == null || ChkTemp == null || ChkDisk == null ||
+                ChkRecycleBin == null || ChkStartup == null || ChkServices == null ||
+                ChkNetwork == null || ChkRegistry == null || ChkCortana == null || ChkDefrag == null)
+                return;
+
             int total = 9;
             int selected = 0;
             if (ChkTemp.IsChecked == true) selected++;
@@ -66,6 +75,7 @@ namespace PCOptimizer
 
         private void SetAllChecks(bool value)
         {
+            if (ChkTemp == null) return;
             ChkTemp.IsChecked = value;
             ChkDisk.IsChecked = value;
             ChkRecycleBin.IsChecked = value;

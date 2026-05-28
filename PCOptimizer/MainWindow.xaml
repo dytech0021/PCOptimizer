@@ -42,7 +42,7 @@
             <Grid>
                 <CheckBox x:Name="ChkSelectAll" Content="  Selecionar Tudo"
                           Foreground="{DynamicResource TextSecondary}"
-                          FontSize="12" VerticalAlignment="Center" IsChecked="True"
+                          FontSize="12" VerticalAlignment="Center"
                           Checked="ChkSelectAll_Checked" Unchecked="ChkSelectAll_Unchecked"/>
                 <TextBlock x:Name="TxtSelected" HorizontalAlignment="Right" FontSize="11"
                            Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
