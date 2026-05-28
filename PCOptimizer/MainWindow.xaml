@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="PC Optimizer" Height="650" Width="850"
         WindowStartupLocation="CenterScreen"
-        Background="#F5F7FB">
+        Background="{DynamicResource WindowBg}">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="80"/>
@@ -13,15 +13,25 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <Border Grid.Row="0" Background="#FFFFFF" Padding="20,0" BorderBrush="#E4E7EF" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Background="{DynamicResource SurfaceBg}" Padding="20,0"
+                BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1">
             <Grid>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="⚡" FontSize="32" VerticalAlignment="Center" Margin="0,0,10,0"/>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="PC Optimizer" FontSize="24" FontWeight="Bold" Foreground="#2D3142"/>
-                        <TextBlock Text="Otimize seu computador com um clique" FontSize="12" Foreground="#7A8194"/>
+                        <TextBlock Text="PC Optimizer" FontSize="24" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextPrimary}"/>
+                        <TextBlock Text="Otimize seu computador com um clique" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondary}"/>
                     </StackPanel>
                 </StackPanel>
+
+                <Button x:Name="BtnThemeToggle" Content="{DynamicResource ThemeToggleIcon}"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Width="40" Height="40" FontSize="18"
+                        Background="Transparent" BorderThickness="0"
+                        Cursor="Hand" Click="BtnThemeToggle_Click"
+                        ToolTip="Alternar entre tema claro e escuro"/>
             </Grid>
         </Border>
 
@@ -29,87 +39,87 @@
         <ScrollViewer Grid.Row="1" Margin="20,15" VerticalScrollBarVisibility="Auto">
             <WrapPanel HorizontalAlignment="Center">
 
-                <Border Background="#FFEDED" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
-                        BorderBrush="#F5C6C6" BorderThickness="1"
+                <Border Background="{DynamicResource Card1Bg}" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        BorderBrush="{DynamicResource Card1Border}" BorderThickness="1"
                         Cursor="Hand" MouseLeftButtonUp="Card_TempCleaner">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🗑️" FontSize="36" HorizontalAlignment="Center"/>
                         <TextBlock Text="Limpar Temporários" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="#2D3142" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                                   Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center" Margin="0,10,0,5"/>
                         <TextBlock Text="Remove arquivos temporários do sistema e navegadores"
-                                   FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"/>
+                                   FontSize="11" Foreground="{DynamicResource TextTertiary}" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#E8F1FF" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
-                        BorderBrush="#C7DBF7" BorderThickness="1"
+                <Border Background="{DynamicResource Card2Bg}" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        BorderBrush="{DynamicResource Card2Border}" BorderThickness="1"
                         Cursor="Hand" MouseLeftButtonUp="Card_DiskCleaner">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="💾" FontSize="36" HorizontalAlignment="Center"/>
                         <TextBlock Text="Limpar Disco" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="#2D3142" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                                   Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center" Margin="0,10,0,5"/>
                         <TextBlock Text="Libera espaço removendo caches, logs e dumps"
-                                   FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"/>
+                                   FontSize="11" Foreground="{DynamicResource TextTertiary}" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#FFF4E0" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
-                        BorderBrush="#F5D9A8" BorderThickness="1"
+                <Border Background="{DynamicResource Card3Bg}" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        BorderBrush="{DynamicResource Card3Border}" BorderThickness="1"
                         Cursor="Hand" MouseLeftButtonUp="Card_Startup">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🚀" FontSize="36" HorizontalAlignment="Center"/>
                         <TextBlock Text="Otimizar Inicialização" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="#2D3142" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                                   Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center" Margin="0,10,0,5"/>
                         <TextBlock Text="Escolha quais programas iniciam com o Windows"
-                                   FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"/>
+                                   FontSize="11" Foreground="{DynamicResource TextTertiary}" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#E6F5EA" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
-                        BorderBrush="#BCDFC5" BorderThickness="1"
+                <Border Background="{DynamicResource Card4Bg}" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        BorderBrush="{DynamicResource Card4Border}" BorderThickness="1"
                         Cursor="Hand" MouseLeftButtonUp="Card_Services">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🛡️" FontSize="36" HorizontalAlignment="Center"/>
                         <TextBlock Text="Serviços do Windows" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="#2D3142" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                                   Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center" Margin="0,10,0,5"/>
                         <TextBlock Text="Desativa serviços desnecessários para ganhar performance"
-                                   FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"/>
+                                   FontSize="11" Foreground="{DynamicResource TextTertiary}" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#F0E8FF" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
-                        BorderBrush="#D4C5F5" BorderThickness="1"
+                <Border Background="{DynamicResource Card5Bg}" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        BorderBrush="{DynamicResource Card5Border}" BorderThickness="1"
                         Cursor="Hand" MouseLeftButtonUp="Card_Network">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🌐" FontSize="36" HorizontalAlignment="Center"/>
                         <TextBlock Text="Otimizar Rede" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="#2D3142" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                                   Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center" Margin="0,10,0,5"/>
                         <TextBlock Text="Limpa cache DNS e otimiza configurações TCP"
-                                   FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"/>
+                                   FontSize="11" Foreground="{DynamicResource TextTertiary}" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#FFFAE0" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
-                        BorderBrush="#F5E8A8" BorderThickness="1"
+                <Border Background="{DynamicResource Card6Bg}" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        BorderBrush="{DynamicResource Card6Border}" BorderThickness="1"
                         Cursor="Hand" MouseLeftButtonUp="Card_Registry">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🔧" FontSize="36" HorizontalAlignment="Center"/>
                         <TextBlock Text="Registro do Windows" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="#2D3142" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                                   Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center" Margin="0,10,0,5"/>
                         <TextBlock Text="Aplica tweaks de performance no registro do sistema"
-                                   FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"/>
+                                   FontSize="11" Foreground="{DynamicResource TextTertiary}" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#E0F5F1" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
-                        BorderBrush="#B5DDD5" BorderThickness="1"
+                <Border Background="{DynamicResource Card7Bg}" CornerRadius="10" Margin="8" Padding="20" Width="240" Height="180"
+                        BorderBrush="{DynamicResource Card7Border}" BorderThickness="1"
                         Cursor="Hand" MouseLeftButtonUp="Card_Brightness">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="🌞" FontSize="36" HorizontalAlignment="Center"/>
                         <TextBlock Text="Brilho e Contraste" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="#2D3142" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                                   Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center" Margin="0,10,0,5"/>
                         <TextBlock Text="Ajusta brilho e contraste de todos os monitores juntos"
-                                   FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"/>
+                                   FontSize="11" Foreground="{DynamicResource TextTertiary}" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
@@ -117,26 +127,27 @@
         </ScrollViewer>
 
         <!-- Log -->
-        <Border Grid.Row="2" Background="#FFFFFF" CornerRadius="8" Margin="20,0,20,10" Padding="10"
-                BorderBrush="#E4E7EF" BorderThickness="1"
+        <Border Grid.Row="2" Background="{DynamicResource SurfaceBg}" CornerRadius="8" Margin="20,0,20,10" Padding="10"
+                BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
                 MaxHeight="120">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <TextBlock x:Name="TxtLog" FontSize="11" Foreground="#4A5063" TextWrapping="Wrap"
+                <TextBlock x:Name="TxtLog" FontSize="11" Foreground="{DynamicResource LogText}" TextWrapping="Wrap"
                            Text="Pronto para otimizar."/>
             </ScrollViewer>
         </Border>
 
         <!-- Footer -->
-        <Border Grid.Row="3" Background="#FFFFFF" Padding="20,0" BorderBrush="#E4E7EF" BorderThickness="0,1,0,0">
+        <Border Grid.Row="3" Background="{DynamicResource SurfaceBg}" Padding="20,0"
+                BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,1,0,0">
             <Grid>
                 <ProgressBar x:Name="Progress" Height="4" VerticalAlignment="Top"
-                             Background="#E4E7EF" Foreground="#5B8DEF" BorderThickness="0"
-                             Visibility="Collapsed"/>
+                             Background="{DynamicResource ProgressBg}" Foreground="{DynamicResource ButtonPrimaryBg}"
+                             BorderThickness="0" Visibility="Collapsed"/>
                 <Button x:Name="BtnOptimizeAll" Content="⚡ Otimizar Tudo"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Padding="40,10" FontSize="16" FontWeight="Bold"
-                        Background="#5B8DEF" Foreground="#FFFFFF" BorderThickness="0"
-                        Cursor="Hand" Click="BtnOptimizeAll_Click"/>
+                        Background="{DynamicResource ButtonPrimaryBg}" Foreground="{DynamicResource ButtonPrimaryFg}"
+                        BorderThickness="0" Cursor="Hand" Click="BtnOptimizeAll_Click"/>
             </Grid>
         </Border>
     </Grid>

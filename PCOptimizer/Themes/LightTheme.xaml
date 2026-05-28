@@ -1,0 +1,49 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Backgrounds -->
+    <SolidColorBrush x:Key="WindowBg" Color="#F5F7FB"/>
+    <SolidColorBrush x:Key="SurfaceBg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BorderColor" Color="#E4E7EF"/>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="TextPrimary" Color="#2D3142"/>
+    <SolidColorBrush x:Key="TextSecondary" Color="#7A8194"/>
+    <SolidColorBrush x:Key="TextTertiary" Color="#6B7280"/>
+    <SolidColorBrush x:Key="LogText" Color="#4A5063"/>
+    <SolidColorBrush x:Key="Placeholder" Color="#A0A6B8"/>
+
+    <!-- Buttons -->
+    <SolidColorBrush x:Key="ButtonPrimaryBg" Color="#5B8DEF"/>
+    <SolidColorBrush x:Key="ButtonPrimaryFg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ButtonSecondaryBg" Color="#E4E7EF"/>
+    <SolidColorBrush x:Key="ButtonSecondaryFg" Color="#2D3142"/>
+    <SolidColorBrush x:Key="ButtonSuccessBg" Color="#5BC97A"/>
+    <SolidColorBrush x:Key="ButtonSuccessFg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ProgressBg" Color="#E4E7EF"/>
+
+    <!-- Badge -->
+    <SolidColorBrush x:Key="BadgeBg" Color="#E8F1FF"/>
+    <SolidColorBrush x:Key="BadgeFg" Color="#4A6FA5"/>
+    <SolidColorBrush x:Key="ListItemBg" Color="#F5F7FB"/>
+
+    <!-- Cards -->
+    <SolidColorBrush x:Key="Card1Bg" Color="#FFEDED"/>
+    <SolidColorBrush x:Key="Card1Border" Color="#F5C6C6"/>
+    <SolidColorBrush x:Key="Card2Bg" Color="#E8F1FF"/>
+    <SolidColorBrush x:Key="Card2Border" Color="#C7DBF7"/>
+    <SolidColorBrush x:Key="Card3Bg" Color="#FFF4E0"/>
+    <SolidColorBrush x:Key="Card3Border" Color="#F5D9A8"/>
+    <SolidColorBrush x:Key="Card4Bg" Color="#E6F5EA"/>
+    <SolidColorBrush x:Key="Card4Border" Color="#BCDFC5"/>
+    <SolidColorBrush x:Key="Card5Bg" Color="#F0E8FF"/>
+    <SolidColorBrush x:Key="Card5Border" Color="#D4C5F5"/>
+    <SolidColorBrush x:Key="Card6Bg" Color="#FFFAE0"/>
+    <SolidColorBrush x:Key="Card6Border" Color="#F5E8A8"/>
+    <SolidColorBrush x:Key="Card7Bg" Color="#E0F5F1"/>
+    <SolidColorBrush x:Key="Card7Border" Color="#B5DDD5"/>
+
+    <!-- Theme toggle icon -->
+    <sys:String x:Key="ThemeToggleIcon" xmlns:sys="clr-namespace:System;assembly=mscorlib">🌙</sys:String>
+
+</ResourceDictionary>

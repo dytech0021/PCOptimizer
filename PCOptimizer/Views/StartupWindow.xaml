@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Gerenciar Inicialização" Height="500" Width="650"
         WindowStartupLocation="CenterOwner"
-        Background="#F5F7FB" ResizeMode="CanResizeWithGrip">
+        Background="{DynamicResource WindowBg}" ResizeMode="CanResizeWithGrip">
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -14,16 +14,17 @@
 
         <!-- Header -->
         <StackPanel Grid.Row="0" Margin="0,0,0,15">
-            <TextBlock Text="🚀 Programas na Inicialização" FontSize="20" FontWeight="Bold" Foreground="#2D3142"/>
+            <TextBlock Text="🚀 Programas na Inicialização" FontSize="20" FontWeight="Bold"
+                       Foreground="{DynamicResource TextPrimary}"/>
             <TextBlock Text="Desmarque os programas que você NÃO quer que iniciem com o Windows"
-                       FontSize="12" Foreground="#7A8194" Margin="0,5,0,0"/>
+                       FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,5,0,0"/>
         </StackPanel>
 
         <!-- Search -->
-        <Border Grid.Row="1" Background="#FFFFFF" CornerRadius="8" Padding="10,8" Margin="0,0,0,10"
-                BorderBrush="#E4E7EF" BorderThickness="1">
+        <Border Grid.Row="1" Background="{DynamicResource SurfaceBg}" CornerRadius="8" Padding="10,8" Margin="0,0,0,10"
+                BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
             <TextBox x:Name="TxtSearch" Background="Transparent" BorderThickness="0"
-                     Foreground="#2D3142" FontSize="13"
+                     Foreground="{DynamicResource TextPrimary}" FontSize="13"
                      TextChanged="TxtSearch_TextChanged">
                 <TextBox.Style>
                     <Style TargetType="TextBox">
@@ -46,14 +47,14 @@
         </Border>
 
         <!-- List -->
-        <Border Grid.Row="2" Background="#FFFFFF" CornerRadius="10" Padding="5"
-                BorderBrush="#E4E7EF" BorderThickness="1">
+        <Border Grid.Row="2" Background="{DynamicResource SurfaceBg}" CornerRadius="10" Padding="5"
+                BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
             <ListView x:Name="LstStartup" Background="Transparent" BorderThickness="0"
-                      Foreground="#2D3142" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                      Foreground="{DynamicResource TextPrimary}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="#F5F7FB" CornerRadius="8" Padding="12,10" Margin="2,3" Width="580"
-                                BorderBrush="#E4E7EF" BorderThickness="1">
+                        <Border Background="{DynamicResource ListItemBg}" CornerRadius="8" Padding="12,10" Margin="2,3" Width="580"
+                                BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
@@ -66,14 +67,17 @@
                                           Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
 
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="#2D3142"/>
-                                    <TextBlock Text="{Binding Command}" FontSize="10" Foreground="#7A8194"
+                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}"/>
+                                    <TextBlock Text="{Binding Command}" FontSize="10"
+                                               Foreground="{DynamicResource TextSecondary}"
                                                TextTrimming="CharacterEllipsis" MaxWidth="400"/>
                                 </StackPanel>
 
-                                <Border Grid.Column="2" Background="#E8F1FF" CornerRadius="4"
+                                <Border Grid.Column="2" Background="{DynamicResource BadgeBg}" CornerRadius="4"
                                         Padding="8,3" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Source}" FontSize="10" Foreground="#4A6FA5"/>
+                                    <TextBlock Text="{Binding Source}" FontSize="10"
+                                               Foreground="{DynamicResource BadgeFg}"/>
                                 </Border>
                             </Grid>
                         </Border>
@@ -99,15 +103,16 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock x:Name="TxtCount" Grid.Column="0" FontSize="12" Foreground="#7A8194" VerticalAlignment="Center"/>
+            <TextBlock x:Name="TxtCount" Grid.Column="0" FontSize="12"
+                       Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
 
             <Button Grid.Column="1" Content="Cancelar" Padding="20,8" Margin="0,0,10,0"
-                    Background="#E4E7EF" Foreground="#2D3142" BorderThickness="0"
-                    FontSize="13" Cursor="Hand" Click="BtnCancel_Click"/>
+                    Background="{DynamicResource ButtonSecondaryBg}" Foreground="{DynamicResource ButtonSecondaryFg}"
+                    BorderThickness="0" FontSize="13" Cursor="Hand" Click="BtnCancel_Click"/>
 
             <Button Grid.Column="2" Content="✅ Aplicar" Padding="20,8"
-                    Background="#5BC97A" Foreground="#FFFFFF" BorderThickness="0"
-                    FontSize="13" FontWeight="Bold" Cursor="Hand" Click="BtnApply_Click"/>
+                    Background="{DynamicResource ButtonSuccessBg}" Foreground="{DynamicResource ButtonSuccessFg}"
+                    BorderThickness="0" FontSize="13" FontWeight="Bold" Cursor="Hand" Click="BtnApply_Click"/>
         </Grid>
     </Grid>
 </Window>

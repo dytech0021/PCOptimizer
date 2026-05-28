@@ -138,5 +138,11 @@ namespace PCOptimizer
             window.ShowDialog();
             Log("✅ Janela de brilho e contraste fechada");
         }
+
+        private void BtnThemeToggle_Click(object sender, RoutedEventArgs e)
+        {
+            ThemeManager.Toggle();
+            Log($"🎨 Tema alterado para {(ThemeManager.Current == AppTheme.Dark ? "escuro" : "claro")}");
+        }
     }
 }
