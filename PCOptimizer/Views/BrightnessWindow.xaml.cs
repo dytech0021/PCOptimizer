@@ -1,6 +1,8 @@
 using System;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using PCOptimizer.Services;
 
 namespace PCOptimizer.Views
@@ -10,11 +12,13 @@ namespace PCOptimizer.Views
         private bool _initialized;
         private DateTime _lastBrightnessChange = DateTime.MinValue;
         private DateTime _lastContrastChange = DateTime.MinValue;
+        private bool _capturingHotkey;
 
         public BrightnessWindow()
         {
             InitializeComponent();
             Loaded += BrightnessWindow_Loaded;
+            TxtHotkey.Text = SettingsService.Current.HotkeyDisplay;
         }
 
         private async void BrightnessWindow_Loaded(object sender, RoutedEventArgs e)
@@ -85,7 +89,93 @@ namespace PCOptimizer.Views
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
-            Close();
+            Hide();
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            e.Cancel = true;
+            Hide();
+        }
+
+        private void BtnSetHotkey_Click(object sender, RoutedEventArgs e)
+        {
+            if (_capturingHotkey) return;
+            _capturingHotkey = true;
+            BtnSetHotkey.Content = "Pressione a combinação... (Esc cancela)";
+            BtnSetHotkey.IsEnabled = false;
+            TxtStatus.Text = "Aguardando atalho...";
+            Focus();
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (!_capturingHotkey)
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+            if (key == Key.Escape)
+            {
+                CancelHotkeyCapture();
+                e.Handled = true;
+                return;
+            }
+
+            // Ignore standalone modifier keys
+            if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
+                     or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            var modifiers = Keyboard.Modifiers;
+            if (modifiers == ModifierKeys.None)
+            {
+                TxtStatus.Text = "Use pelo menos um modificador (Ctrl, Alt, Shift)";
+                e.Handled = true;
+                return;
+            }
+
+            uint win32Mods = 0;
+            if ((modifiers & ModifierKeys.Control) != 0) win32Mods |= 0x0002;
+            if ((modifiers & ModifierKeys.Shift) != 0)   win32Mods |= 0x0004;
+            if ((modifiers & ModifierKeys.Alt) != 0)     win32Mods |= 0x0001;
+            if ((modifiers & ModifierKeys.Windows) != 0) win32Mods |= 0x0008;
+
+            uint vk = (uint)KeyInterop.VirtualKeyFromKey(key);
+
+            var display = "";
+            if ((modifiers & ModifierKeys.Control) != 0) display += "Ctrl+";
+            if ((modifiers & ModifierKeys.Alt) != 0)     display += "Alt+";
+            if ((modifiers & ModifierKeys.Shift) != 0)   display += "Shift+";
+            if ((modifiers & ModifierKeys.Windows) != 0) display += "Win+";
+            display += key.ToString();
+
+            SettingsService.Current.HotkeyModifiers = win32Mods;
+            SettingsService.Current.HotkeyVk = vk;
+            SettingsService.Current.HotkeyDisplay = display;
+            SettingsService.Save();
+            HotkeyService.Register();
+
+            TxtHotkey.Text = display;
+            BtnSetHotkey.Content = "Alterar Atalho";
+            BtnSetHotkey.IsEnabled = true;
+            TxtStatus.Text = $"Atalho definido: {display}";
+            _capturingHotkey = false;
+            e.Handled = true;
+        }
+
+        private void CancelHotkeyCapture()
+        {
+            _capturingHotkey = false;
+            BtnSetHotkey.Content = "Alterar Atalho";
+            BtnSetHotkey.IsEnabled = true;
+            TxtStatus.Text = "Pronto — arraste os controles";
         }
     }
 }

@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <!--<ApplicationIcon>Assets\icon.ico</ApplicationIcon>-->
     <AssemblyName>PCOptimizer</AssemblyName>
     <RootNamespace>PCOptimizer</RootNamespace>

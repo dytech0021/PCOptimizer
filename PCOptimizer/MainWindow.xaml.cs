@@ -12,6 +12,7 @@ namespace PCOptimizer
         public MainWindow()
         {
             InitializeComponent();
+            Loaded += (_, _) => ((App)Application.Current).InitHotkey(this);
         }
 
         private void Log(string message)
@@ -134,9 +135,7 @@ namespace PCOptimizer
 
         private void Card_Brightness(object sender, MouseButtonEventArgs e)
         {
-            var window = new BrightnessWindow { Owner = this };
-            window.ShowDialog();
-            Log("✅ Janela de brilho e contraste fechada");
+            ((App)Application.Current).ToggleBrightnessWindow();
         }
 
         private void BtnThemeToggle_Click(object sender, RoutedEventArgs e)
