@@ -1,117 +1,116 @@
 using System;
+using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Runtime.InteropServices;
 
 namespace PCOptimizer.Services
 {
+    /// <summary>
+    /// Luz noturna via camada de sobreposição (overlay) transparente e click-through.
+    /// Funciona em qualquer PC — não depende de SetDeviceGammaRamp, que falha na
+    /// maioria das placas de vídeo modernas.
+    /// </summary>
     public static class NightLightService
     {
-        [DllImport("gdi32.dll")]
-        private static extern bool SetDeviceGammaRamp(IntPtr hDC, ref RAMP lpRamp);
-
-        [DllImport("gdi32.dll")]
-        private static extern bool GetDeviceGammaRamp(IntPtr hDC, ref RAMP lpRamp);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowLong(IntPtr hwnd, int index);
 
         [DllImport("user32.dll")]
-        private static extern IntPtr GetDC(IntPtr hWnd);
+        private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
 
-        [DllImport("user32.dll")]
-        private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_TRANSPARENT = 0x20;
+        private const int WS_EX_TOOLWINDOW = 0x80;
+        private const int WS_EX_LAYERED = 0x80000;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-        public struct RAMP
-        {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-            public ushort[] Red;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-            public ushort[] Green;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-            public ushort[] Blue;
-        }
-
-        private static RAMP _originalRamp;
-        private static bool _originalSaved;
+        private static Window? _overlay;
 
         /// <summary>
-        /// Aplica filtro de luz noturna usando gamma ramp.
-        /// intensity: 0 = sem filtro, 100 = máximo (muito quente/laranja)
+        /// Aplica o filtro. intensity: 0 = desligado, 100 = máximo (tela bem alaranjada).
         /// </summary>
         public static void SetIntensity(int intensity)
         {
-            IntPtr hDC = GetDC(IntPtr.Zero);
-            try
+            // Garante execução na thread de UI
+            if (Application.Current == null) return;
+            if (!Application.Current.Dispatcher.CheckAccess())
             {
-                if (!_originalSaved)
-                {
-                    _originalRamp = new RAMP
-                    {
-                        Red = new ushort[256],
-                        Green = new ushort[256],
-                        Blue = new ushort[256]
-                    };
-                    GetDeviceGammaRamp(hDC, ref _originalRamp);
-                    _originalSaved = true;
-                }
-
-                var ramp = new RAMP
-                {
-                    Red = new ushort[256],
-                    Green = new ushort[256],
-                    Blue = new ushort[256]
-                };
-
-                // intensity 0-100 → escala de redução do azul e verde
-                double factor = intensity / 100.0;
-                double greenReduction = factor * 0.15;  // reduz verde levemente
-                double blueReduction = factor * 0.45;   // reduz azul bastante
-
-                for (int i = 0; i < 256; i++)
-                {
-                    int val = i * 256;
-                    ramp.Red[i] = (ushort)val;
-                    ramp.Green[i] = (ushort)Math.Max(0, val * (1.0 - greenReduction));
-                    ramp.Blue[i] = (ushort)Math.Max(0, val * (1.0 - blueReduction));
-                }
-
-                SetDeviceGammaRamp(hDC, ref ramp);
+                Application.Current.Dispatcher.Invoke(() => SetIntensity(intensity));
+                return;
             }
-            finally
+
+            if (intensity <= 0)
             {
-                ReleaseDC(IntPtr.Zero, hDC);
+                Reset();
+                return;
             }
+
+            EnsureOverlay();
+
+            // intensity 0-100 → opacidade 0 a 0.55 (acima disso fica ilegível)
+            _overlay!.Opacity = (intensity / 100.0) * 0.55;
+
+            if (!_overlay.IsVisible)
+                _overlay.Show();
+
+            RepositionToVirtualScreen();
+        }
+
+        private static void EnsureOverlay()
+        {
+            if (_overlay != null) return;
+
+            _overlay = new Window
+            {
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                // Tom âmbar quente característico de luz noturna
+                Background = new SolidColorBrush(Color.FromRgb(255, 130, 20)),
+                ShowInTaskbar = false,
+                Topmost = true,
+                ResizeMode = ResizeMode.NoResize,
+                IsHitTestVisible = false,
+                Focusable = false,
+                ShowActivated = false,
+                Title = "NightLightOverlay"
+            };
+
+            _overlay.SourceInitialized += (s, e) =>
+            {
+                var hwnd = new WindowInteropHelper(_overlay).Handle;
+                int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+                // Click-through + sem ativar + não aparece no Alt+Tab
+                SetWindowLong(hwnd, GWL_EXSTYLE,
+                    ex | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+            };
+
+            RepositionToVirtualScreen();
+        }
+
+        private static void RepositionToVirtualScreen()
+        {
+            if (_overlay == null) return;
+            // Cobre TODOS os monitores (área virtual completa)
+            _overlay.Left = SystemParameters.VirtualScreenLeft;
+            _overlay.Top = SystemParameters.VirtualScreenTop;
+            _overlay.Width = SystemParameters.VirtualScreenWidth;
+            _overlay.Height = SystemParameters.VirtualScreenHeight;
         }
 
         /// <summary>
-        /// Restaura a gamma ramp original (desliga a luz noturna).
+        /// Desliga a luz noturna.
         /// </summary>
         public static void Reset()
         {
-            if (!_originalSaved) return;
-
-            IntPtr hDC = GetDC(IntPtr.Zero);
-            try
+            if (Application.Current == null) return;
+            if (!Application.Current.Dispatcher.CheckAccess())
             {
-                // Restaura gamma normal (linear)
-                var ramp = new RAMP
-                {
-                    Red = new ushort[256],
-                    Green = new ushort[256],
-                    Blue = new ushort[256]
-                };
-
-                for (int i = 0; i < 256; i++)
-                {
-                    int val = i * 256;
-                    ramp.Red[i] = (ushort)val;
-                    ramp.Green[i] = (ushort)val;
-                    ramp.Blue[i] = (ushort)val;
-                }
-
-                SetDeviceGammaRamp(hDC, ref ramp);
+                Application.Current.Dispatcher.Invoke(Reset);
+                return;
             }
-            finally
-            {
-                ReleaseDC(IntPtr.Zero, hDC);
-            }
+
+            _overlay?.Hide();
         }
     }
 }
