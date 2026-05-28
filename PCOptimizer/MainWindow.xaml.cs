@@ -46,22 +46,24 @@ namespace PCOptimizer
 
         private void UpdateSelectedCount()
         {
-            if (TxtSelected == null || ChkTemp == null || ChkDisk == null ||
-                ChkRecycleBin == null || ChkStartup == null || ChkServices == null ||
-                ChkNetwork == null || ChkRegistry == null || ChkCortana == null || ChkDefrag == null)
+            if (TxtSelected == null || ChkTemp == null || ChkBloatware == null)
                 return;
 
-            int total = 9;
+            var boxes = new[]
+            {
+                ChkTemp, ChkDisk, ChkRecycleBin, ChkStartup, ChkServices,
+                ChkNetwork, ChkRegistry, ChkCortana, ChkDefrag,
+                ChkPowerPlan, ChkVisualEffects, ChkBackgroundApps, ChkStandbyRam,
+                ChkGpuScheduling, ChkFastStartup, ChkTelemetry, ChkGameBar,
+                ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails,
+                ChkHibernation, ChkSystemRepair, ChkBloatware
+            };
+
+            int total = boxes.Length;
             int selected = 0;
-            if (ChkTemp.IsChecked == true) selected++;
-            if (ChkDisk.IsChecked == true) selected++;
-            if (ChkRecycleBin.IsChecked == true) selected++;
-            if (ChkStartup.IsChecked == true) selected++;
-            if (ChkServices.IsChecked == true) selected++;
-            if (ChkNetwork.IsChecked == true) selected++;
-            if (ChkRegistry.IsChecked == true) selected++;
-            if (ChkCortana.IsChecked == true) selected++;
-            if (ChkDefrag.IsChecked == true) selected++;
+            foreach (var b in boxes)
+                if (b != null && b.IsChecked == true) selected++;
+
             TxtSelected.Text = $"{selected} de {total} selecionados";
         }
 
@@ -85,6 +87,19 @@ namespace PCOptimizer
             ChkRegistry.IsChecked = value;
             ChkCortana.IsChecked = value;
             ChkDefrag.IsChecked = value;
+            // Otimizações seguras de desempenho/privacidade/disco
+            ChkPowerPlan.IsChecked = value;
+            ChkVisualEffects.IsChecked = value;
+            ChkBackgroundApps.IsChecked = value;
+            ChkStandbyRam.IsChecked = value;
+            ChkGpuScheduling.IsChecked = value;
+            ChkTelemetry.IsChecked = value;
+            ChkGameBar.IsChecked = value;
+            ChkSsdTrim.IsChecked = value;
+            ChkWinUpdateCache.IsChecked = value;
+            ChkThumbnails.IsChecked = value;
+            // Nota: Hibernação, Inicialização Rápida, Reparo e Bloatware ficam de fora
+            // do "selecionar tudo" por serem opcionais/mais demorados — opt-in manual.
             UpdateSelectedCount();
         }
 
@@ -199,6 +214,146 @@ namespace PCOptimizer
                 Log(ok ? "✅ Disco desfragmentado" : "⚠️ Desfragmentação parcial ou SSD");
             }
 
+            if (ChkPowerPlan.IsChecked == true)
+            {
+                Log("Ativando plano de Alto Desempenho...");
+                StatusPowerPlan.Text = "⏳";
+                bool ok = await Task.Run(() => PowerPlanService.Apply());
+                totalSteps++;
+                SetStatus(StatusPowerPlan, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Plano de energia: Alto Desempenho ativado" : "⚠️ Plano de energia: requer admin");
+            }
+
+            if (ChkVisualEffects.IsChecked == true)
+            {
+                Log("Otimizando efeitos visuais...");
+                StatusVisualEffects.Text = "⏳";
+                bool ok = await Task.Run(() => VisualEffectsService.OptimizeForPerformance());
+                totalSteps++;
+                SetStatus(StatusVisualEffects, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Efeitos visuais otimizados" : "⚠️ Efeitos visuais: falhou");
+            }
+
+            if (ChkBackgroundApps.IsChecked == true)
+            {
+                Log("Desativando apps em segundo plano...");
+                StatusBackgroundApps.Text = "⏳";
+                bool ok = await Task.Run(() => BackgroundAppsService.Disable());
+                totalSteps++;
+                SetStatus(StatusBackgroundApps, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Apps em segundo plano desativados" : "⚠️ Apps em segundo plano: falhou");
+            }
+
+            if (ChkStandbyRam.IsChecked == true)
+            {
+                Log("Liberando memória RAM...");
+                StatusStandbyRam.Text = "⏳";
+                int count = await Task.Run(() => MemoryService.ClearStandby());
+                totalSteps++;
+                SetStatus(StatusStandbyRam, "✅", true);
+                Log($"✅ Memória liberada em {count} processos");
+            }
+
+            if (ChkGpuScheduling.IsChecked == true)
+            {
+                Log("Ativando agendamento de GPU por hardware...");
+                StatusGpuScheduling.Text = "⏳";
+                bool ok = await Task.Run(() => GpuSchedulingService.Enable());
+                totalSteps++;
+                SetStatus(StatusGpuScheduling, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Agendamento de GPU ativado (reinicie o PC)" : "⚠️ Agendamento de GPU: requer admin");
+            }
+
+            if (ChkTelemetry.IsChecked == true)
+            {
+                Log("Desativando telemetria...");
+                StatusTelemetry.Text = "⏳";
+                bool ok = await Task.Run(() => TelemetryService.Disable());
+                totalSteps++;
+                SetStatus(StatusTelemetry, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Telemetria desativada" : "⚠️ Telemetria: requer admin");
+            }
+
+            if (ChkGameBar.IsChecked == true)
+            {
+                Log("Desativando Xbox Game Bar...");
+                StatusGameBar.Text = "⏳";
+                bool ok = await Task.Run(() => GameBarService.Disable());
+                totalSteps++;
+                SetStatus(StatusGameBar, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Xbox Game Bar / DVR desativado" : "⚠️ Game Bar: falhou");
+            }
+
+            if (ChkSsdTrim.IsChecked == true)
+            {
+                Log("Otimizando SSD (TRIM)...");
+                StatusSsdTrim.Text = "⏳";
+                bool ok = await Task.Run(() => SsdTrimService.Trim());
+                totalSteps++;
+                SetStatus(StatusSsdTrim, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ SSD otimizado (TRIM)" : "⚠️ TRIM: falhou ou não aplicável");
+            }
+
+            if (ChkWinUpdateCache.IsChecked == true)
+            {
+                Log("Limpando cache do Windows Update...");
+                StatusWinUpdateCache.Text = "⏳";
+                long bytes = await Task.Run(() => WindowsUpdateCacheService.Clean());
+                totalFreed += bytes; totalSteps++;
+                SetStatus(StatusWinUpdateCache, "✅", true);
+                Log($"✅ Cache do Windows Update: {FormatBytes(bytes)} liberados");
+            }
+
+            if (ChkThumbnails.IsChecked == true)
+            {
+                Log("Limpando cache de miniaturas...");
+                StatusThumbnails.Text = "⏳";
+                long bytes = await Task.Run(() => ThumbnailCacheService.Clean());
+                totalFreed += bytes; totalSteps++;
+                SetStatus(StatusThumbnails, "✅", true);
+                Log($"✅ Cache de miniaturas: {FormatBytes(bytes)} liberados");
+            }
+
+            if (ChkFastStartup.IsChecked == true)
+            {
+                Log("Desativando Inicialização Rápida...");
+                StatusFastStartup.Text = "⏳";
+                bool ok = await Task.Run(() => FastStartupService.Disable());
+                totalSteps++;
+                SetStatus(StatusFastStartup, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Inicialização Rápida desativada" : "⚠️ Inicialização Rápida: requer admin");
+            }
+
+            if (ChkHibernation.IsChecked == true)
+            {
+                Log("Desativando hibernação...");
+                StatusHibernation.Text = "⏳";
+                bool ok = await Task.Run(() => HibernationService.Disable());
+                totalSteps++;
+                SetStatus(StatusHibernation, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Hibernação desativada (hiberfil.sys removido)" : "⚠️ Hibernação: requer admin");
+            }
+
+            if (ChkSystemRepair.IsChecked == true)
+            {
+                Log("Reparando arquivos do sistema (pode demorar vários minutos)...");
+                StatusSystemRepair.Text = "⏳";
+                bool ok = await Task.Run(() => SystemRepairService.Repair());
+                totalSteps++;
+                SetStatus(StatusSystemRepair, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Verificação de arquivos do sistema concluída" : "⚠️ Reparo: requer admin ou houve erro");
+            }
+
+            if (ChkBloatware.IsChecked == true)
+            {
+                Log("Removendo bloatware...");
+                StatusBloatware.Text = "⏳";
+                int count = await Task.Run(() => BloatwareRemover.Remove());
+                totalSteps++;
+                SetStatus(StatusBloatware, "✅", true);
+                Log($"✅ Bloatware: {count} apps processados");
+            }
+
             Log($"\n🎉 Concluído! {totalSteps} otimizações. Espaço liberado: {FormatBytes(totalFreed)}");
 
             Progress.IsIndeterminate = false;
@@ -215,6 +370,11 @@ namespace PCOptimizer
         }
 
         private void Card_Brightness(object sender, MouseButtonEventArgs e)
+        {
+            ((App)Application.Current).ToggleBrightnessWindow();
+        }
+
+        private void BtnBrightnessHeader_Click(object sender, RoutedEventArgs e)
         {
             ((App)Application.Current).ToggleBrightnessWindow();
         }

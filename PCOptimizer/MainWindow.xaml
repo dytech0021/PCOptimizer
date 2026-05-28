@@ -96,12 +96,19 @@
                     </StackPanel>
                 </StackPanel>
 
-                <Button x:Name="BtnThemeToggle" Content="{DynamicResource ThemeToggleIcon}"
-                        HorizontalAlignment="Right" VerticalAlignment="Center"
-                        Width="40" Height="40" FontSize="18"
-                        Background="Transparent" BorderThickness="0"
-                        Cursor="Hand" Click="BtnThemeToggle_Click"
-                        ToolTip="Alternar tema claro/escuro"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="BtnBrightness" Content="🌞"
+                            Width="40" Height="40" FontSize="18"
+                            Background="Transparent" BorderThickness="0"
+                            Cursor="Hand" Click="BtnBrightnessHeader_Click"
+                            ToolTip="Abrir Brilho e Contraste"/>
+                    <Button x:Name="BtnThemeToggle" Content="{DynamicResource ThemeToggleIcon}"
+                            VerticalAlignment="Center"
+                            Width="40" Height="40" FontSize="18"
+                            Background="Transparent" BorderThickness="0"
+                            Cursor="Hand" Click="BtnThemeToggle_Click"
+                            ToolTip="Alternar tema claro/escuro"/>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -425,47 +432,455 @@
                     </Grid>
                 </Border>
 
-                <!-- ─── FERRAMENTAS ─── -->
+                <!-- ─── DESEMPENHO ─── -->
                 <Grid Margin="6,14,6,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="🛠️" FontSize="13" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Text="FERRAMENTAS" FontSize="11" FontWeight="Bold"
+                    <TextBlock Grid.Column="0" Text="🚀" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="DESEMPENHO" FontSize="11" FontWeight="Bold"
                                Foreground="{DynamicResource TextSecondary}" Margin="8,0,12,0"
                                VerticalAlignment="Center"/>
                     <Border Grid.Column="2" Height="1" Background="{DynamicResource BorderColor}"
                             VerticalAlignment="Center"/>
                 </Grid>
 
-                <!-- Brilho e Contraste -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="14,12"
-                        Cursor="Hand" MouseLeftButtonUp="Card_Brightness"
-                        Style="{StaticResource ToolCardStyle}">
+                <!-- Plano de Energia -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
                     <Grid>
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Border Width="40" Height="40" CornerRadius="12"
-                                Background="{DynamicResource Card7Bg}">
-                            <TextBlock Text="🌞" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <CheckBox Grid.Column="0" x:Name="ChkPowerPlan" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card4Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="⚡" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="14,0,0,0">
-                            <TextBlock Text="Brilho e Contraste" FontSize="13" FontWeight="SemiBold"
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Plano de Energia Alto Desempenho" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextPrimary}"/>
-                            <TextBlock Text="Ajusta brilho, contraste e luz noturna" FontSize="10"
+                            <TextBlock Text="Ativa o modo de máxima performance (ótimo em notebooks)" FontSize="10"
                                        Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="Abrir" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource ButtonPrimaryBg}"/>
-                            <TextBlock Text=" ➜" FontSize="13"
-                                       Foreground="{DynamicResource ButtonPrimaryBg}"/>
+                        <TextBlock Grid.Column="3" x:Name="StatusPowerPlan" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Efeitos Visuais -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkVisualEffects" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card5Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🎨" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Otimizar Efeitos Visuais" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Desliga animações e transparências para uma interface mais ágil" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
                         </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusVisualEffects" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Apps em Segundo Plano -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkBackgroundApps" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card6Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="📱" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Desativar Apps em Segundo Plano" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Impede apps da Store de rodarem escondidos consumindo recursos" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusBackgroundApps" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Limpar RAM -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkStandbyRam" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card7Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🧠" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Liberar Memória RAM" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Esvazia o cache de memória dos processos sem reiniciar" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusStandbyRam" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Agendamento de GPU -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkGpuScheduling" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card1Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🖥️" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Agendamento de GPU por Hardware" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Ativa o HAGS — pode reduzir latência em jogos (requer reiniciar)" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusGpuScheduling" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- ─── PRIVACIDADE ─── -->
+                <Grid Margin="6,14,6,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="🔒" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="PRIVACIDADE" FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource TextSecondary}" Margin="8,0,12,0"
+                               VerticalAlignment="Center"/>
+                    <Border Grid.Column="2" Height="1" Background="{DynamicResource BorderColor}"
+                            VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- Telemetria -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkTelemetry" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card2Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="📊" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Desativar Telemetria" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Bloqueia a coleta de dados e diagnóstico da Microsoft" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusTelemetry" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Xbox Game Bar -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkGameBar" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card3Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🎮" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Desativar Xbox Game Bar / DVR" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Desliga a gravação em segundo plano (ganho em jogos)" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusGameBar" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- ─── DISCO ─── -->
+                <Grid Margin="6,14,6,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="💽" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="DISCO" FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource TextSecondary}" Margin="8,0,12,0"
+                               VerticalAlignment="Center"/>
+                    <Border Grid.Column="2" Height="1" Background="{DynamicResource BorderColor}"
+                            VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- Otimizar SSD (TRIM) -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkSsdTrim" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card4Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="⚡" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Otimizar SSD (TRIM)" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Executa o retrim para manter o SSD rápido" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusSsdTrim" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Cache Windows Update -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkWinUpdateCache" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card5Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🔄" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Limpar Cache do Windows Update" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Remove downloads antigos de atualizações (pode liberar GBs)" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusWinUpdateCache" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Cache de Miniaturas -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkThumbnails" IsChecked="True" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card6Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🖼️" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Limpar Cache de Miniaturas" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Limpa thumbnails e ícones acumulados/corrompidos" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusThumbnails" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Desativar Hibernação -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkHibernation" IsChecked="False" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card7Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🛏️" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Desativar Hibernação" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Apaga o hiberfil.sys e libera vários GB (remove o hibernar)" FontSize="10"
+                                       Foreground="#F9E2AF" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusHibernation" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Inicialização Rápida -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkFastStartup" IsChecked="False" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card1Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🚄" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Desativar Inicialização Rápida" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Evita o &quot;desligamento falso&quot; — boots mais limpos e estáveis" FontSize="10"
+                                       Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusFastStartup" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- ─── MANUTENÇÃO ─── -->
+                <Grid Margin="6,14,6,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="🩺" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="MANUTENÇÃO" FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource TextSecondary}" Margin="8,0,12,0"
+                               VerticalAlignment="Center"/>
+                    <Border Grid.Column="2" Height="1" Background="{DynamicResource BorderColor}"
+                            VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- Reparar Sistema -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkSystemRepair" IsChecked="False" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card1Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🩺" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Reparar Arquivos do Sistema (SFC + DISM)" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Conserta arquivos corrompidos (pode demorar 5-10 minutos)" FontSize="10"
+                                       Foreground="#F9E2AF" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusSystemRepair" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Remover Bloatware -->
+                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0" x:Name="ChkBloatware" IsChecked="False" VerticalAlignment="Center"
+                                  Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                        <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                Background="{DynamicResource Card2Bg}" Margin="10,0,14,0">
+                            <TextBlock Text="🗑️" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="Remover Bloatware" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}"/>
+                            <TextBlock Text="Desinstala apps inúteis (Notícias, Clima, Solitaire, etc.)" FontSize="10"
+                                       Foreground="#F9E2AF" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" x:Name="StatusBloatware" Text="—"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,4,0"/>
                     </Grid>
                 </Border>
 
