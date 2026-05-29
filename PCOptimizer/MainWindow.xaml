@@ -98,7 +98,7 @@
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Button x:Name="BtnBrightness" Content="🌞"
-                            Width="40" Height="40" FontSize="18"
+                            Width="48" Height="48" FontSize="22"
                             Background="Transparent" BorderThickness="0"
                             Cursor="Hand" Click="BtnBrightnessHeader_Click"
                             ToolTip="Abrir Brilho e Contraste"/>
