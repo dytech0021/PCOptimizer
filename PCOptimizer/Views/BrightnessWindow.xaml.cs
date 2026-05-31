@@ -10,6 +10,7 @@ namespace PCOptimizer.Views
     public partial class BrightnessWindow : Window
     {
         private bool _initialized;
+        private bool _isWmiMode;
         private DateTime _lastBrightnessChange = DateTime.MinValue;
         private DateTime _lastContrastChange = DateTime.MinValue;
         private bool _capturingHotkey;
@@ -59,22 +60,34 @@ namespace PCOptimizer.Views
                 if (result.Count == 0)
                 {
                     TxtMonitorCount.Text = "Nenhum monitor compatível encontrado";
-                    TxtStatus.Text = "Seu monitor não suporta DDC/CI";
+                    TxtStatus.Text = "Monitor não suporta DDC/CI nem WMI";
                     return;
                 }
 
-                TxtMonitorCount.Text = result.Count == 1
-                    ? "Ajustando 1 monitor"
-                    : $"Ajustando {result.Count} monitores ao mesmo tempo";
+                _isWmiMode = result.IsWmi;
+
+                TxtMonitorCount.Text = result.IsWmi
+                    ? "Notebook detectado — controle via WMI"
+                    : (result.Count == 1 ? "Ajustando 1 monitor" : $"Ajustando {result.Count} monitores ao mesmo tempo");
 
                 SliderBrightness.Value = result.Brightness;
-                SliderContrast.Value = result.Contrast;
                 TxtBrightnessValue.Text = $"{result.Brightness}%";
-                TxtContrastValue.Text = $"{result.Contrast}%";
-
                 SliderBrightness.IsEnabled = true;
-                SliderContrast.IsEnabled = true;
-                TxtStatus.Text = "Pronto — arraste os controles";
+
+                if (!result.IsWmi)
+                {
+                    SliderContrast.Value = result.Contrast;
+                    TxtContrastValue.Text = $"{result.Contrast}%";
+                    SliderContrast.IsEnabled = true;
+                }
+                else
+                {
+                    TxtContrastValue.Text = "N/A";
+                }
+
+                TxtStatus.Text = result.IsWmi
+                    ? "Modo notebook — somente brilho disponível"
+                    : "Pronto — arraste os controles";
             }
             catch (Exception ex)
             {
