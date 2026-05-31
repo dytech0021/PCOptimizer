@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Management;
 using System.Runtime.InteropServices;
 
 namespace PCOptimizer.Services
@@ -103,6 +104,48 @@ namespace PCOptimizer.Services
             return monitors;
         }
 
+        // ── WMI fallback (notebooks com painel integrado sem DDC/CI) ──────────
+
+        private static bool HasWmiMonitors()
+        {
+            try
+            {
+                using var s = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
+                using var r = s.Get();
+                return r.Count > 0;
+            }
+            catch { return false; }
+        }
+
+        private static int GetWmiBrightness()
+        {
+            try
+            {
+                using var s = new ManagementObjectSearcher("root\\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
+                foreach (ManagementObject obj in s.Get())
+                    return Convert.ToInt32(obj["CurrentBrightness"]);
+            }
+            catch { }
+            return 50;
+        }
+
+        private static bool SetWmiBrightness(int percent)
+        {
+            try
+            {
+                using var s = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
+                foreach (ManagementObject obj in s.Get())
+                {
+                    obj.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)percent });
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+
         public static int SetBrightnessAll(int percent)
         {
             percent = Math.Clamp(percent, 0, 100);
@@ -120,6 +163,10 @@ namespace PCOptimizer.Services
                 }
                 DestroyPhysicalMonitor(m.Handle);
             }
+
+            // Fallback WMI para notebooks sem DDC/CI
+            if (success == 0 && HasWmiMonitors())
+                success = SetWmiBrightness(percent) ? 1 : 0;
 
             return success;
         }
@@ -145,7 +192,7 @@ namespace PCOptimizer.Services
             return success;
         }
 
-        public static (int Brightness, int Contrast, int Count) GetAverageValues()
+        public static (int Brightness, int Contrast, int Count, bool IsWmi) GetAverageValues()
         {
             var monitors = GetMonitors();
             int totalBright = 0, brightCount = 0;
@@ -168,10 +215,16 @@ namespace PCOptimizer.Services
                 DestroyPhysicalMonitor(m.Handle);
             }
 
+            // Fallback WMI para notebooks
+            if (monitors.Count == 0 && HasWmiMonitors())
+            {
+                int wmiB = GetWmiBrightness();
+                return (wmiB, 50, 1, true);
+            }
+
             int avgBright = brightCount > 0 ? totalBright / brightCount : 50;
             int avgContrast = contrastCount > 0 ? totalContrast / contrastCount : 50;
-
-            return (avgBright, avgContrast, monitors.Count);
+            return (avgBright, avgContrast, monitors.Count, false);
         }
     }
 }

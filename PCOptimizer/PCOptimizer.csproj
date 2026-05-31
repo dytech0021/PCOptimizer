@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="9.0.5" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
