@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace PCOptimizer.Services
 {
     public static class PowerPlanService
@@ -12,33 +10,13 @@ namespace PCOptimizer.Services
             try
             {
                 // Garante que o plano existe (duplica se necessario) e ativa
-                Run($"-duplicatescheme {HighPerf}");
-                Run($"-setactive {HighPerf}");
-                return true;
+                ProcessRunner.Run("powercfg.exe", $"-duplicatescheme {HighPerf}", 15000);
+                return ProcessRunner.Run("powercfg.exe", $"-setactive {HighPerf}", 15000);
             }
             catch
             {
                 return false;
             }
-        }
-
-        private static void Run(string args)
-        {
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powercfg.exe",
-                    Arguments = args,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                using var p = Process.Start(psi);
-                p?.WaitForExit(15000);
-            }
-            catch { }
         }
     }
 }

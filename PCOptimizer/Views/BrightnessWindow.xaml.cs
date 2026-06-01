@@ -109,7 +109,8 @@ namespace PCOptimizer.Views
             await Task.Delay(150);
             if (thisChange != _lastBrightnessChange) return;
 
-            await Task.Run(() => MonitorService.SetBrightnessAll(value));
+            try { await Task.Run(() => MonitorService.SetBrightnessAll(value)); }
+            catch (Exception ex) { TxtStatus.Text = $"Erro ao ajustar brilho: {ex.Message}"; }
         }
 
         private async void SliderContrast_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -124,7 +125,8 @@ namespace PCOptimizer.Views
             await Task.Delay(150);
             if (thisChange != _lastContrastChange) return;
 
-            await Task.Run(() => MonitorService.SetContrastAll(value));
+            try { await Task.Run(() => MonitorService.SetContrastAll(value)); }
+            catch (Exception ex) { TxtStatus.Text = $"Erro ao ajustar contraste: {ex.Message}"; }
         }
 
         private void Header_MouseDown(object sender, MouseButtonEventArgs e)
@@ -140,13 +142,19 @@ namespace PCOptimizer.Views
             SliderBrightness.Value = preset.Brightness;
             SliderContrast.Value = preset.Contrast;
 
-            await Task.Run(() =>
+            try
             {
-                MonitorService.SetBrightnessAll(preset.Brightness);
-                MonitorService.SetContrastAll(preset.Contrast);
-            });
-
-            TxtStatus.Text = $"Preset \"{preset.Name}\" aplicado";
+                await Task.Run(() =>
+                {
+                    MonitorService.SetBrightnessAll(preset.Brightness);
+                    MonitorService.SetContrastAll(preset.Contrast);
+                });
+                TxtStatus.Text = $"Preset \"{preset.Name}\" aplicado";
+            }
+            catch (Exception ex)
+            {
+                TxtStatus.Text = $"Erro ao aplicar preset: {ex.Message}";
+            }
         }
 
         private void EditPreset(PresetData preset, System.Action<PresetData> save)

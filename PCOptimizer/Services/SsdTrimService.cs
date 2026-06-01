@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace PCOptimizer.Services
 {
     /// <summary>
@@ -9,25 +7,7 @@ namespace PCOptimizer.Services
     {
         public static bool Trim(string drive = "C:")
         {
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "defrag.exe",
-                    Arguments = $"{drive} /L", // /L = retrim (TRIM)
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                using var p = Process.Start(psi);
-                p?.WaitForExit(120000);
-                return p?.ExitCode == 0;
-            }
-            catch
-            {
-                return false;
-            }
+            return ProcessRunner.Run("defrag.exe", $"{drive} /L", 120000); // /L = retrim (TRIM)
         }
     }
 }
