@@ -21,7 +21,7 @@ namespace PCOptimizer.Views
 
         private void LoadEntries()
         {
-            _allEntries = StartupManager.GetStartupEntries();
+            _allEntries = StartupManager.GetStartupEntries() ?? new List<StartupEntry>();
             _originalState = _allEntries.Select(e => new StartupEntry
             {
                 Name = e.Name,
@@ -50,7 +50,8 @@ namespace PCOptimizer.Views
             else
             {
                 LstStartup.ItemsSource = _allEntries
-                    .Where(entry => entry.Name.ToLower().Contains(filter) || entry.Command.ToLower().Contains(filter))
+                    .Where(entry => (entry.Name ?? "").ToLower().Contains(filter)
+                                 || (entry.Command ?? "").ToLower().Contains(filter))
                     .ToList();
             }
         }

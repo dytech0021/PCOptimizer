@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace PCOptimizer.Services
 {
     /// <summary>
@@ -9,25 +7,7 @@ namespace PCOptimizer.Services
     {
         public static bool Disable()
         {
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powercfg.exe",
-                    Arguments = "-h off",
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                using var p = Process.Start(psi);
-                p?.WaitForExit(15000);
-                return p?.ExitCode == 0;
-            }
-            catch
-            {
-                return false;
-            }
+            return ProcessRunner.Run("powercfg.exe", "-h off", 15000);
         }
     }
 }

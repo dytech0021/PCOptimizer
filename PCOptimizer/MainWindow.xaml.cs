@@ -25,6 +25,8 @@ namespace PCOptimizer
 
         private async Task CheckForUpdatesAsync()
         {
+            try
+            {
             var info = await UpdateService.CheckForUpdateAsync();
             if (info == null || !info.UpdateAvailable) return;
 
@@ -45,6 +47,8 @@ namespace PCOptimizer
                 }
                 catch { /* navegador indisponível — ignora */ }
             }
+            }
+            catch { /* verificação de atualização nunca deve travar o app */ }
         }
 
         private void Log(string message)
@@ -175,6 +179,8 @@ namespace PCOptimizer
             long totalFreed = 0;
             int totalSteps = 0;
 
+            try
+            {
             if (ChkTemp.IsChecked == true)
             {
                 Log("Limpando arquivos temporários...");
@@ -436,19 +442,30 @@ namespace PCOptimizer
                 completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
             }
 
-            Log($"\n🎉 Concluído! {totalSteps} otimizações. Espaço liberado: {FormatBytes(totalFreed)}");
+                Log($"\n🎉 Concluído! {totalSteps} otimizações. Espaço liberado: {FormatBytes(totalFreed)}");
 
-            Progress.Value = 100;
-            TxtProgress.Visibility = Visibility.Collapsed;
-            BtnRun.Content = "⚡ Executar Otimizações";
-            BtnRun.IsEnabled = true;
-            _isRunning = false;
-
-            MessageBox.Show(
-                $"Otimização concluída!\n\n" +
-                $"✅ {totalSteps} otimizações executadas\n" +
-                $"💾 Espaço liberado: {FormatBytes(totalFreed)}",
-                "PC Optimizer", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(
+                    $"Otimização concluída!\n\n" +
+                    $"✅ {totalSteps} otimizações executadas\n" +
+                    $"💾 Espaço liberado: {FormatBytes(totalFreed)}",
+                    "PC Optimizer", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                Log($"\n❌ Erro inesperado durante a otimização: {ex.Message}");
+                MessageBox.Show(
+                    $"Ocorreu um erro durante a otimização:\n\n{ex.Message}\n\n" +
+                    "As otimizações concluídas antes do erro foram aplicadas normalmente.",
+                    "PC Optimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                Progress.Value = 100;
+                TxtProgress.Visibility = Visibility.Collapsed;
+                BtnRun.Content = "⚡ Executar Otimizações";
+                BtnRun.IsEnabled = true;
+                _isRunning = false;
+            }
         }
 
         private void Card_Brightness(object sender, MouseButtonEventArgs e)

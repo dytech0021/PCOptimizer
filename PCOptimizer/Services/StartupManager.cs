@@ -42,7 +42,9 @@ namespace PCOptimizer.Services
                     if (string.IsNullOrEmpty(name)) continue;
 
                     bool isDisabled = name.EndsWith(DisabledSuffix);
-                    string displayName = isDisabled ? name.Replace(DisabledSuffix, "") : name;
+                    string displayName = isDisabled
+                        ? name.Substring(0, name.Length - DisabledSuffix.Length)
+                        : name;
 
                     entries.Add(new StartupEntry
                     {
@@ -70,7 +72,9 @@ namespace PCOptimizer.Services
 
                     entries.Add(new StartupEntry
                     {
-                        Name = isDisabled ? Path.GetFileNameWithoutExtension(fileName.Replace(".disabled", "")) : Path.GetFileNameWithoutExtension(file),
+                        Name = isDisabled
+                            ? Path.GetFileNameWithoutExtension(fileName.Substring(0, fileName.Length - ".disabled".Length))
+                            : Path.GetFileNameWithoutExtension(file),
                         Command = file,
                         Source = "Startup Folder",
                         IsEnabled = !isDisabled
@@ -134,7 +138,7 @@ namespace PCOptimizer.Services
                     var disabledPath = entry.Command;
                     if (disabledPath.EndsWith(".disabled"))
                     {
-                        var enabledPath = disabledPath.Replace(".disabled", "");
+                        var enabledPath = disabledPath.Substring(0, disabledPath.Length - ".disabled".Length);
                         File.Move(disabledPath, enabledPath);
                     }
                 }

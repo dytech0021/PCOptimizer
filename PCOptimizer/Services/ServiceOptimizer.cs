@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace PCOptimizer.Services
 {
     public static class ServiceOptimizer
@@ -25,35 +23,12 @@ namespace PCOptimizer.Services
 
             foreach (var serviceName in UnnecessaryServices)
             {
-                if (RunSc($"stop {serviceName}") && RunSc($"config {serviceName} start= disabled"))
+                ProcessRunner.Run("sc.exe", $"stop {serviceName}", 10000);
+                if (ProcessRunner.Run("sc.exe", $"config {serviceName} start= disabled", 10000))
                     optimized++;
             }
 
             return optimized;
-        }
-
-        private static bool RunSc(string arguments)
-        {
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "sc.exe",
-                    Arguments = arguments,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                };
-
-                using var process = Process.Start(psi);
-                process?.WaitForExit(10000);
-                return process?.ExitCode == 0;
-            }
-            catch
-            {
-                return false;
-            }
         }
     }
 }

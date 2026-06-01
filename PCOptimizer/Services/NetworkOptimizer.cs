@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace PCOptimizer.Services
 {
     public static class NetworkOptimizer
@@ -20,24 +18,9 @@ namespace PCOptimizer.Services
 
             foreach (var cmd in commands)
             {
-                try
-                {
-                    var parts = cmd.Split(' ', 2);
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = parts[0],
-                        Arguments = parts.Length > 1 ? parts[1] : "",
-                        CreateNoWindow = true,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                    };
-
-                    using var process = Process.Start(psi);
-                    process?.WaitForExit(10000);
-                    steps++;
-                }
-                catch { }
+                var parts = cmd.Split(' ', 2);
+                ProcessRunner.Run(parts[0], parts.Length > 1 ? parts[1] : "", 10000);
+                steps++;
             }
 
             return steps;
