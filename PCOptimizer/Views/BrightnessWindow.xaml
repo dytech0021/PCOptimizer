@@ -9,6 +9,29 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen">
 
+    <Window.Resources>
+        <Style x:Key="ScreenshotBtnStyle" TargetType="Button">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="#0EA5E9" CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.82"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.65"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <!-- Margem externa dá espaço para a sombra renderizar -->
     <Border Margin="10" CornerRadius="14"
             Background="{DynamicResource WindowBg}"
@@ -46,8 +69,9 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Button Content="📸" Click="BtnScreenshot_Click" Cursor="Hand"
-                            Background="Transparent" BorderThickness="0"
-                            FontSize="13" Width="26" Height="26"
+                            Style="{StaticResource ScreenshotBtnStyle}"
+                            Width="32" Height="32" FontSize="15" Padding="0"
+                            BorderThickness="0" Margin="0,0,6,0"
                             ToolTip="Capturar área da tela"/>
                     <Button Content="✕" Click="BtnClose_Click" Cursor="Hand"
                             Background="Transparent" BorderThickness="0"
