@@ -19,7 +19,32 @@ namespace PCOptimizer
                 ((App)Application.Current).InitHotkey(this);
                 ChkSelectAll.IsChecked = true;
                 UpdateSelectedCount();
+                _ = CheckForUpdatesAsync();
             };
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            var info = await UpdateService.CheckForUpdateAsync();
+            if (info == null || !info.UpdateAvailable) return;
+
+            var result = MessageBox.Show(
+                $"Uma nova versão do PC Optimizer está disponível! 🎉\n\n" +
+                $"Versão instalada: {info.CurrentVersion}\n" +
+                $"Nova versão: {info.LatestVersion}\n\n" +
+                $"Deseja abrir a página de download agora?",
+                "Atualização disponível",
+                MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                var url = !string.IsNullOrEmpty(info.DownloadUrl) ? info.DownloadUrl : info.ReleaseUrl;
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+                }
+                catch { /* navegador indisponível — ignora */ }
+            }
         }
 
         private void Log(string message)
