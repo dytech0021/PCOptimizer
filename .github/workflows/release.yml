@@ -46,6 +46,7 @@ jobs:
             Write-Host "Release $tag not found, will create."
             "SKIP=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           }
+          exit 0
 
       - name: Publish single-file exe
         if: steps.check.outputs.SKIP == 'false'
