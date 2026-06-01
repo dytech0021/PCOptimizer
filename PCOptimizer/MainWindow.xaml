@@ -87,7 +87,7 @@
                                        Foreground="{DynamicResource TextPrimary}"/>
                             <Border Background="{DynamicResource BadgeBg}" CornerRadius="8"
                                     Padding="8,3" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="v1.9.0" FontSize="10" FontWeight="SemiBold"
+                                <TextBlock Text="v1.10.0" FontSize="10" FontWeight="SemiBold"
                                            Foreground="{DynamicResource BadgeFg}"/>
                             </Border>
                         </StackPanel>

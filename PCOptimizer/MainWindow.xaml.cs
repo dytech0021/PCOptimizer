@@ -40,15 +40,73 @@ namespace PCOptimizer
 
             if (result == MessageBoxResult.Yes)
             {
-                var url = !string.IsNullOrEmpty(info.DownloadUrl) ? info.DownloadUrl : info.ReleaseUrl;
-                try
+                if (!string.IsNullOrEmpty(info.DownloadUrl))
                 {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+                    await DownloadAndApplyUpdateAsync(info.DownloadUrl);
                 }
-                catch { /* navegador indisponível — ignora */ }
+                else
+                {
+                    // Sem .exe na release — abre a página para download manual
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(info.ReleaseUrl) { UseShellExecute = true });
+                    }
+                    catch { /* navegador indisponível — ignora */ }
+                }
             }
             }
             catch { /* verificação de atualização nunca deve travar o app */ }
+        }
+
+        private async Task DownloadAndApplyUpdateAsync(string downloadUrl)
+        {
+            string? currentExe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(currentExe))
+            {
+                // Sem caminho do executável — abre a página para download manual
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(downloadUrl) { UseShellExecute = true }); }
+                catch { }
+                return;
+            }
+
+            string newPath = currentExe + ".new";
+
+            BtnRun.IsEnabled = false;
+            Progress.Visibility = Visibility.Visible;
+            Progress.IsIndeterminate = false;
+            Progress.Value = 0;
+            TxtProgress.Visibility = Visibility.Visible;
+            TxtProgress.Text = "Baixando atualização... 0%";
+
+            var progress = new Progress<double>(p =>
+            {
+                Progress.Value = p * 100;
+                TxtProgress.Text = $"Baixando atualização... {p * 100:F0}%";
+            });
+
+            try
+            {
+                await UpdaterService.DownloadAsync(downloadUrl, newPath, progress);
+                TxtProgress.Text = "Reiniciando para aplicar a atualização...";
+                UpdaterService.ApplyAndRestart(newPath);
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                try { if (System.IO.File.Exists(newPath)) System.IO.File.Delete(newPath); } catch { }
+
+                Progress.Visibility = Visibility.Collapsed;
+                TxtProgress.Visibility = Visibility.Collapsed;
+                BtnRun.IsEnabled = true;
+
+                MessageBox.Show(
+                    $"Não foi possível baixar a atualização automaticamente:\n{ex.Message}\n\n" +
+                    "Abrindo a página de download para baixar manualmente.",
+                    "Atualização", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(downloadUrl) { UseShellExecute = true }); }
+                catch { }
+            }
         }
 
         private void Log(string message)
