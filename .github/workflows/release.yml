@@ -1,0 +1,70 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Read version from csproj
+        id: version
+        shell: pwsh
+        run: |
+          $content = Get-Content PCOptimizer/PCOptimizer.csproj -Raw
+          $ver = [regex]::Match($content, '<Version>([^<]+)</Version>').Groups[1].Value
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "TAG=v$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Version detected: $ver"
+
+      - name: Check if release already exists
+        id: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.version.outputs.TAG }}"
+          gh release view $tag 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists, skipping."
+            "SKIP=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            Write-Host "Release $tag not found, will create."
+            "SKIP=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Publish single-file exe
+        if: steps.check.outputs.SKIP == 'false'
+        run: >
+          dotnet publish PCOptimizer/PCOptimizer.csproj
+          -c Release -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish-single
+
+      - name: Create release and upload exe
+        if: steps.check.outputs.SKIP == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.version.outputs.TAG }}"
+          gh release create $tag publish-single/PCOptimizer.exe `
+            --title "PC Optimizer $tag" `
+            --notes "Baixe o **PCOptimizer.exe** e execute."
+          Write-Host "Release $tag created successfully."
