@@ -214,6 +214,19 @@ namespace PCOptimizer.Views
             }
         }
 
+        private async void BtnScreenshot_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string? path = await ScreenshotService.CaptureAreaAsync(this);
+                if (path != null) TxtStatus.Text = "📸 Captura salva";
+            }
+            catch (Exception ex)
+            {
+                TxtStatus.Text = $"Erro: {ex.Message}";
+            }
+        }
+
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             Hide();

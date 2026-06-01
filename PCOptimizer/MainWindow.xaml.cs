@@ -539,27 +539,10 @@ namespace PCOptimizer
 
         private async void BtnScreenshot_Click(object sender, RoutedEventArgs e)
         {
-            var overlay = new ScreenshotOverlayWindow();
-            bool? result = overlay.ShowDialog();
-            if (result != true || overlay.CaptureRegion is not { } region) return;
-
-            // Small delay to let the overlay finish closing before capturing
-            await Task.Delay(120);
-
             try
             {
-                using var bmp = new System.Drawing.Bitmap(region.Width, region.Height);
-                using var g = System.Drawing.Graphics.FromImage(bmp);
-                g.CopyFromScreen(region.Location, System.Drawing.Point.Empty, region.Size);
-
-                string folder = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-                string fileName = $"Captura_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png";
-                string path = Path.Combine(folder, fileName);
-                bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-
-                Log($"📸 Captura salva: {path}");
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                    "explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+                string? path = await ScreenshotService.CaptureAreaAsync(this);
+                if (path != null) Log($"📸 Captura salva: {path}");
             }
             catch (Exception ex)
             {

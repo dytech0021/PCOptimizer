@@ -44,11 +44,16 @@
                                    Text="Detectando monitores..."/>
                     </StackPanel>
                 </StackPanel>
-                <Button Content="✕" HorizontalAlignment="Right" VerticalAlignment="Center"
-                        Click="BtnClose_Click" Cursor="Hand"
-                        Background="Transparent" BorderThickness="0"
-                        FontSize="13" Foreground="{DynamicResource TextSecondary}"
-                        Width="26" Height="26"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Content="📸" Click="BtnScreenshot_Click" Cursor="Hand"
+                            Background="Transparent" BorderThickness="0"
+                            FontSize="13" Width="26" Height="26"
+                            ToolTip="Capturar área da tela"/>
+                    <Button Content="✕" Click="BtnClose_Click" Cursor="Hand"
+                            Background="Transparent" BorderThickness="0"
+                            FontSize="13" Foreground="{DynamicResource TextSecondary}"
+                            Width="26" Height="26" Margin="4,0,0,0"/>
+                </StackPanel>
             </Grid>
 
             <!-- Brilho -->
