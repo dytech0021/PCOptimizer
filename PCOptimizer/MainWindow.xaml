@@ -87,7 +87,7 @@
                                        Foreground="{DynamicResource TextPrimary}"/>
                             <Border Background="{DynamicResource BadgeBg}" CornerRadius="8"
                                     Padding="8,3" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="v1.11.0" FontSize="10" FontWeight="SemiBold"
+                                <TextBlock Text="v1.12.0" FontSize="10" FontWeight="SemiBold"
                                            Foreground="{DynamicResource BadgeFg}"/>
                             </Border>
                         </StackPanel>
@@ -97,15 +97,29 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="BtnScreenshot" Content="📸"
+                            Width="40" Height="40" FontSize="18"
+                            Style="{StaticResource RunButtonStyle}"
+                            Background="{DynamicResource ButtonSecondaryBg}"
+                            Foreground="{DynamicResource ButtonSecondaryFg}"
+                            BorderThickness="0" Margin="0,0,6,0"
+                            Cursor="Hand" Click="BtnScreenshot_Click"
+                            ToolTip="Capturar área da tela"/>
                     <Button x:Name="BtnBrightness" Content="🌞"
-                            Width="48" Height="48" FontSize="22"
-                            Background="Transparent" BorderThickness="0"
+                            Width="40" Height="40" FontSize="20"
+                            Style="{StaticResource RunButtonStyle}"
+                            Background="{DynamicResource ButtonSecondaryBg}"
+                            Foreground="{DynamicResource ButtonSecondaryFg}"
+                            BorderThickness="0" Margin="0,0,6,0"
                             Cursor="Hand" Click="BtnBrightnessHeader_Click"
                             ToolTip="Abrir Brilho e Contraste"/>
                     <Button x:Name="BtnThemeToggle" Content="{DynamicResource ThemeToggleIcon}"
                             VerticalAlignment="Center"
                             Width="40" Height="40" FontSize="18"
-                            Background="Transparent" BorderThickness="0"
+                            Style="{StaticResource RunButtonStyle}"
+                            Background="{DynamicResource ButtonSecondaryBg}"
+                            Foreground="{DynamicResource ButtonSecondaryFg}"
+                            BorderThickness="0"
                             Cursor="Hand" Click="BtnThemeToggle_Click"
                             ToolTip="Alternar tema claro/escuro"/>
                 </StackPanel>
