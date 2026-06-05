@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -25,6 +26,9 @@ namespace PCOptimizer.Services
 
         public bool NightLightEnabled { get; set; }
         public int NightLightIntensity { get; set; } = 40;
+
+        // user-assigned names for monitors, keyed by HardwareId
+        public Dictionary<string, string> MonitorAliases { get; set; } = new();
     }
 
     public static class SettingsService

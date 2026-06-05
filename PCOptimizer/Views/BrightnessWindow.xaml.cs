@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using PCOptimizer.Services;
 
 namespace PCOptimizer.Views
@@ -103,19 +104,74 @@ namespace PCOptimizer.Views
                 container.Children.Add(sep);
             }
 
-            // Monitor name label
-            var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 5) };
-            var nameIcon = new TextBlock { Text = "🖥", FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
-            var nameText = new TextBlock
+            // Monitor name — editable TextBox styled as label (double-click to rename)
+            string displayName = SettingsService.Current.MonitorAliases.TryGetValue(entry.HardwareId, out var alias)
+                ? alias : entry.Name;
+
+            var nameEdit = new TextBox
             {
-                Text = entry.Name,
+                Text = displayName,
                 FontSize = 11, FontWeight = FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(5, 0, 0, 0)
+                Margin = new Thickness(4, 0, 0, 0),
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                IsReadOnly = true,
+                Cursor = Cursors.Arrow,
+                Padding = new Thickness(1, 0, 1, 0),
+                MaxWidth = 150,
+                ToolTip = "Duplo clique para renomear"
             };
-            nameText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+            nameEdit.SetResourceReference(TextBox.ForegroundProperty, "TextPrimary");
+
+            string hwId = entry.HardwareId;
+            string originalName = entry.Name;
+
+            nameEdit.MouseDoubleClick += (_, _) =>
+            {
+                nameEdit.IsReadOnly = false;
+                nameEdit.Cursor = Cursors.IBeam;
+                nameEdit.SetResourceReference(TextBox.BorderBrushProperty, "BorderColor");
+                nameEdit.BorderThickness = new Thickness(0, 0, 0, 1);
+                nameEdit.SelectAll();
+                nameEdit.Focus();
+            };
+
+            void CommitRename()
+            {
+                string newName = nameEdit.Text.Trim();
+                if (string.IsNullOrEmpty(newName)) newName = originalName;
+                nameEdit.Text = newName;
+                nameEdit.IsReadOnly = true;
+                nameEdit.Cursor = Cursors.Arrow;
+                nameEdit.BorderThickness = new Thickness(0);
+                if (!string.IsNullOrEmpty(hwId))
+                {
+                    SettingsService.Current.MonitorAliases[hwId] = newName;
+                    SettingsService.Save();
+                }
+            }
+
+            void CancelRename()
+            {
+                nameEdit.Text = SettingsService.Current.MonitorAliases.TryGetValue(hwId, out var a)
+                    ? a : originalName;
+                nameEdit.IsReadOnly = true;
+                nameEdit.Cursor = Cursors.Arrow;
+                nameEdit.BorderThickness = new Thickness(0);
+            }
+
+            nameEdit.LostFocus  += (_, _) => CommitRename();
+            nameEdit.KeyDown    += (_, ke) =>
+            {
+                if (ke.Key == Key.Enter)  { CommitRename(); Keyboard.ClearFocus(); ke.Handled = true; }
+                if (ke.Key == Key.Escape) { CancelRename(); Keyboard.ClearFocus(); ke.Handled = true; }
+            };
+
+            var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 5) };
+            var nameIcon = new TextBlock { Text = "🖥", FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
             nameRow.Children.Add(nameIcon);
-            nameRow.Children.Add(nameText);
+            nameRow.Children.Add(nameEdit);
             container.Children.Add(nameRow);
 
             // Brightness slider
@@ -189,7 +245,7 @@ namespace PCOptimizer.Views
                 if (stamp != mc.LastBrightnessChange) return;
                 try
                 {
-                    if (mc.IsWmi) await Task.Run(() => MonitorService.SetBrightnessAll(val));
+                    if (mc.IsWmi) await Task.Run(() => MonitorService.SetWmiBrightness(val));
                     else          await Task.Run(() => MonitorService.SetBrightnessForIndex(mc.Index, val));
                 }
                 catch (Exception ex) { TxtStatus.Text = $"Erro brilho: {ex.Message}"; }
