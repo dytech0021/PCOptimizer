@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -44,7 +43,9 @@ namespace PCOptimizer.Services
         }
 
         /// <summary>
-        /// Inicia o processo externo que troca o executavel e reinicia o app.
+        /// Inicia a instalacao da nova versao: executa o novo .exe diretamente com --install-over.
+        /// O novo exe (quando inicia com essa flag) espera o processo atual fechar, move o arquivo
+        /// sobre si mesmo e reinicia. Isso e mais confiavel do que PowerShell Move-Item.
         /// O chamador deve encerrar o app logo apos chamar este metodo.
         /// </summary>
         public static void ApplyAndRestart(string newExePath)
@@ -53,33 +54,18 @@ namespace PCOptimizer.Services
                 ?? Process.GetCurrentProcess().MainModule!.FileName!;
             int pid = Environment.ProcessId;
 
-            // Aspas simples sao escapadas dobrando para uso em -LiteralPath do PowerShell.
-            static string Esc(string s) => s.Replace("'", "''");
-
-            // Espera o app fechar, tenta mover o novo .exe com retry (ate 15x, 1s entre cada).
-            // Windows ou Defender pode manter o handle do .exe por alguns segundos apos o exit.
-            // Passa --updated para o processo reiniciado para evitar loop de atualizacao.
-            string ps =
-                $"Wait-Process -Id {pid} -ErrorAction SilentlyContinue; " +
-                $"Start-Sleep -Seconds 2; " +
-                $"$moved = $false; " +
-                $"for ($i = 0; $i -lt 15; $i++) {{ " +
-                $"  try {{ Move-Item -LiteralPath '{Esc(newExePath)}' -Destination '{Esc(currentExe)}' -Force -ErrorAction Stop; $moved = $true; break }} " +
-                $"  catch {{ Start-Sleep -Seconds 1 }} " +
-                $"}}; " +
-                $"Start-Process -FilePath '{Esc(currentExe)}' -ArgumentList '--updated'";
-
-            // -EncodedCommand (UTF-16 base64) evita problemas com acentos no caminho
-            // (ex.: "Área de Trabalho").
-            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(ps));
-
+            // Executa o novo exe com --install-over para que ele mesmo se instale apos sairmos.
+            // Usa ArgumentList para escape correto de caminhos com espacos ou caracteres especiais.
             var psi = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -WindowStyle Hidden -EncodedCommand {encoded}",
-                CreateNoWindow = true,
-                UseShellExecute = false
+                FileName = newExePath,
+                UseShellExecute = false,
+                CreateNoWindow = false
             };
+            psi.ArgumentList.Add("--install-over");
+            psi.ArgumentList.Add(currentExe);
+            psi.ArgumentList.Add(pid.ToString());
+
             Process.Start(psi);
         }
     }
