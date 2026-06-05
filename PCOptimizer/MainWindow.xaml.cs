@@ -26,6 +26,10 @@ namespace PCOptimizer
 
         private async Task CheckForUpdatesAsync()
         {
+            // --updated is passed by the updater on relaunch to prevent infinite loop
+            // (Move-Item may fail silently, restarting the old exe which would loop forever).
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "--updated") >= 0) return;
+
             try
             {
             var info = await UpdateService.CheckForUpdateAsync();
