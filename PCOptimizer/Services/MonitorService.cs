@@ -8,7 +8,8 @@ namespace PCOptimizer.Services
 {
     public class MonitorInfo
     {
-        public IntPtr Handle { get; set; }
+        public IntPtr Handle { get; set; }        // hPhysicalMonitor (DDC/CI)
+        public IntPtr LogicalHandle { get; set; } // hMonitor from EnumDisplayMonitors
         public string Name { get; set; } = string.Empty;
         public uint MinBrightness { get; set; }
         public uint MaxBrightness { get; set; }
@@ -34,6 +35,8 @@ namespace PCOptimizer.Services
 
     public static class MonitorService
     {
+        // ── DDC/CI P/Invoke ───────────────────────────────────────────────────
+
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         private struct PHYSICAL_MONITOR
         {
@@ -68,6 +71,71 @@ namespace PCOptimizer.Services
         [DllImport("dxva2.dll")]
         private static extern bool SetMonitorContrast(IntPtr hMonitor, uint newContrast);
 
+        // ── Display device info P/Invoke (for PnP ID correlation) ─────────────
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct MONITORINFOEX
+        {
+            public uint cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string szDevice; // e.g. "\\.\DISPLAY1"
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT { public int left, top, right, bottom; }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct DISPLAY_DEVICE
+        {
+            public uint cb;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]  public string DeviceName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+            public uint StateFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool EnumDisplayDevices(string? lpDevice, uint iDevNum,
+            ref DISPLAY_DEVICE lpDisplayDevice, uint dwFlags);
+
+        // Returns the PnP hardware ID of the monitor attached to this logical display handle.
+        // e.g. "DEL4079" for a Dell monitor — matches the segment in WmiMonitorID.InstanceName.
+        private static string GetMonitorPnpId(IntPtr hMonitor)
+        {
+            try
+            {
+                var mi = new MONITORINFOEX { cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>() };
+                if (!GetMonitorInfo(hMonitor, ref mi)) return "";
+
+                for (uint i = 0; ; i++)
+                {
+                    var dd = new DISPLAY_DEVICE { cb = (uint)Marshal.SizeOf<DISPLAY_DEVICE>() };
+                    if (!EnumDisplayDevices(mi.szDevice, i, ref dd, 0)) break;
+
+                    // DeviceID: "MONITOR\DEL4079\{GUID}\0001"
+                    string devId = dd.DeviceID;
+                    if (devId.StartsWith("MONITOR\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int start = 8;
+                        int end = devId.IndexOf('\\', start);
+                        if (end > start)
+                            return devId.Substring(start, end - start); // e.g. "DEL4079"
+                    }
+                }
+            }
+            catch { }
+            return "";
+        }
+
+        // ── DDC monitor enumeration ───────────────────────────────────────────
+
         public static List<MonitorInfo> GetMonitors()
         {
             var monitors = new List<MonitorInfo>();
@@ -87,6 +155,7 @@ namespace PCOptimizer.Services
                     var info = new MonitorInfo
                     {
                         Handle = pm.hPhysicalMonitor,
+                        LogicalHandle = hMonitor,
                         Name = pm.szPhysicalMonitorDescription
                     };
 
@@ -157,7 +226,7 @@ namespace PCOptimizer.Services
             return false;
         }
 
-        // ── EDID names via WmiMonitorID ────────────────────────────────────────
+        // ── EDID names via WmiMonitorID (keyed by PnP hardware ID) ───────────
 
         private struct EdidInfo
         {
@@ -166,34 +235,67 @@ namespace PCOptimizer.Services
             public string HardwareId;
         }
 
-        private static EdidInfo[] GetEdidInfos()
+        // Returns a queue per PnP ID so that identical monitors (same model) are
+        // consumed in the order WMI reports them — which should match connector order.
+        private static Dictionary<string, Queue<EdidInfo>> GetEdidInfosByPnpId()
         {
-            var result = new List<EdidInfo>();
+            var result = new Dictionary<string, Queue<EdidInfo>>(StringComparer.OrdinalIgnoreCase);
             try
             {
                 using var s = new ManagementObjectSearcher("root\\WMI",
-                    "SELECT ManufacturerName, UserFriendlyName FROM WmiMonitorID");
+                    "SELECT ManufacturerName, UserFriendlyName, InstanceName FROM WmiMonitorID");
                 int idx = 0;
                 foreach (ManagementObject obj in s.Get())
                 {
+                    // InstanceName: "DISPLAY\DEL4079\4&path&0&UID256_0"
+                    string instance = obj["InstanceName"]?.ToString() ?? "";
+                    string[] parts  = instance.Split('\\');
+                    string pnpId    = parts.Length >= 2 ? parts[1] : $"_idx{idx}";
+
                     string mfr      = WmiBytesToString(obj["ManufacturerName"]);
                     string friendly = WmiBytesToString(obj["UserFriendlyName"]);
-
-                    string id = !string.IsNullOrEmpty(friendly)
+                    string hwId     = !string.IsNullOrEmpty(friendly)
                         ? $"{mfr}_{friendly.Replace(" ", "_")}"
                         : !string.IsNullOrEmpty(mfr) ? $"{mfr}_{idx}" : $"monitor_{idx}";
 
-                    result.Add(new EdidInfo
+                    if (!result.ContainsKey(pnpId))
+                        result[pnpId] = new Queue<EdidInfo>();
+
+                    result[pnpId].Enqueue(new EdidInfo
                     {
                         Manufacturer = MapManufacturer(mfr),
                         FriendlyName = friendly,
-                        HardwareId   = id
+                        HardwareId   = hwId
                     });
                     idx++;
                 }
             }
             catch { }
-            return result.ToArray();
+            return result;
+        }
+
+        // Returns the first EDID info (WMI-only path, no DDC)
+        private static EdidInfo GetFirstEdidInfo()
+        {
+            try
+            {
+                using var s = new ManagementObjectSearcher("root\\WMI",
+                    "SELECT ManufacturerName, UserFriendlyName FROM WmiMonitorID");
+                foreach (ManagementObject obj in s.Get())
+                {
+                    string mfr      = WmiBytesToString(obj["ManufacturerName"]);
+                    string friendly = WmiBytesToString(obj["UserFriendlyName"]);
+                    return new EdidInfo
+                    {
+                        Manufacturer = MapManufacturer(mfr),
+                        FriendlyName = friendly,
+                        HardwareId   = !string.IsNullOrEmpty(friendly)
+                            ? $"{mfr}_{friendly.Replace(" ", "_")}" : "monitor_0"
+                    };
+                }
+            }
+            catch { }
+            return default;
         }
 
         private static string WmiBytesToString(object? value)
@@ -231,12 +333,11 @@ namespace PCOptimizer.Services
         public static List<MonitorEntry> GetMonitorEntries()
         {
             var monitors = GetMonitors();
-            var edids    = GetEdidInfos();
 
             // Pure WMI path: no DDC monitors at all (notebook with no external display)
             if (monitors.Count == 0 && HasWmiMonitors())
             {
-                var ei = edids.Length > 0 ? edids[0] : default;
+                var ei = GetFirstEdidInfo();
                 string wmiName = !string.IsNullOrEmpty(ei.FriendlyName) ? ei.FriendlyName
                                : !string.IsNullOrEmpty(ei.Manufacturer) ? $"Painel {ei.Manufacturer}"
                                : "Painel do notebook";
@@ -257,33 +358,40 @@ namespace PCOptimizer.Services
                 };
             }
 
-            // DDC path — WMI fallback for any monitor DDC cannot control
-            bool wmiAvailable     = HasWmiMonitors();
-            int  wmiBrightnessVal = wmiAvailable ? GetWmiBrightness() : 50;
+            // DDC path — correlate EDID names via PnP ID, WMI fallback for uncontrollable panels
+            var edidByPnp     = GetEdidInfosByPnpId();
+            bool wmiAvailable = HasWmiMonitors();
+            int  wmiBrightness = wmiAvailable ? GetWmiBrightness() : 50;
 
             var entries = new List<MonitorEntry>();
             for (int i = 0; i < monitors.Count; i++)
             {
                 var m = monitors[i];
 
-                // Resolve display name: prefer EDID friendly name over generic DDC description
+                // Reliable name lookup: match by PnP ID from EnumDisplayDevices
+                string pnpId = GetMonitorPnpId(m.LogicalHandle);
+                EdidInfo edid = default;
+                if (!string.IsNullOrEmpty(pnpId) &&
+                    edidByPnp.TryGetValue(pnpId, out var q) && q.Count > 0)
+                    edid = q.Dequeue();
+
+                // Name resolution priority: EDID friendly name > non-generic DDC desc > manufacturer
                 string ddcDesc   = m.Name.Trim();
                 bool   ddcGeneric = string.IsNullOrEmpty(ddcDesc)
                     || ddcDesc.Equals("Generic PnP Monitor",     StringComparison.OrdinalIgnoreCase)
                     || ddcDesc.Equals("Generic Non-PnP Monitor", StringComparison.OrdinalIgnoreCase);
 
-                string edidFriendly = i < edids.Length ? edids[i].FriendlyName : "";
-                string edidMfr      = i < edids.Length ? edids[i].Manufacturer  : "";
-                string hwId         = i < edids.Length && !string.IsNullOrEmpty(edids[i].HardwareId)
-                                      ? edids[i].HardwareId : $"monitor_{i}";
-
-                string name = !string.IsNullOrEmpty(edidFriendly) ? edidFriendly
-                            : !ddcGeneric                          ? ddcDesc
-                            : !string.IsNullOrEmpty(edidMfr)      ? $"Monitor {edidMfr}"
+                string name = !string.IsNullOrEmpty(edid.FriendlyName) ? edid.FriendlyName
+                            : !ddcGeneric                               ? ddcDesc
+                            : !string.IsNullOrEmpty(edid.Manufacturer) ? $"Monitor {edid.Manufacturer}"
                             : $"Monitor {i + 1}";
 
-                // DDC brightness/contrast values
-                int  brightness        = 50, contrast = 50;
+                string hwId = !string.IsNullOrEmpty(edid.HardwareId) ? edid.HardwareId
+                            : !string.IsNullOrEmpty(pnpId)            ? pnpId
+                            : $"monitor_{i}";
+
+                // DDC brightness/contrast
+                int  brightness         = 50, contrast = 50;
                 bool supportsBrightness = m.SupportsBrightness;
                 bool supportsContrast   = m.SupportsContrast;
                 bool isWmi              = false;
@@ -295,10 +403,10 @@ namespace PCOptimizer.Services
                     contrast = (int)Math.Round((m.CurrentContrast - m.MinContrast) * 100.0
                                                / (m.MaxContrast - m.MinContrast));
 
-                // WMI fallback when DDC can't control brightness (e.g. laptop panel in multi-monitor setup)
+                // WMI fallback when DDC cannot control brightness (e.g. laptop internal panel)
                 if (!supportsBrightness && wmiAvailable)
                 {
-                    brightness         = wmiBrightnessVal;
+                    brightness         = wmiBrightness;
                     supportsBrightness = true;
                     isWmi              = true;
                 }
