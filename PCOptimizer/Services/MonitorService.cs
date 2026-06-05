@@ -19,6 +19,17 @@ namespace PCOptimizer.Services
         public bool SupportsContrast { get; set; }
     }
 
+    public class MonitorEntry
+    {
+        public int Index { get; set; }
+        public string Name { get; set; } = "";
+        public int Brightness { get; set; }
+        public int Contrast { get; set; }
+        public bool SupportsBrightness { get; set; }
+        public bool SupportsContrast { get; set; }
+        public bool IsWmi { get; set; }
+    }
+
     public static class MonitorService
     {
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -144,7 +155,94 @@ namespace PCOptimizer.Services
             return false;
         }
 
-        // ─────────────────────────────────────────────────────────────────────
+        // ── Per-monitor API ───────────────────────────────────────────────────
+
+        public static List<MonitorEntry> GetMonitorEntries()
+        {
+            var monitors = GetMonitors();
+
+            if (monitors.Count == 0 && HasWmiMonitors())
+            {
+                return new List<MonitorEntry>
+                {
+                    new MonitorEntry
+                    {
+                        Index = 0,
+                        Name = "Painel do notebook",
+                        Brightness = GetWmiBrightness(),
+                        Contrast = 50,
+                        SupportsBrightness = true,
+                        SupportsContrast = false,
+                        IsWmi = true
+                    }
+                };
+            }
+
+            var entries = new List<MonitorEntry>();
+            for (int i = 0; i < monitors.Count; i++)
+            {
+                var m = monitors[i];
+                string name = !string.IsNullOrWhiteSpace(m.Name) ? m.Name.Trim() : $"Monitor {i + 1}";
+
+                int brightness = 50, contrast = 50;
+                if (m.SupportsBrightness && m.MaxBrightness > m.MinBrightness)
+                    brightness = (int)Math.Round((m.CurrentBrightness - m.MinBrightness) * 100.0 / (m.MaxBrightness - m.MinBrightness));
+                if (m.SupportsContrast && m.MaxContrast > m.MinContrast)
+                    contrast = (int)Math.Round((m.CurrentContrast - m.MinContrast) * 100.0 / (m.MaxContrast - m.MinContrast));
+
+                entries.Add(new MonitorEntry
+                {
+                    Index = i, Name = name,
+                    Brightness = brightness, Contrast = contrast,
+                    SupportsBrightness = m.SupportsBrightness,
+                    SupportsContrast = m.SupportsContrast,
+                    IsWmi = false
+                });
+                DestroyPhysicalMonitor(m.Handle);
+            }
+
+            return entries;
+        }
+
+        public static bool SetBrightnessForIndex(int monitorIndex, int percent)
+        {
+            percent = Math.Clamp(percent, 0, 100);
+            var monitors = GetMonitors();
+            bool success = false;
+
+            for (int i = 0; i < monitors.Count; i++)
+            {
+                var m = monitors[i];
+                if (i == monitorIndex && m.SupportsBrightness && m.MaxBrightness >= m.MinBrightness)
+                {
+                    uint range = m.MaxBrightness - m.MinBrightness;
+                    success = SetMonitorBrightness(m.Handle, m.MinBrightness + (uint)(range * percent / 100.0));
+                }
+                DestroyPhysicalMonitor(m.Handle);
+            }
+            return success;
+        }
+
+        public static bool SetContrastForIndex(int monitorIndex, int percent)
+        {
+            percent = Math.Clamp(percent, 0, 100);
+            var monitors = GetMonitors();
+            bool success = false;
+
+            for (int i = 0; i < monitors.Count; i++)
+            {
+                var m = monitors[i];
+                if (i == monitorIndex && m.SupportsContrast && m.MaxContrast >= m.MinContrast)
+                {
+                    uint range = m.MaxContrast - m.MinContrast;
+                    success = SetMonitorContrast(m.Handle, m.MinContrast + (uint)(range * percent / 100.0));
+                }
+                DestroyPhysicalMonitor(m.Handle);
+            }
+            return success;
+        }
+
+        // ── All-monitors helpers (used by presets) ────────────────────────────
 
         public static int SetBrightnessAll(int percent)
         {
@@ -157,14 +255,12 @@ namespace PCOptimizer.Services
                 if (m.SupportsBrightness && m.MaxBrightness >= m.MinBrightness)
                 {
                     uint range = m.MaxBrightness - m.MinBrightness;
-                    uint newValue = m.MinBrightness + (uint)(range * percent / 100.0);
-                    if (SetMonitorBrightness(m.Handle, newValue))
+                    if (SetMonitorBrightness(m.Handle, m.MinBrightness + (uint)(range * percent / 100.0)))
                         success++;
                 }
                 DestroyPhysicalMonitor(m.Handle);
             }
 
-            // Fallback WMI para notebooks sem DDC/CI
             if (success == 0 && HasWmiMonitors())
                 success = SetWmiBrightness(percent) ? 1 : 0;
 
@@ -182,8 +278,7 @@ namespace PCOptimizer.Services
                 if (m.SupportsContrast && m.MaxContrast >= m.MinContrast)
                 {
                     uint range = m.MaxContrast - m.MinContrast;
-                    uint newValue = m.MinContrast + (uint)(range * percent / 100.0);
-                    if (SetMonitorContrast(m.Handle, newValue))
+                    if (SetMonitorContrast(m.Handle, m.MinContrast + (uint)(range * percent / 100.0)))
                         success++;
                 }
                 DestroyPhysicalMonitor(m.Handle);
@@ -194,37 +289,13 @@ namespace PCOptimizer.Services
 
         public static (int Brightness, int Contrast, int Count, bool IsWmi) GetAverageValues()
         {
-            var monitors = GetMonitors();
-            int totalBright = 0, brightCount = 0;
-            int totalContrast = 0, contrastCount = 0;
+            var entries = GetMonitorEntries();
+            if (entries.Count == 0) return (50, 50, 0, false);
+            if (entries[0].IsWmi) return (entries[0].Brightness, 50, 1, true);
 
-            foreach (var m in monitors)
-            {
-                if (m.SupportsBrightness && m.MaxBrightness > m.MinBrightness)
-                {
-                    int pct = (int)((m.CurrentBrightness - m.MinBrightness) * 100.0 / (m.MaxBrightness - m.MinBrightness));
-                    totalBright += pct;
-                    brightCount++;
-                }
-                if (m.SupportsContrast && m.MaxContrast > m.MinContrast)
-                {
-                    int pct = (int)((m.CurrentContrast - m.MinContrast) * 100.0 / (m.MaxContrast - m.MinContrast));
-                    totalContrast += pct;
-                    contrastCount++;
-                }
-                DestroyPhysicalMonitor(m.Handle);
-            }
-
-            // Fallback WMI para notebooks
-            if (monitors.Count == 0 && HasWmiMonitors())
-            {
-                int wmiB = GetWmiBrightness();
-                return (wmiB, 50, 1, true);
-            }
-
-            int avgBright = brightCount > 0 ? totalBright / brightCount : 50;
-            int avgContrast = contrastCount > 0 ? totalContrast / contrastCount : 50;
-            return (avgBright, avgContrast, monitors.Count, false);
+            int totalB = 0, totalC = 0;
+            foreach (var e in entries) { totalB += e.Brightness; totalC += e.Contrast; }
+            return (totalB / entries.Count, totalC / entries.Count, entries.Count, false);
         }
     }
 }

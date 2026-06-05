@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using PCOptimizer.Services;
 
@@ -9,10 +11,20 @@ namespace PCOptimizer.Views
 {
     public partial class BrightnessWindow : Window
     {
+        private sealed class MonitorControl
+        {
+            public int Index { get; init; }
+            public bool IsWmi { get; init; }
+            public required Slider SliderBrightness { get; init; }
+            public required TextBlock TxtBrightness { get; init; }
+            public Slider? SliderContrast { get; init; }
+            public TextBlock? TxtContrast { get; init; }
+            public DateTime LastBrightnessChange;
+            public DateTime LastContrastChange;
+        }
+
         private bool _initialized;
-        private bool _isWmiMode;
-        private DateTime _lastBrightnessChange = DateTime.MinValue;
-        private DateTime _lastContrastChange = DateTime.MinValue;
+        private readonly List<MonitorControl> _monitorControls = new();
         private bool _capturingHotkey;
 
         public BrightnessWindow()
@@ -21,13 +33,9 @@ namespace PCOptimizer.Views
             Loaded += BrightnessWindow_Loaded;
             TxtHotkey.Text = SettingsService.Current.HotkeyDisplay;
             RefreshPresetButtons();
-
-            // Restaura estado da luz noturna
             SliderNightLight.Value = SettingsService.Current.NightLightIntensity;
             if (SettingsService.Current.NightLightEnabled)
-            {
                 ChkNightLight.IsChecked = true;
-            }
         }
 
         private void RefreshPresetButtons()
@@ -36,17 +44,9 @@ namespace PCOptimizer.Views
             var p2 = SettingsService.Current.Preset2;
             var p3 = SettingsService.Current.Preset3;
 
-            TxtPreset1Icon.Text = p1.Icon;
-            TxtPreset1Name.Text = p1.Name;
-            TxtPreset1Values.Text = $"{p1.Brightness}% / {p1.Contrast}%";
-
-            TxtPreset2Icon.Text = p2.Icon;
-            TxtPreset2Name.Text = p2.Name;
-            TxtPreset2Values.Text = $"{p2.Brightness}% / {p2.Contrast}%";
-
-            TxtPreset3Icon.Text = p3.Icon;
-            TxtPreset3Name.Text = p3.Name;
-            TxtPreset3Values.Text = $"{p3.Brightness}% / {p3.Contrast}%";
+            TxtPreset1Icon.Text = p1.Icon; TxtPreset1Name.Text = p1.Name; TxtPreset1Values.Text = $"{p1.Brightness}% / {p1.Contrast}%";
+            TxtPreset2Icon.Text = p2.Icon; TxtPreset2Name.Text = p2.Name; TxtPreset2Values.Text = $"{p2.Brightness}% / {p2.Contrast}%";
+            TxtPreset3Icon.Text = p3.Icon; TxtPreset3Name.Text = p3.Name; TxtPreset3Values.Text = $"{p3.Brightness}% / {p3.Contrast}%";
         }
 
         private async void BrightnessWindow_Loaded(object sender, RoutedEventArgs e)
@@ -55,39 +55,25 @@ namespace PCOptimizer.Views
 
             try
             {
-                var result = await Task.Run(() => MonitorService.GetAverageValues());
+                var entries = await Task.Run(() => MonitorService.GetMonitorEntries());
 
-                if (result.Count == 0)
+                if (entries.Count == 0)
                 {
-                    TxtMonitorCount.Text = "Nenhum monitor compatível encontrado";
+                    TxtMonitorCount.Text = "Nenhum monitor compatível";
                     TxtStatus.Text = "Monitor não suporta DDC/CI nem WMI";
+                    _initialized = true;
                     return;
                 }
 
-                _isWmiMode = result.IsWmi;
+                bool isWmi = entries.Exists(m => m.IsWmi);
+                TxtMonitorCount.Text = isWmi
+                    ? "Notebook — controle via WMI"
+                    : entries.Count == 1 ? "1 monitor" : $"{entries.Count} monitores";
 
-                TxtMonitorCount.Text = result.IsWmi
-                    ? "Notebook detectado — controle via WMI"
-                    : (result.Count == 1 ? "Ajustando 1 monitor" : $"Ajustando {result.Count} monitores ao mesmo tempo");
+                BuildMonitorPanels(entries);
 
-                SliderBrightness.Value = result.Brightness;
-                TxtBrightnessValue.Text = $"{result.Brightness}%";
-                SliderBrightness.IsEnabled = true;
-
-                if (!result.IsWmi)
-                {
-                    SliderContrast.Value = result.Contrast;
-                    TxtContrastValue.Text = $"{result.Contrast}%";
-                    SliderContrast.IsEnabled = true;
-                }
-                else
-                {
-                    TxtContrastValue.Text = "N/A";
-                }
-
-                TxtStatus.Text = result.IsWmi
-                    ? "Modo notebook — somente brilho disponível"
-                    : "Pronto — arraste os controles";
+                TxtStatus.Text = isWmi ? "Modo notebook — somente brilho disponível"
+                                       : "Pronto — arraste os controles";
             }
             catch (Exception ex)
             {
@@ -97,50 +83,166 @@ namespace PCOptimizer.Views
             _initialized = true;
         }
 
-        private async void SliderBrightness_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private void BuildMonitorPanels(List<MonitorEntry> entries)
         {
-            if (!_initialized) return;
+            PnlMonitors.Children.Clear();
+            _monitorControls.Clear();
 
-            int value = (int)e.NewValue;
-            TxtBrightnessValue.Text = $"{value}%";
-
-            _lastBrightnessChange = DateTime.Now;
-            var thisChange = _lastBrightnessChange;
-            await Task.Delay(150);
-            if (thisChange != _lastBrightnessChange) return;
-
-            try { await Task.Run(() => MonitorService.SetBrightnessAll(value)); }
-            catch (Exception ex) { TxtStatus.Text = $"Erro ao ajustar brilho: {ex.Message}"; }
+            for (int i = 0; i < entries.Count; i++)
+                PnlMonitors.Children.Add(CreateMonitorRow(entries[i], i > 0));
         }
 
-        private async void SliderContrast_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private FrameworkElement CreateMonitorRow(MonitorEntry entry, bool addSeparator)
         {
-            if (!_initialized) return;
+            var container = new StackPanel();
 
-            int value = (int)e.NewValue;
-            TxtContrastValue.Text = $"{value}%";
+            if (addSeparator)
+            {
+                var sep = new Border { Height = 1, Margin = new Thickness(0, 6, 0, 8) };
+                sep.SetResourceReference(Border.BackgroundProperty, "BorderColor");
+                container.Children.Add(sep);
+            }
 
-            _lastContrastChange = DateTime.Now;
-            var thisChange = _lastContrastChange;
-            await Task.Delay(150);
-            if (thisChange != _lastContrastChange) return;
+            // Monitor name label
+            var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 5) };
+            var nameIcon = new TextBlock { Text = "🖥", FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+            var nameText = new TextBlock
+            {
+                Text = entry.Name,
+                FontSize = 11, FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(5, 0, 0, 0)
+            };
+            nameText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+            nameRow.Children.Add(nameIcon);
+            nameRow.Children.Add(nameText);
+            container.Children.Add(nameRow);
 
-            try { await Task.Run(() => MonitorService.SetContrastAll(value)); }
-            catch (Exception ex) { TxtStatus.Text = $"Erro ao ajustar contraste: {ex.Message}"; }
+            // Brightness slider
+            var sliderB = new Slider
+            {
+                Minimum = 0, Maximum = 100, Value = entry.Brightness,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsEnabled = entry.SupportsBrightness
+            };
+            var txtB = new TextBlock
+            {
+                Text = $"{entry.Brightness}%",
+                FontSize = 12, FontWeight = FontWeights.Bold, Width = 38,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            txtB.SetResourceReference(TextBlock.ForegroundProperty, "ButtonPrimaryBg");
+            container.Children.Add(MakeSliderRow("☀️", sliderB, txtB, new Thickness(0, 0, 0, 6)));
+
+            // Contrast slider (DDC/CI only)
+            Slider? sliderC = null;
+            TextBlock? txtC = null;
+
+            if (!entry.IsWmi)
+            {
+                sliderC = new Slider
+                {
+                    Minimum = 0, Maximum = 100,
+                    Value = entry.SupportsContrast ? entry.Contrast : 50,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    IsEnabled = entry.SupportsContrast
+                };
+                txtC = new TextBlock
+                {
+                    Text = entry.SupportsContrast ? $"{entry.Contrast}%" : "N/A",
+                    FontSize = 12, FontWeight = FontWeights.Bold, Width = 38,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Right
+                };
+                txtC.SetResourceReference(TextBlock.ForegroundProperty, "ButtonPrimaryBg");
+                container.Children.Add(MakeSliderRow("🌗", sliderC, txtC, new Thickness(0, 0, 0, 4)));
+            }
+            else
+            {
+                var note = new TextBlock
+                {
+                    Text = "Modo notebook — somente brilho",
+                    FontSize = 9, Opacity = 0.65, Margin = new Thickness(0, 0, 0, 4)
+                };
+                note.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+                container.Children.Add(note);
+            }
+
+            var mc = new MonitorControl
+            {
+                Index = entry.Index, IsWmi = entry.IsWmi,
+                SliderBrightness = sliderB, TxtBrightness = txtB,
+                SliderContrast = sliderC, TxtContrast = txtC
+            };
+            _monitorControls.Add(mc);
+
+            // Events
+            sliderB.ValueChanged += async (_, ev) =>
+            {
+                if (!_initialized) return;
+                int val = (int)ev.NewValue;
+                txtB.Text = $"{val}%";
+                mc.LastBrightnessChange = DateTime.Now;
+                var stamp = mc.LastBrightnessChange;
+                await Task.Delay(150);
+                if (stamp != mc.LastBrightnessChange) return;
+                try
+                {
+                    if (mc.IsWmi) await Task.Run(() => MonitorService.SetBrightnessAll(val));
+                    else          await Task.Run(() => MonitorService.SetBrightnessForIndex(mc.Index, val));
+                }
+                catch (Exception ex) { TxtStatus.Text = $"Erro brilho: {ex.Message}"; }
+            };
+
+            if (sliderC != null && txtC != null)
+            {
+                var capturedTxtC = txtC;
+                sliderC.ValueChanged += async (_, ev) =>
+                {
+                    if (!_initialized || !entry.SupportsContrast) return;
+                    int val = (int)ev.NewValue;
+                    capturedTxtC.Text = $"{val}%";
+                    mc.LastContrastChange = DateTime.Now;
+                    var stamp = mc.LastContrastChange;
+                    await Task.Delay(150);
+                    if (stamp != mc.LastContrastChange) return;
+                    try { await Task.Run(() => MonitorService.SetContrastForIndex(mc.Index, val)); }
+                    catch (Exception ex) { TxtStatus.Text = $"Erro contraste: {ex.Message}"; }
+                };
+            }
+
+            return container;
         }
 
-        private void Header_MouseDown(object sender, MouseButtonEventArgs e)
+        private static Grid MakeSliderRow(string icon, Slider slider, TextBlock txtValue, Thickness margin)
         {
-            if (e.ButtonState == MouseButtonState.Pressed)
-                DragMove();
+            var grid = new Grid { Margin = margin };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
+
+            var ic = new TextBlock { Text = icon, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(ic, 0);
+            Grid.SetColumn(slider, 1);
+            Grid.SetColumn(txtValue, 2);
+
+            grid.Children.Add(ic);
+            grid.Children.Add(slider);
+            grid.Children.Add(txtValue);
+            return grid;
         }
 
         private async void ApplyPreset(PresetData preset)
         {
             if (!_initialized) return;
 
-            SliderBrightness.Value = preset.Brightness;
-            SliderContrast.Value = preset.Contrast;
+            foreach (var mc in _monitorControls)
+            {
+                mc.SliderBrightness.Value = preset.Brightness;
+                if (mc.SliderContrast != null)
+                    mc.SliderContrast.Value = preset.Contrast;
+            }
 
             try
             {
@@ -151,10 +253,7 @@ namespace PCOptimizer.Views
                 });
                 TxtStatus.Text = $"Preset \"{preset.Name}\" aplicado";
             }
-            catch (Exception ex)
-            {
-                TxtStatus.Text = $"Erro ao aplicar preset: {ex.Message}";
-            }
+            catch (Exception ex) { TxtStatus.Text = $"Erro ao aplicar preset: {ex.Message}"; }
         }
 
         private void EditPreset(PresetData preset, System.Action<PresetData> save)
@@ -173,11 +272,11 @@ namespace PCOptimizer.Views
         private void Preset2_Click(object sender, RoutedEventArgs e) => ApplyPreset(SettingsService.Current.Preset2);
         private void Preset3_Click(object sender, RoutedEventArgs e) => ApplyPreset(SettingsService.Current.Preset3);
 
-        private void Preset1_Edit(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        private void Preset1_Edit(object sender, MouseButtonEventArgs e) =>
             EditPreset(SettingsService.Current.Preset1, p => SettingsService.Current.Preset1 = p);
-        private void Preset2_Edit(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        private void Preset2_Edit(object sender, MouseButtonEventArgs e) =>
             EditPreset(SettingsService.Current.Preset2, p => SettingsService.Current.Preset2 = p);
-        private void Preset3_Edit(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        private void Preset3_Edit(object sender, MouseButtonEventArgs e) =>
             EditPreset(SettingsService.Current.Preset3, p => SettingsService.Current.Preset3 = p);
 
         private void ChkNightLight_Checked(object sender, RoutedEventArgs e)
@@ -205,7 +304,6 @@ namespace PCOptimizer.Views
             if (TxtNightLightValue == null || ChkNightLight == null) return;
             int value = (int)e.NewValue;
             TxtNightLightValue.Text = $"{value}%";
-
             if (ChkNightLight.IsChecked == true)
             {
                 NightLightService.SetIntensity(value);
@@ -221,21 +319,20 @@ namespace PCOptimizer.Views
                 string? path = await ScreenshotService.CaptureAreaAsync(this);
                 if (path != null) TxtStatus.Text = "📸 Captura salva";
             }
-            catch (Exception ex)
-            {
-                TxtStatus.Text = $"Erro: {ex.Message}";
-            }
+            catch (Exception ex) { TxtStatus.Text = $"Erro: {ex.Message}"; }
         }
 
-        private void BtnClose_Click(object sender, RoutedEventArgs e)
-        {
-            Hide();
-        }
+        private void BtnClose_Click(object sender, RoutedEventArgs e) => Hide();
 
         protected override void OnClosing(CancelEventArgs e)
         {
             e.Cancel = true;
             Hide();
+        }
+
+        private void Header_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ButtonState == MouseButtonState.Pressed) DragMove();
         }
 
         private void BtnSetHotkey_Click(object sender, RoutedEventArgs e)
@@ -250,28 +347,15 @@ namespace PCOptimizer.Views
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
-            if (!_capturingHotkey)
-            {
-                base.OnKeyDown(e);
-                return;
-            }
+            if (!_capturingHotkey) { base.OnKeyDown(e); return; }
 
             var key = e.Key == Key.System ? e.SystemKey : e.Key;
 
-            if (key == Key.Escape)
-            {
-                CancelHotkeyCapture();
-                e.Handled = true;
-                return;
-            }
+            if (key == Key.Escape) { CancelHotkeyCapture(); e.Handled = true; return; }
 
-            // Ignore standalone modifier keys
             if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
                      or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin)
-            {
-                e.Handled = true;
-                return;
-            }
+            { e.Handled = true; return; }
 
             var modifiers = Keyboard.Modifiers;
             if (modifiers == ModifierKeys.None)
