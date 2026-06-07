@@ -52,6 +52,14 @@ namespace PCOptimizer.Views
 
         private async void BrightnessWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            // Restaura o contador se já houver um desligamento agendado
+            if (ShutdownService.ScheduledAt is not null)
+            {
+                TimerPanel.Visibility = Visibility.Visible;
+                BtnTimerCancel.Visibility = Visibility.Visible;
+                StartCountdown();
+            }
+
             TxtStatus.Text = "Lendo monitores...";
 
             try
@@ -376,6 +384,84 @@ namespace PCOptimizer.Views
                 if (path != null) TxtStatus.Text = "📸 Captura salva";
             }
             catch (Exception ex) { TxtStatus.Text = $"Erro: {ex.Message}"; }
+        }
+
+        // ── Timer de desligamento ─────────────────────────────────────────────
+
+        private System.Windows.Threading.DispatcherTimer? _countdownTimer;
+
+        private void BtnTimerToggle_Click(object sender, RoutedEventArgs e)
+        {
+            TimerPanel.Visibility = TimerPanel.Visibility == Visibility.Visible
+                ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        private void TimerPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement fe && int.TryParse(fe.Tag?.ToString(), out int minutes))
+                ScheduleShutdown(minutes);
+        }
+
+        private void TimerCustom_Click(object sender, RoutedEventArgs e)
+        {
+            if (int.TryParse(TxtTimerCustom.Text.Trim(), out int minutes) && minutes > 0)
+                ScheduleShutdown(minutes);
+            else
+                TxtStatus.Text = "Digite um número de minutos válido";
+        }
+
+        private void TimerCancel_Click(object sender, RoutedEventArgs e)
+        {
+            if (ShutdownService.Cancel())
+            {
+                StopCountdown();
+                TxtStatus.Text = "Desligamento cancelado";
+            }
+        }
+
+        private void ScheduleShutdown(int minutes)
+        {
+            if (ShutdownService.Schedule(minutes))
+            {
+                BtnTimerCancel.Visibility = Visibility.Visible;
+                StartCountdown();
+                TxtStatus.Text = $"PC desligará em {minutes} min";
+            }
+            else
+            {
+                TxtStatus.Text = "Não foi possível agendar o desligamento";
+            }
+        }
+
+        private void StartCountdown()
+        {
+            _countdownTimer ??= new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _countdownTimer.Tick -= Countdown_Tick;
+            _countdownTimer.Tick += Countdown_Tick;
+            _countdownTimer.Start();
+            UpdateCountdownText();
+        }
+
+        private void StopCountdown()
+        {
+            _countdownTimer?.Stop();
+            TxtTimerStatus.Text = "";
+            BtnTimerCancel.Visibility = Visibility.Collapsed;
+        }
+
+        private void Countdown_Tick(object? sender, EventArgs e) => UpdateCountdownText();
+
+        private void UpdateCountdownText()
+        {
+            if (ShutdownService.ScheduledAt is not { } at) { StopCountdown(); return; }
+            var remaining = at - DateTime.Now;
+            if (remaining <= TimeSpan.Zero) { TxtTimerStatus.Text = "00:00"; _countdownTimer?.Stop(); return; }
+            TxtTimerStatus.Text = remaining.TotalHours >= 1
+                ? $"{(int)remaining.TotalHours}:{remaining.Minutes:D2}:{remaining.Seconds:D2}"
+                : $"{remaining.Minutes:D2}:{remaining.Seconds:D2}";
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Hide();
