@@ -397,8 +397,16 @@ namespace PCOptimizer.Services
                     || ddcDesc.Equals("Generic PnP Monitor",     StringComparison.OrdinalIgnoreCase)
                     || ddcDesc.Equals("Generic Non-PnP Monitor", StringComparison.OrdinalIgnoreCase);
 
-                string name = !string.IsNullOrEmpty(edid.FriendlyName) ? edid.FriendlyName
-                            : !ddcGeneric                               ? ddcDesc
+                // Prepend manufacturer to friendly name if not already included
+                string bestFriendly = !string.IsNullOrEmpty(edid.FriendlyName)
+                    ? (!string.IsNullOrEmpty(edid.Manufacturer) &&
+                       !edid.FriendlyName.StartsWith(edid.Manufacturer, StringComparison.OrdinalIgnoreCase)
+                       ? $"{edid.Manufacturer} {edid.FriendlyName}"
+                       : edid.FriendlyName)
+                    : "";
+
+                string name = !string.IsNullOrEmpty(bestFriendly) ? bestFriendly
+                            : !ddcGeneric                          ? ddcDesc
                             : !string.IsNullOrEmpty(edid.Manufacturer) ? $"Monitor {edid.Manufacturer}"
                             : $"Monitor {i + 1}";
 
@@ -447,7 +455,7 @@ namespace PCOptimizer.Services
                     SupportsBrightness = supportsBrightness,
                     SupportsContrast   = supportsContrast,
                     IsWmi              = isWmi,
-                    SupportsHdr        = hdr?.IsSupported ?? false,
+                    SupportsHdr        = hdr != null,
                     HdrEnabled         = hdr?.IsEnabled ?? false,
                     HdrAdapterIdLow    = hdr?.AdapterIdLow ?? 0,
                     HdrAdapterIdHigh   = hdr?.AdapterIdHigh ?? 0,

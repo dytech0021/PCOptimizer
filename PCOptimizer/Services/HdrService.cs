@@ -158,19 +158,17 @@ namespace PCOptimizer.Services
                         }
                     };
 
-                    if (DisplayConfigGetDeviceInfo(ref req) == 0)
+                    int hdrResult = DisplayConfigGetDeviceInfo(ref req);
+                    result.Add(new HdrInfo
                     {
-                        result.Add(new HdrInfo
-                        {
-                            SourceX       = srcX,
-                            SourceY       = srcY,
-                            IsSupported   = (req.value & 1) != 0,
-                            IsEnabled     = (req.value & 2) != 0,
-                            AdapterIdLow  = path.targetInfo.adapterId.LowPart,
-                            AdapterIdHigh = path.targetInfo.adapterId.HighPart,
-                            TargetId      = path.targetInfo.id
-                        });
-                    }
+                        SourceX       = srcX,
+                        SourceY       = srcY,
+                        IsSupported   = hdrResult == 0 && (req.value & 1) != 0,
+                        IsEnabled     = hdrResult == 0 && (req.value & 2) != 0,
+                        AdapterIdLow  = path.targetInfo.adapterId.LowPart,
+                        AdapterIdHigh = path.targetInfo.adapterId.HighPart,
+                        TargetId      = path.targetInfo.id
+                    });
                 }
             }
             catch { }
