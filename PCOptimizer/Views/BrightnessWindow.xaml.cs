@@ -32,6 +32,7 @@ namespace PCOptimizer.Views
         private bool _initialized;
         private readonly List<MonitorControl> _monitorControls = new();
         private bool _capturingHotkey;
+        private bool _winNlInitializing;
 
         public BrightnessWindow()
         {
@@ -42,6 +43,16 @@ namespace PCOptimizer.Views
             SliderNightLight.Value = SettingsService.Current.NightLightIntensity;
             if (SettingsService.Current.NightLightEnabled)
                 ChkNightLight.IsChecked = true;
+
+            _winNlInitializing = true;
+            bool winNlOn = NightLightService.GetWindowsNightLightEnabled();
+            ChkWinNightLight.IsChecked = winNlOn;
+            if (winNlOn)
+            {
+                WinNightLightPanel.Visibility = Visibility.Visible;
+                SliderWinNightLight.Value = NightLightService.GetWindowsNightLightIntensity();
+            }
+            _winNlInitializing = false;
         }
 
         private void RefreshPresetButtons()
@@ -387,6 +398,33 @@ namespace PCOptimizer.Views
                 SettingsService.Current.NightLightIntensity = value;
                 SettingsService.Save();
             }
+        }
+
+        private void ChkWinNightLight_Checked(object sender, RoutedEventArgs e)
+        {
+            WinNightLightPanel.Visibility = Visibility.Visible;
+            if (_winNlInitializing) return;
+            if (NightLightService.SetWindowsNightLight(true))
+                TxtStatus.Text = "Luz noturna Windows ativada";
+            else
+                TxtStatus.Text = "Não foi possível ativar — abra Configurações > Sistema > Noturno";
+        }
+
+        private void ChkWinNightLight_Unchecked(object sender, RoutedEventArgs e)
+        {
+            WinNightLightPanel.Visibility = Visibility.Collapsed;
+            if (_winNlInitializing) return;
+            NightLightService.SetWindowsNightLight(false);
+            TxtStatus.Text = "Luz noturna Windows desativada";
+        }
+
+        private void SliderWinNightLight_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (TxtWinNightLightValue == null || _winNlInitializing) return;
+            int value = (int)e.NewValue;
+            TxtWinNightLightValue.Text = $"{value}%";
+            if (ChkWinNightLight?.IsChecked == true)
+                NightLightService.SetWindowsNightLightIntensity(value);
         }
 
         private async void BtnScreenshot_Click(object sender, RoutedEventArgs e)

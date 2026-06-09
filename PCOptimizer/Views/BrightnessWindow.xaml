@@ -52,6 +52,8 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- Row 0: Header arrastável -->
@@ -175,8 +177,40 @@
                            VerticalAlignment="Center" HorizontalAlignment="Right"/>
             </Grid>
 
-            <!-- Row 6: Timer de desligamento (colapsável) -->
-            <StackPanel Grid.Row="6" x:Name="TimerPanel" Visibility="Collapsed" Margin="0,0,0,12">
+            <!-- Row 6: Luz Noturna Windows toggle -->
+            <Grid Grid.Row="6" Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="🌙" FontSize="15" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Luz Noturna (Windows)" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                <CheckBox x:Name="ChkWinNightLight" Grid.Column="2" VerticalAlignment="Center"
+                          Checked="ChkWinNightLight_Checked" Unchecked="ChkWinNightLight_Unchecked"/>
+            </Grid>
+
+            <!-- Row 7: Luz Noturna Windows slider (colapsável) -->
+            <Grid Grid.Row="7" Margin="0,0,0,12" x:Name="WinNightLightPanel" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="22"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="40"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="🔆" FontSize="13" VerticalAlignment="Center" Opacity="0.7"/>
+                <Slider x:Name="SliderWinNightLight" Grid.Column="1"
+                        Minimum="0" Maximum="100" Value="50"
+                        VerticalAlignment="Center"
+                        ValueChanged="SliderWinNightLight_ValueChanged"/>
+                <TextBlock x:Name="TxtWinNightLightValue" Grid.Column="2"
+                           Text="50%" FontSize="12" FontWeight="Bold"
+                           Foreground="#F9E2AF"
+                           VerticalAlignment="Center" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <!-- Row 8: Timer de desligamento (colapsável) -->
+            <StackPanel Grid.Row="8" x:Name="TimerPanel" Visibility="Collapsed" Margin="0,0,0,12">
                 <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -233,13 +267,13 @@
                 </Grid>
             </StackPanel>
 
-            <!-- Row 7: Divider -->
-            <Border Grid.Row="7" Height="1"
+            <!-- Row 9: Divider -->
+            <Border Grid.Row="9" Height="1"
                     Background="{DynamicResource BorderColor}"
                     Margin="0,0,0,10" x:Name="Divider2"/>
 
-            <!-- Row 8: Atalho e status -->
-            <Grid Grid.Row="8">
+            <!-- Row 10: Atalho e status -->
+            <Grid Grid.Row="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
