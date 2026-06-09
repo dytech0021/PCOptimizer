@@ -485,7 +485,7 @@ namespace PCOptimizer.Views
             {
                 FontSize = 11,
                 Margin = new Thickness(0, 4, 0, 0),
-                Padding = new Thickness(12, 5),
+                Padding = new Thickness(12, 5, 12, 5),
                 Cursor = Cursors.Hand,
                 BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
