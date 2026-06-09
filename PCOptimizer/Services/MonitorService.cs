@@ -76,6 +76,15 @@ namespace PCOptimizer.Services
         [DllImport("dxva2.dll")]
         private static extern bool SetMonitorContrast(IntPtr hMonitor, uint newContrast);
 
+        [DllImport("dxva2.dll")]
+        private static extern bool GetVCPFeatureAndVCPFeatureReply(IntPtr hMonitor, byte vcpCode,
+            out int pvct, out uint currentValue, out uint maximumValue);
+
+        [DllImport("dxva2.dll")]
+        private static extern bool SetVCPFeature(IntPtr hMonitor, byte vcpCode, uint newValue);
+
+        private const byte VCP_LUMINANCE = 0x10;
+
         // ── Display device info P/Invoke (for PnP ID correlation) ─────────────
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -165,25 +174,39 @@ namespace PCOptimizer.Services
                     };
 
                     uint bMin = 0, bCur = 0, bMax = 0;
-                    if (GetMonitorBrightness(pm.hPhysicalMonitor, ref bMin, ref bCur, ref bMax))
+                    if (GetMonitorBrightness(pm.hPhysicalMonitor, ref bMin, ref bCur, ref bMax)
+                        && bMax > bMin)
                     {
-                        info.MinBrightness = bMin;
-                        info.CurrentBrightness = bCur;
-                        info.MaxBrightness = bMax;
+                        info.MinBrightness      = bMin;
+                        info.CurrentBrightness  = bCur;
+                        info.MaxBrightness      = bMax;
                         info.SupportsBrightness = true;
                     }
 
                     uint cMin = 0, cCur = 0, cMax = 0;
                     if (GetMonitorContrast(pm.hPhysicalMonitor, ref cMin, ref cCur, ref cMax))
                     {
-                        info.MinContrast = cMin;
+                        info.MinContrast     = cMin;
                         info.CurrentContrast = cCur;
-                        info.MaxContrast = cMax;
+                        info.MaxContrast     = cMax;
                         info.SupportsContrast = true;
                     }
 
-                    // Monitor responds to DDC/CI (contrast works) but brightness VCP is unreadable.
-                    // Still expose brightness slider — SetMonitorBrightness may work write-only.
+                    // VCP 0x10 (Luminance) raw fallback — handles monitors where GetMonitorBrightness
+                    // fails or returns a zero range (e.g. KaBuM MG900 and similar DDC quirks).
+                    if (!info.SupportsBrightness &&
+                        GetVCPFeatureAndVCPFeatureReply(pm.hPhysicalMonitor, VCP_LUMINANCE,
+                            out _, out uint vcpCur, out uint vcpMax) && vcpMax > 0)
+                    {
+                        info.MinBrightness      = 0;
+                        info.CurrentBrightness  = vcpCur;
+                        info.MaxBrightness      = vcpMax;
+                        info.SupportsBrightness = true;
+                    }
+
+                    // Last resort: monitor responds to DDC/CI (contrast works) but brightness is
+                    // unreadable. Expose a 0-100 slider; SetMonitorBrightness/SetVCPFeature may
+                    // still work write-only.
                     if (!info.SupportsBrightness && info.SupportsContrast)
                     {
                         info.SupportsBrightness = true;
@@ -476,10 +499,13 @@ namespace PCOptimizer.Services
             for (int i = 0; i < monitors.Count; i++)
             {
                 var m = monitors[i];
-                if (i == monitorIndex && m.SupportsBrightness && m.MaxBrightness >= m.MinBrightness)
+                if (i == monitorIndex && m.SupportsBrightness)
                 {
-                    uint range = m.MaxBrightness - m.MinBrightness;
-                    success = SetMonitorBrightness(m.Handle, m.MinBrightness + (uint)(range * percent / 100.0));
+                    uint target = m.MaxBrightness > m.MinBrightness
+                        ? m.MinBrightness + (uint)((m.MaxBrightness - m.MinBrightness) * percent / 100.0)
+                        : (uint)percent;
+                    success = SetMonitorBrightness(m.Handle, target)
+                           || SetVCPFeature(m.Handle, VCP_LUMINANCE, target);
                 }
                 DestroyPhysicalMonitor(m.Handle);
             }
@@ -515,10 +541,12 @@ namespace PCOptimizer.Services
 
             foreach (var m in monitors)
             {
-                if (m.SupportsBrightness && m.MaxBrightness >= m.MinBrightness)
+                if (m.SupportsBrightness)
                 {
-                    uint range = m.MaxBrightness - m.MinBrightness;
-                    if (SetMonitorBrightness(m.Handle, m.MinBrightness + (uint)(range * percent / 100.0)))
+                    uint target = m.MaxBrightness > m.MinBrightness
+                        ? m.MinBrightness + (uint)((m.MaxBrightness - m.MinBrightness) * percent / 100.0)
+                        : (uint)percent;
+                    if (SetMonitorBrightness(m.Handle, target) || SetVCPFeature(m.Handle, VCP_LUMINANCE, target))
                         success++;
                 }
                 DestroyPhysicalMonitor(m.Handle);
