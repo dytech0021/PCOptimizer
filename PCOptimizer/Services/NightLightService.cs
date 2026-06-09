@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -121,19 +122,61 @@ namespace PCOptimizer.Services
         }
 
         // ── Luz Noturna nativa do Windows (via registro CloudStore) ───────────
+        //
+        // O Windows guarda a luz noturna em um blob binário (formato Microsoft Bond).
+        // Estrutura conhecida (Win10 1903+ / Win11):
+        //   Estado (bluelightreductionstate):
+        //     data[18]      = 0x15 ligado, 0x13 desligado
+        //     data[23..24]  = marcador 0x10 0x00 presente SÓ quando ligado (o blob
+        //                     cresce 2 bytes ao ligar e encolhe ao desligar)
+        //   Intensidade (settings):
+        //     data[0x23]    = byte baixo da temperatura
+        //     data[0x24]    = byte alto da temperatura  (Kelvin 1200=máx, 6500=neutro)
+        //   Em AMBOS é obrigatório incrementar o contador de timestamp (bytes 10..14)
+        //   antes de gravar, senão o Windows ignora/reverte a alteração.
 
-        private const string WinNlStatePath =
-            @"Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.bluelightreduction.bluelightreductionstate\Current";
-        private const string WinNlSettingsPath =
-            @"Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.bluelightreduction.settings\Current";
+        private const int MinKelvin = 1200; // 100% de intensidade (mais quente)
+        private const int MaxKelvin = 6500; // 0% de intensidade (neutro)
+
+        // Localiza a subchave correta — o nome da folha varia entre versões do Windows.
+        private static string? FindNlKeyPath(bool settings)
+        {
+            const string baseP =
+                @"Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\";
+            string container = settings
+                ? "default$windows.data.bluelightreduction.settings"
+                : "default$windows.data.bluelightreduction.bluelightreductionstate";
+            string[] leaves = settings
+                ? new[] { "Current", "windows.data.bluelightreduction.settings" }
+                : new[] { "Current", "windows.data.bluelightreduction.bluelightreductionstate" };
+
+            foreach (var leaf in leaves)
+            {
+                string p = baseP + container + "\\" + leaf;
+                using var k = Registry.CurrentUser.OpenSubKey(p);
+                if (k?.GetValue("Data") is byte[]) return p;
+            }
+            return null;
+        }
+
+        // Incrementa o primeiro byte do contador (10..14) que não seja 0xFF.
+        private static void BumpTimestamp(List<byte> data)
+        {
+            for (int i = 10; i <= 14 && i < data.Count; i++)
+            {
+                if (data[i] != 0xFF) { data[i]++; break; }
+            }
+        }
 
         public static bool GetWindowsNightLightEnabled()
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(WinNlStatePath);
-                if (key?.GetValue("Data") is byte[] data && data.Length > 24)
-                    return data[24] == 0x15;
+                string? path = FindNlKeyPath(settings: false);
+                if (path == null) return false;
+                using var key = Registry.CurrentUser.OpenSubKey(path);
+                if (key?.GetValue("Data") is byte[] data && data.Length > 18)
+                    return data[18] == 0x15;
             }
             catch { }
             return false;
@@ -143,10 +186,30 @@ namespace PCOptimizer.Services
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(WinNlStatePath, writable: true);
-                if (key?.GetValue("Data") is not byte[] data || data.Length <= 24) return false;
-                data[24] = enabled ? (byte)0x15 : (byte)0x12;
-                key.SetValue("Data", data, RegistryValueKind.Binary);
+                string? path = FindNlKeyPath(settings: false);
+                if (path == null) return false;
+                using var key = Registry.CurrentUser.OpenSubKey(path, writable: true);
+                if (key?.GetValue("Data") is not byte[] data || data.Length <= 18) return false;
+
+                bool currentlyEnabled = data[18] == 0x15;
+                var list = new List<byte>(data);
+
+                if (enabled && !currentlyEnabled)
+                {
+                    list[18] = 0x15;
+                    if (list.Count >= 23) list.InsertRange(23, new byte[] { 0x10, 0x00 });
+                    else                  list.AddRange(new byte[] { 0x10, 0x00 });
+                }
+                else if (!enabled && currentlyEnabled)
+                {
+                    list[18] = 0x13;
+                    if (list.Count >= 25) list.RemoveRange(23, 2);
+                }
+                // se já estiver no estado desejado, ainda assim regravamos com novo
+                // timestamp para garantir que o Windows reavalie.
+
+                BumpTimestamp(list);
+                key.SetValue("Data", list.ToArray(), RegistryValueKind.Binary);
                 SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, "ImmersiveColorSet");
                 return true;
             }
@@ -157,17 +220,18 @@ namespace PCOptimizer.Services
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(WinNlSettingsPath);
-                if (key?.GetValue("Data") is not byte[] data) return 50;
-                // CF 28 pattern → next 2 bytes are temperature LE (0=off, 4803=maximum warmth)
-                for (int i = 0; i < data.Length - 3; i++)
-                {
-                    if (data[i] == 0xCF && data[i + 1] == 0x28)
-                    {
-                        int raw = data[i + 2] | (data[i + 3] << 8);
-                        return Math.Clamp((int)Math.Round(raw * 100.0 / 4803), 0, 100);
-                    }
-                }
+                string? path = FindNlKeyPath(settings: true);
+                if (path == null) return 50;
+                using var key = Registry.CurrentUser.OpenSubKey(path);
+                if (key?.GetValue("Data") is not byte[] data || data.Length <= 0x24) return 50;
+
+                int loTemp = data[0x23];
+                int hiTemp = data[0x24];
+                int kelvin = (hiTemp * 64) + ((loTemp - 128) / 2);
+                kelvin = Math.Clamp(kelvin, MinKelvin, MaxKelvin);
+                int percent = (int)Math.Round(
+                    100.0 - ((kelvin - MinKelvin) / (double)(MaxKelvin - MinKelvin)) * 100.0);
+                return Math.Clamp(percent, 0, 100);
             }
             catch { }
             return 50;
@@ -178,23 +242,25 @@ namespace PCOptimizer.Services
             try
             {
                 percent = Math.Clamp(percent, 0, 100);
-                using var key = Registry.CurrentUser.OpenSubKey(WinNlSettingsPath, writable: true);
-                if (key?.GetValue("Data") is not byte[] data) return false;
-                int raw = (int)Math.Round(percent * 4803.0 / 100);
-                for (int i = 0; i < data.Length - 3; i++)
-                {
-                    if (data[i] == 0xCF && data[i + 1] == 0x28)
-                    {
-                        data[i + 2] = (byte)(raw & 0xFF);
-                        data[i + 3] = (byte)(raw >> 8);
-                        key.SetValue("Data", data, RegistryValueKind.Binary);
-                        SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, "ImmersiveColorSet");
-                        return true;
-                    }
-                }
+                string? path = FindNlKeyPath(settings: true);
+                if (path == null) return false;
+                using var key = Registry.CurrentUser.OpenSubKey(path, writable: true);
+                if (key?.GetValue("Data") is not byte[] data || data.Length <= 0x24) return false;
+
+                int kelvin = (int)Math.Round(MaxKelvin - (percent / 100.0) * (MaxKelvin - MinKelvin));
+                int hiTemp = kelvin / 64;
+                int loTemp = ((kelvin - (hiTemp * 64)) * 2) + 128;
+
+                var list = new List<byte>(data);
+                list[0x23] = (byte)loTemp;
+                list[0x24] = (byte)hiTemp;
+                BumpTimestamp(list);
+
+                key.SetValue("Data", list.ToArray(), RegistryValueKind.Binary);
+                SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, "ImmersiveColorSet");
+                return true;
             }
-            catch { }
-            return false;
+            catch { return false; }
         }
     }
 }
