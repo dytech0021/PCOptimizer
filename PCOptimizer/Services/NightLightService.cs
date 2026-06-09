@@ -20,6 +20,12 @@ namespace PCOptimizer.Services
         [DllImport("user32.dll")]
         private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
 
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool SendNotifyMessage(IntPtr hWnd, uint msg, UIntPtr wParam, string? lParam);
+
+        private static readonly IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
+        private const uint WM_SETTINGCHANGE = 0x001A;
+
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TRANSPARENT = 0x20;
         private const int WS_EX_TOOLWINDOW = 0x80;
@@ -141,6 +147,7 @@ namespace PCOptimizer.Services
                 if (key?.GetValue("Data") is not byte[] data || data.Length <= 24) return false;
                 data[24] = enabled ? (byte)0x15 : (byte)0x12;
                 key.SetValue("Data", data, RegistryValueKind.Binary);
+                SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, "ImmersiveColorSet");
                 return true;
             }
             catch { return false; }
@@ -181,6 +188,7 @@ namespace PCOptimizer.Services
                         data[i + 2] = (byte)(raw & 0xFF);
                         data[i + 3] = (byte)(raw >> 8);
                         key.SetValue("Data", data, RegistryValueKind.Binary);
+                        SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, "ImmersiveColorSet");
                         return true;
                     }
                 }
