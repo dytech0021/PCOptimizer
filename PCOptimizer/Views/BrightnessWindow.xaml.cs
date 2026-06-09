@@ -22,6 +22,11 @@ namespace PCOptimizer.Views
             public TextBlock? TxtContrast { get; init; }
             public DateTime LastBrightnessChange;
             public DateTime LastContrastChange;
+            public bool SupportsHdr { get; init; }
+            public bool HdrEnabled { get; set; }
+            public uint HdrAdapterIdLow { get; init; }
+            public int HdrAdapterIdHigh { get; init; }
+            public uint HdrTargetId { get; init; }
         }
 
         private bool _initialized;
@@ -237,9 +242,17 @@ namespace PCOptimizer.Views
             {
                 Index = entry.Index, IsWmi = entry.IsWmi,
                 SliderBrightness = sliderB, TxtBrightness = txtB,
-                SliderContrast = sliderC, TxtContrast = txtC
+                SliderContrast   = sliderC, TxtContrast   = txtC,
+                SupportsHdr      = entry.SupportsHdr,
+                HdrEnabled       = entry.HdrEnabled,
+                HdrAdapterIdLow  = entry.HdrAdapterIdLow,
+                HdrAdapterIdHigh = entry.HdrAdapterIdHigh,
+                HdrTargetId      = entry.HdrTargetId
             };
             _monitorControls.Add(mc);
+
+            if (entry.SupportsHdr)
+                container.Children.Add(MakeHdrButton(mc));
 
             // Events
             sliderB.ValueChanged += async (_, ev) =>
@@ -462,6 +475,52 @@ namespace PCOptimizer.Views
             TxtTimerStatus.Text = remaining.TotalHours >= 1
                 ? $"{(int)remaining.TotalHours}:{remaining.Minutes:D2}:{remaining.Seconds:D2}"
                 : $"{remaining.Minutes:D2}:{remaining.Seconds:D2}";
+        }
+
+        // ── HDR toggle ────────────────────────────────────────────────────────
+
+        private Button MakeHdrButton(MonitorControl mc)
+        {
+            var btn = new Button
+            {
+                FontSize = 11,
+                Margin = new Thickness(0, 4, 0, 0),
+                Padding = new Thickness(12, 5),
+                Cursor = Cursors.Hand,
+                BorderThickness = new Thickness(1),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                ToolTip = "Alternar HDR (High Dynamic Range)"
+            };
+            ApplyHdrButtonStyle(btn, mc.HdrEnabled);
+
+            btn.Click += async (_, _) =>
+            {
+                bool newState = !mc.HdrEnabled;
+                bool ok = await Task.Run(() =>
+                    HdrService.SetHdrEnabled(mc.HdrAdapterIdLow, mc.HdrAdapterIdHigh, mc.HdrTargetId, newState));
+                if (ok)
+                {
+                    mc.HdrEnabled = newState;
+                    ApplyHdrButtonStyle(btn, newState);
+                    TxtStatus.Text = newState ? "HDR ativado" : "HDR desativado";
+                }
+                else
+                {
+                    TxtStatus.Text = "Não foi possível alterar o HDR";
+                }
+            };
+            return btn;
+        }
+
+        private static void ApplyHdrButtonStyle(Button btn, bool enabled)
+        {
+            btn.Content     = enabled ? "HDR: Ligado" : "HDR: Desligado";
+            btn.Background  = new SolidColorBrush(enabled
+                ? Color.FromRgb(0x1B, 0x4E, 0x2D) : Color.FromRgb(0x1B, 0x3A, 0x4E));
+            btn.Foreground  = new SolidColorBrush(enabled
+                ? Color.FromRgb(0xA6, 0xE3, 0xA1) : Color.FromRgb(0x89, 0xB4, 0xFA));
+            btn.BorderBrush = new SolidColorBrush(enabled
+                ? Color.FromRgb(0x2A, 0x5E, 0x3A) : Color.FromRgb(0x2A, 0x4A, 0x5E));
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Hide();

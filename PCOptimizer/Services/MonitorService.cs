@@ -31,6 +31,11 @@ namespace PCOptimizer.Services
         public bool SupportsBrightness { get; set; }
         public bool SupportsContrast { get; set; }
         public bool IsWmi { get; set; }
+        public bool SupportsHdr { get; set; }
+        public bool HdrEnabled { get; set; }
+        public uint HdrAdapterIdLow { get; set; }
+        public int HdrAdapterIdHigh { get; set; }
+        public uint HdrTargetId { get; set; }
     }
 
     public static class MonitorService
@@ -175,6 +180,16 @@ namespace PCOptimizer.Services
                         info.CurrentContrast = cCur;
                         info.MaxContrast = cMax;
                         info.SupportsContrast = true;
+                    }
+
+                    // Monitor responds to DDC/CI (contrast works) but brightness VCP is unreadable.
+                    // Still expose brightness slider — SetMonitorBrightness may work write-only.
+                    if (!info.SupportsBrightness && info.SupportsContrast)
+                    {
+                        info.SupportsBrightness = true;
+                        info.MinBrightness      = 0;
+                        info.MaxBrightness      = 100;
+                        info.CurrentBrightness  = 50;
                     }
 
                     monitors.Add(info);
@@ -362,6 +377,7 @@ namespace PCOptimizer.Services
             var edidByPnp     = GetEdidInfosByPnpId();
             bool wmiAvailable = HasWmiMonitors();
             int  wmiBrightness = wmiAvailable ? GetWmiBrightness() : 50;
+            var  hdrInfos      = HdrService.GetAllHdrInfo();
 
             var entries = new List<MonitorEntry>();
             for (int i = 0; i < monitors.Count; i++)
@@ -411,6 +427,16 @@ namespace PCOptimizer.Services
                     isWmi              = true;
                 }
 
+                // HDR info — correlate by screen position (rcMonitor.left/top == DisplayConfig source position)
+                int srcX = 0, srcY = 0;
+                var mInfoEx = new MONITORINFOEX { cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>() };
+                if (GetMonitorInfo(m.LogicalHandle, ref mInfoEx))
+                {
+                    srcX = mInfoEx.rcMonitor.left;
+                    srcY = mInfoEx.rcMonitor.top;
+                }
+                var hdr = hdrInfos.Find(h => h.SourceX == srcX && h.SourceY == srcY);
+
                 entries.Add(new MonitorEntry
                 {
                     Index              = i,
@@ -420,7 +446,12 @@ namespace PCOptimizer.Services
                     Contrast           = contrast,
                     SupportsBrightness = supportsBrightness,
                     SupportsContrast   = supportsContrast,
-                    IsWmi              = isWmi
+                    IsWmi              = isWmi,
+                    SupportsHdr        = hdr?.IsSupported ?? false,
+                    HdrEnabled         = hdr?.IsEnabled ?? false,
+                    HdrAdapterIdLow    = hdr?.AdapterIdLow ?? 0,
+                    HdrAdapterIdHigh   = hdr?.AdapterIdHigh ?? 0,
+                    HdrTargetId        = hdr?.TargetId ?? 0
                 });
                 DestroyPhysicalMonitor(m.Handle);
             }
