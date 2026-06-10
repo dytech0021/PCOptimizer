@@ -725,6 +725,106 @@ namespace PCOptimizer
             ((App)Application.Current).ToggleBrightnessWindow();
         }
 
+        private void SetAllChecksForPreset(bool value)
+        {
+            foreach (var chk in new[] { ChkTemp, ChkDisk, ChkRecycleBin, ChkStartup, ChkServices,
+                ChkNetwork, ChkRegistry, ChkCortana, ChkDefrag, ChkPowerPlan, ChkVisualEffects,
+                ChkBackgroundApps, ChkStandbyRam, ChkGpuScheduling, ChkTelemetry, ChkGameBar,
+                ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache, ChkFastStartup,
+                ChkHibernation, ChkSystemRepair, ChkBloatware, ChkGameMode, ChkGamePriority,
+                ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
+                ChkCoreIsolation })
+                chk.IsChecked = value;
+        }
+
+        private void BtnPresetBasica_Click(object sender, RoutedEventArgs e)
+        {
+            SetAllChecksForPreset(false);
+            ChkTemp.IsChecked = true;
+            ChkDisk.IsChecked = true;
+            ChkRecycleBin.IsChecked = true;
+            ChkThumbnails.IsChecked = true;
+            ChkStandbyRam.IsChecked = true;
+            ChkRegistry.IsChecked = true;
+            ChkNetwork.IsChecked = true;
+            ChkGameBar.IsChecked = true;
+            UpdateSelectedCount();
+        }
+
+        private void BtnPresetIntermediaria_Click(object sender, RoutedEventArgs e)
+        {
+            SetAllChecksForPreset(false);
+            ChkTemp.IsChecked = true;
+            ChkDisk.IsChecked = true;
+            ChkRecycleBin.IsChecked = true;
+            ChkThumbnails.IsChecked = true;
+            ChkStandbyRam.IsChecked = true;
+            ChkRegistry.IsChecked = true;
+            ChkNetwork.IsChecked = true;
+            ChkGameBar.IsChecked = true;
+            ChkWinUpdateCache.IsChecked = true;
+            ChkShaderCache.IsChecked = true;
+            ChkServices.IsChecked = true;
+            ChkCortana.IsChecked = true;
+            ChkBackgroundApps.IsChecked = true;
+            ChkPowerPlan.IsChecked = true;
+            ChkTelemetry.IsChecked = true;
+            ChkGameMode.IsChecked = true;
+            ChkGameNetwork.IsChecked = true;
+            UpdateSelectedCount();
+        }
+
+        private void BtnPresetAvancada_Click(object sender, RoutedEventArgs e)
+        {
+            SetAllChecksForPreset(false);
+            ChkTemp.IsChecked = true;
+            ChkDisk.IsChecked = true;
+            ChkRecycleBin.IsChecked = true;
+            ChkThumbnails.IsChecked = true;
+            ChkStandbyRam.IsChecked = true;
+            ChkRegistry.IsChecked = true;
+            ChkNetwork.IsChecked = true;
+            ChkGameBar.IsChecked = true;
+            ChkWinUpdateCache.IsChecked = true;
+            ChkShaderCache.IsChecked = true;
+            ChkServices.IsChecked = true;
+            ChkCortana.IsChecked = true;
+            ChkBackgroundApps.IsChecked = true;
+            ChkPowerPlan.IsChecked = true;
+            ChkTelemetry.IsChecked = true;
+            ChkGameMode.IsChecked = true;
+            ChkGameNetwork.IsChecked = true;
+            ChkStartup.IsChecked = true;
+            ChkSsdTrim.IsChecked = true;
+            ChkVisualEffects.IsChecked = true;
+            ChkGpuScheduling.IsChecked = true;
+            ChkGamePriority.IsChecked = true;
+            ChkPowerThrottling.IsChecked = true;
+            ChkFastStartup.IsChecked = true;
+            UpdateSelectedCount();
+        }
+
+        private void BtnPresetFull_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show(
+                "⚠️ ATENÇÃO — Otimização Full\n\n" +
+                "Esta opção marcará TODAS as 31 otimizações sem exceção, incluindo:\n\n" +
+                "• Desfragmentação de disco (pode demorar horas em HDDs)\n" +
+                "• Reparo do sistema SFC + DISM (~5-10 minutos)\n" +
+                "• Remoção de bloatware (apps Microsoft serão desinstalados)\n" +
+                "• Desativar Hibernação (remove o hiberfil.sys)\n" +
+                "• Desativar Isolamento de Núcleo — reduz segurança do sistema\n" +
+                "• Desativar Precisão do Ponteiro — muda a sensação do mouse\n\n" +
+                "Deseja continuar e marcar tudo?",
+                "PC Optimizer — Modo Full",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            SetAllChecksForPreset(true);
+            UpdateSelectedCount();
+        }
+
         private void BtnThemeToggle_Click(object sender, RoutedEventArgs e)
         {
             ThemeManager.Toggle();
