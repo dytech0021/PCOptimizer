@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -138,6 +139,10 @@ namespace PCOptimizer.Services
         private const int MinKelvin = 1200; // 100% de intensidade (mais quente)
         private const int MaxKelvin = 6500; // 0% de intensidade (neutro)
 
+        // Serializa as gravações — o ciclo off→on da intensidade não pode
+        // entrelaçar com outro toggle vindo da UI ou de um arraste seguinte.
+        private static readonly object _winNlLock = new();
+
         // Localiza a subchave correta — o nome da folha varia entre versões do Windows.
         private static string? FindNlKeyPath(bool settings)
         {
@@ -184,6 +189,7 @@ namespace PCOptimizer.Services
 
         public static bool SetWindowsNightLight(bool enabled)
         {
+            lock (_winNlLock)
             try
             {
                 string? path = FindNlKeyPath(settings: false);
@@ -239,6 +245,7 @@ namespace PCOptimizer.Services
 
         public static bool SetWindowsNightLightIntensity(int percent)
         {
+            lock (_winNlLock)
             try
             {
                 percent = Math.Clamp(percent, 0, 100);
@@ -258,6 +265,17 @@ namespace PCOptimizer.Services
 
                 key.SetValue("Data", list.ToArray(), RegistryValueKind.Binary);
                 SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, "ImmersiveColorSet");
+
+                // O Windows só reaplica a temperatura quando o ESTADO transiciona —
+                // gravar apenas o blob de settings não tem efeito ao vivo. Cicla
+                // off→on (com pausa para o watcher do registro ver as duas
+                // transições) para aplicar o novo valor imediatamente.
+                if (GetWindowsNightLightEnabled())
+                {
+                    SetWindowsNightLight(false);
+                    Thread.Sleep(250);
+                    SetWindowsNightLight(true);
+                }
                 return true;
             }
             catch { return false; }
