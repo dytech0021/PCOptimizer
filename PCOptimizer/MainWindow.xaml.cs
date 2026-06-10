@@ -178,8 +178,10 @@ namespace PCOptimizer
                 ChkNetwork, ChkRegistry, ChkCortana, ChkDefrag,
                 ChkPowerPlan, ChkVisualEffects, ChkBackgroundApps, ChkStandbyRam,
                 ChkGpuScheduling, ChkFastStartup, ChkTelemetry, ChkGameBar,
-                ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails,
-                ChkHibernation, ChkSystemRepair, ChkBloatware
+                ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache,
+                ChkHibernation, ChkSystemRepair, ChkBloatware,
+                ChkGameMode, ChkGamePriority, ChkGameNetwork, ChkPowerThrottling,
+                ChkFullscreenOpt, ChkMousePrecision, ChkCoreIsolation
             };
 
             int total = boxes.Length;
@@ -221,8 +223,15 @@ namespace PCOptimizer
             ChkSsdTrim.IsChecked = value;
             ChkWinUpdateCache.IsChecked = value;
             ChkThumbnails.IsChecked = value;
-            // Nota: Hibernação, Inicialização Rápida, Reparo e Bloatware ficam de fora
-            // do "selecionar tudo" por serem opcionais/mais demorados — opt-in manual.
+            ChkShaderCache.IsChecked = value;
+            // Games (seguras)
+            ChkGameMode.IsChecked = value;
+            ChkGamePriority.IsChecked = value;
+            ChkGameNetwork.IsChecked = value;
+            ChkPowerThrottling.IsChecked = value;
+            // Nota: Hibernação, Inicialização Rápida, Reparo, Bloatware e as opções
+            // de games com trade-off (Tela Cheia, Ponteiro, Isolamento de Núcleo)
+            // ficam de fora do "selecionar tudo" — opt-in manual.
             UpdateSelectedCount();
         }
 
@@ -236,8 +245,10 @@ namespace PCOptimizer
             var allChecks = new[] { ChkTemp, ChkDisk, ChkRecycleBin, ChkStartup, ChkServices,
                 ChkNetwork, ChkRegistry, ChkCortana, ChkDefrag, ChkPowerPlan, ChkVisualEffects,
                 ChkBackgroundApps, ChkStandbyRam, ChkGpuScheduling, ChkTelemetry, ChkGameBar,
-                ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkFastStartup, ChkHibernation,
-                ChkSystemRepair, ChkBloatware };
+                ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache, ChkFastStartup,
+                ChkHibernation, ChkSystemRepair, ChkBloatware, ChkGameMode, ChkGamePriority,
+                ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
+                ChkCoreIsolation };
             int totalSelected = 0;
             foreach (var c in allChecks) if (c.IsChecked == true) totalSelected++;
 
@@ -365,12 +376,12 @@ namespace PCOptimizer
 
             if (ChkPowerPlan.IsChecked == true)
             {
-                Log("Ativando plano de Alto Desempenho...");
+                Log("Ativando plano de Desempenho Máximo...");
                 StatusPowerPlan.Text = "⏳";
                 bool ok = await Task.Run(() => PowerPlanService.Apply());
                 totalSteps++;
                 SetStatus(StatusPowerPlan, ok ? "✅" : "⚠️", ok);
-                Log(ok ? "✅ Plano de energia: Alto Desempenho ativado" : "⚠️ Plano de energia: requer admin");
+                Log(ok ? "✅ Plano de energia: Desempenho Máximo ativado" : "⚠️ Plano de energia: requer admin");
                 completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
             }
 
@@ -514,6 +525,96 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusBloatware, "✅", true);
                 Log($"✅ Bloatware: {count} apps processados");
+                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+            }
+
+            if (ChkShaderCache.IsChecked == true)
+            {
+                Log("Limpando cache de shaders...");
+                StatusShaderCache.Text = "⏳";
+                long bytes = await Task.Run(() => ShaderCacheService.Clean());
+                totalFreed += bytes; totalSteps++;
+                SetStatus(StatusShaderCache, "✅", true);
+                Log($"✅ Cache de shaders: {FormatBytes(bytes)} liberados");
+                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+            }
+
+            if (ChkGameMode.IsChecked == true)
+            {
+                Log("Ativando Modo de Jogo do Windows...");
+                StatusGameMode.Text = "⏳";
+                bool ok = await Task.Run(() => GameModeService.Enable());
+                totalSteps++;
+                SetStatus(StatusGameMode, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Modo de Jogo ativado" : "⚠️ Modo de Jogo: falhou");
+                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+            }
+
+            if (ChkGamePriority.IsChecked == true)
+            {
+                Log("Aplicando prioridade máxima para jogos...");
+                StatusGamePriority.Text = "⏳";
+                bool ok = await Task.Run(() => GamePriorityService.Apply());
+                totalSteps++;
+                SetStatus(StatusGamePriority, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Prioridade de jogos: CPU/GPU em modo High" : "⚠️ Prioridade de jogos: requer admin");
+                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+            }
+
+            if (ChkGameNetwork.IsChecked == true)
+            {
+                Log("Reduzindo latência de rede para jogos...");
+                StatusGameNetwork.Text = "⏳";
+                int tweaks = await Task.Run(() => GameNetworkService.Apply());
+                totalSteps++;
+                bool ok = tweaks > 0;
+                SetStatus(StatusGameNetwork, ok ? "✅" : "⚠️", ok);
+                Log(ok ? $"✅ Latência de rede: {tweaks} ajustes aplicados" : "⚠️ Latência de rede: requer admin");
+                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+            }
+
+            if (ChkPowerThrottling.IsChecked == true)
+            {
+                Log("Desativando Power Throttling...");
+                StatusPowerThrottling.Text = "⏳";
+                bool ok = await Task.Run(() => PowerThrottlingService.Disable());
+                totalSteps++;
+                SetStatus(StatusPowerThrottling, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Power Throttling desativado" : "⚠️ Power Throttling: requer admin");
+                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+            }
+
+            if (ChkFullscreenOpt.IsChecked == true)
+            {
+                Log("Desativando Otimizações de Tela Cheia...");
+                StatusFullscreenOpt.Text = "⏳";
+                bool ok = await Task.Run(() => FullscreenOptimizationsService.Disable());
+                totalSteps++;
+                SetStatus(StatusFullscreenOpt, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Otimizações de Tela Cheia desativadas" : "⚠️ Tela Cheia: falhou");
+                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+            }
+
+            if (ChkMousePrecision.IsChecked == true)
+            {
+                Log("Desativando precisão aprimorada do ponteiro...");
+                StatusMousePrecision.Text = "⏳";
+                bool ok = await Task.Run(() => MousePrecisionService.Disable());
+                totalSteps++;
+                SetStatus(StatusMousePrecision, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Aceleração do mouse desativada" : "⚠️ Precisão do ponteiro: falhou");
+                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+            }
+
+            if (ChkCoreIsolation.IsChecked == true)
+            {
+                Log("Desativando Isolamento de Núcleo (HVCI)...");
+                StatusCoreIsolation.Text = "⏳";
+                bool ok = await Task.Run(() => CoreIsolationService.Disable());
+                totalSteps++;
+                SetStatus(StatusCoreIsolation, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Isolamento de Núcleo desativado (reinicie o PC para aplicar)"
+                       : "⚠️ Isolamento de Núcleo: requer admin");
                 completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
             }
 
