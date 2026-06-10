@@ -85,9 +85,9 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="PC Optimizer" FontSize="22" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimary}"/>
-                            <Border Background="{DynamicResource BadgeBg}" CornerRadius="8"
-                                    Padding="8,3" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="v1.20.0" FontSize="10" FontWeight="SemiBold"
+                            <Border Background="{DynamicResource BadgeBg}" CornerRadius="20"
+                                    Padding="10,3" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="TxtVersion" FontSize="10" FontWeight="SemiBold"
                                            Foreground="{DynamicResource BadgeFg}"/>
                             </Border>
                         </StackPanel>
@@ -939,12 +939,16 @@
                            HorizontalAlignment="Center" Margin="0,0,0,6"/>
                 <Button x:Name="BtnRun" Grid.Row="1" Style="{StaticResource RunButtonStyle}"
                         HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                        Padding="0,14" FontSize="15" FontWeight="Bold"
-                        Background="{DynamicResource ButtonPrimaryBg}" Foreground="{DynamicResource ButtonPrimaryFg}"
+                        Padding="0,16" FontSize="15" FontWeight="Bold"
+                        Background="{DynamicResource RunButtonBg}" Foreground="{DynamicResource RunButtonFg}"
                         BorderThickness="0" Cursor="Hand" Click="BtnRun_Click">
+                    <Button.Effect>
+                        <DropShadowEffect BlurRadius="22" ShadowDepth="0" Opacity="0.55" Color="#8B5CF6"/>
+                    </Button.Effect>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="⚡" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="⚡" FontSize="17" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <TextBlock Text="Executar Otimizações" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <TextBlock Text=" →" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
             </Grid>

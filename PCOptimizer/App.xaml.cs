@@ -26,6 +26,10 @@ namespace PCOptimizer
             TrayService.ShowBrightnessRequested += ToggleBrightnessWindow;
             TrayService.ExitRequested += Shutdown;
             HotkeyService.HotkeyPressed += ToggleBrightnessWindow;
+
+            // Exibe a janela flutuante de brilho automaticamente ao abrir
+            if (MainWindow != null)
+                MainWindow.Loaded += (_, _) => ToggleBrightnessWindow();
         }
 
         private bool HandleUpdateInstall(string[] args)
