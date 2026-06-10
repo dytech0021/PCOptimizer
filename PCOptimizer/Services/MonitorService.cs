@@ -148,6 +148,29 @@ namespace PCOptimizer.Services
             return "";
         }
 
+        // ── Cache de handles físicos ──────────────────────────────────────────
+        // Enumerar monitores via DDC/CI custa centenas de ms (leituras I2C).
+        // Os handles ficam vivos entre os sets para a barra responder na hora;
+        // se um set falhar (monitor reconectado), re-enumera e tenta de novo.
+
+        private static readonly object _cacheLock = new();
+        private static List<MonitorInfo>? _cache;
+
+        private static List<MonitorInfo> GetCachedMonitors()
+        {
+            lock (_cacheLock) { return _cache ??= GetMonitors(); }
+        }
+
+        private static void InvalidateCache()
+        {
+            lock (_cacheLock)
+            {
+                if (_cache != null)
+                    foreach (var m in _cache) DestroyPhysicalMonitor(m.Handle);
+                _cache = null;
+            }
+        }
+
         // ── DDC monitor enumeration ───────────────────────────────────────────
 
         public static List<MonitorInfo> GetMonitors()
@@ -371,7 +394,8 @@ namespace PCOptimizer.Services
 
         public static List<MonitorEntry> GetMonitorEntries()
         {
-            var monitors = GetMonitors();
+            InvalidateCache();
+            var monitors = GetCachedMonitors();
 
             // Pure WMI path: no DDC monitors at all (notebook with no external display)
             if (monitors.Count == 0 && HasWmiMonitors())
@@ -485,7 +509,7 @@ namespace PCOptimizer.Services
                     HdrAdapterIdHigh   = hdr?.AdapterIdHigh ?? 0,
                     HdrTargetId        = hdr?.TargetId ?? 0
                 });
-                DestroyPhysicalMonitor(m.Handle);
+                // Handle fica vivo no cache para os sets serem instantâneos
             }
 
             return entries;
@@ -494,42 +518,39 @@ namespace PCOptimizer.Services
         public static bool SetBrightnessForIndex(int monitorIndex, int percent)
         {
             percent = Math.Clamp(percent, 0, 100);
-            var monitors = GetMonitors();
-            bool success = false;
+            if (TrySetBrightness(GetCachedMonitors(), monitorIndex, percent)) return true;
+            // Handle pode ter ficado inválido (monitor des/reconectado) — re-enumera
+            InvalidateCache();
+            return TrySetBrightness(GetCachedMonitors(), monitorIndex, percent);
+        }
 
-            for (int i = 0; i < monitors.Count; i++)
-            {
-                var m = monitors[i];
-                if (i == monitorIndex && m.SupportsBrightness)
-                {
-                    uint target = m.MaxBrightness > m.MinBrightness
-                        ? m.MinBrightness + (uint)((m.MaxBrightness - m.MinBrightness) * percent / 100.0)
-                        : (uint)percent;
-                    success = SetMonitorBrightness(m.Handle, target)
-                           || SetVCPFeature(m.Handle, VCP_LUMINANCE, target);
-                }
-                DestroyPhysicalMonitor(m.Handle);
-            }
-            return success;
+        private static bool TrySetBrightness(List<MonitorInfo> monitors, int i, int percent)
+        {
+            if (i < 0 || i >= monitors.Count) return false;
+            var m = monitors[i];
+            if (!m.SupportsBrightness) return false;
+            uint target = m.MaxBrightness > m.MinBrightness
+                ? m.MinBrightness + (uint)((m.MaxBrightness - m.MinBrightness) * percent / 100.0)
+                : (uint)percent;
+            return SetMonitorBrightness(m.Handle, target)
+                || SetVCPFeature(m.Handle, VCP_LUMINANCE, target);
         }
 
         public static bool SetContrastForIndex(int monitorIndex, int percent)
         {
             percent = Math.Clamp(percent, 0, 100);
-            var monitors = GetMonitors();
-            bool success = false;
+            if (TrySetContrast(GetCachedMonitors(), monitorIndex, percent)) return true;
+            InvalidateCache();
+            return TrySetContrast(GetCachedMonitors(), monitorIndex, percent);
+        }
 
-            for (int i = 0; i < monitors.Count; i++)
-            {
-                var m = monitors[i];
-                if (i == monitorIndex && m.SupportsContrast && m.MaxContrast >= m.MinContrast)
-                {
-                    uint range = m.MaxContrast - m.MinContrast;
-                    success = SetMonitorContrast(m.Handle, m.MinContrast + (uint)(range * percent / 100.0));
-                }
-                DestroyPhysicalMonitor(m.Handle);
-            }
-            return success;
+        private static bool TrySetContrast(List<MonitorInfo> monitors, int i, int percent)
+        {
+            if (i < 0 || i >= monitors.Count) return false;
+            var m = monitors[i];
+            if (!m.SupportsContrast || m.MaxContrast < m.MinContrast) return false;
+            uint range = m.MaxContrast - m.MinContrast;
+            return SetMonitorContrast(m.Handle, m.MinContrast + (uint)(range * percent / 100.0));
         }
 
         // ── All-monitors helpers (used by presets) ────────────────────────────
@@ -537,20 +558,11 @@ namespace PCOptimizer.Services
         public static int SetBrightnessAll(int percent)
         {
             percent = Math.Clamp(percent, 0, 100);
-            var monitors = GetMonitors();
-            int success = 0;
-
-            foreach (var m in monitors)
+            int success = SetBrightnessAllCore(GetCachedMonitors(), percent);
+            if (success == 0)
             {
-                if (m.SupportsBrightness)
-                {
-                    uint target = m.MaxBrightness > m.MinBrightness
-                        ? m.MinBrightness + (uint)((m.MaxBrightness - m.MinBrightness) * percent / 100.0)
-                        : (uint)percent;
-                    if (SetMonitorBrightness(m.Handle, target) || SetVCPFeature(m.Handle, VCP_LUMINANCE, target))
-                        success++;
-                }
-                DestroyPhysicalMonitor(m.Handle);
+                InvalidateCache();
+                success = SetBrightnessAllCore(GetCachedMonitors(), percent);
             }
 
             if (success == 0 && HasWmiMonitors())
@@ -559,23 +571,43 @@ namespace PCOptimizer.Services
             return success;
         }
 
+        private static int SetBrightnessAllCore(List<MonitorInfo> monitors, int percent)
+        {
+            int success = 0;
+            foreach (var m in monitors)
+            {
+                if (!m.SupportsBrightness) continue;
+                uint target = m.MaxBrightness > m.MinBrightness
+                    ? m.MinBrightness + (uint)((m.MaxBrightness - m.MinBrightness) * percent / 100.0)
+                    : (uint)percent;
+                if (SetMonitorBrightness(m.Handle, target) || SetVCPFeature(m.Handle, VCP_LUMINANCE, target))
+                    success++;
+            }
+            return success;
+        }
+
         public static int SetContrastAll(int percent)
         {
             percent = Math.Clamp(percent, 0, 100);
-            var monitors = GetMonitors();
-            int success = 0;
+            int success = SetContrastAllCore(GetCachedMonitors(), percent);
+            if (success == 0)
+            {
+                InvalidateCache();
+                success = SetContrastAllCore(GetCachedMonitors(), percent);
+            }
+            return success;
+        }
 
+        private static int SetContrastAllCore(List<MonitorInfo> monitors, int percent)
+        {
+            int success = 0;
             foreach (var m in monitors)
             {
-                if (m.SupportsContrast && m.MaxContrast >= m.MinContrast)
-                {
-                    uint range = m.MaxContrast - m.MinContrast;
-                    if (SetMonitorContrast(m.Handle, m.MinContrast + (uint)(range * percent / 100.0)))
-                        success++;
-                }
-                DestroyPhysicalMonitor(m.Handle);
+                if (!m.SupportsContrast || m.MaxContrast < m.MinContrast) continue;
+                uint range = m.MaxContrast - m.MinContrast;
+                if (SetMonitorContrast(m.Handle, m.MinContrast + (uint)(range * percent / 100.0)))
+                    success++;
             }
-
             return success;
         }
 

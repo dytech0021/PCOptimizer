@@ -20,8 +20,11 @@ namespace PCOptimizer.Views
             public required TextBlock TxtBrightness { get; init; }
             public Slider? SliderContrast { get; init; }
             public TextBlock? TxtContrast { get; init; }
-            public DateTime LastBrightnessChange;
-            public DateTime LastContrastChange;
+            // Throttle "último valor vence": -1 = nada pendente
+            public int PendingBrightness = -1;
+            public bool BrightnessBusy;
+            public int PendingContrast = -1;
+            public bool ContrastBusy;
             public bool SupportsHdr { get; init; }
             public bool HdrEnabled { get; set; }
             public uint HdrAdapterIdLow { get; init; }
@@ -268,22 +271,28 @@ namespace PCOptimizer.Views
             if (entry.SupportsHdr)
                 container.Children.Add(MakeHdrButton(mc));
 
-            // Events
+            // Events — aplica o primeiro valor NA HORA; durante o arraste, envia
+            // sempre o valor mais recente assim que o anterior termina (sem debounce)
             sliderB.ValueChanged += async (_, ev) =>
             {
                 if (!_initialized) return;
                 int val = (int)ev.NewValue;
                 txtB.Text = $"{val}%";
-                mc.LastBrightnessChange = DateTime.Now;
-                var stamp = mc.LastBrightnessChange;
-                await Task.Delay(150);
-                if (stamp != mc.LastBrightnessChange) return;
+                mc.PendingBrightness = val;
+                if (mc.BrightnessBusy) return;
+                mc.BrightnessBusy = true;
                 try
                 {
-                    if (mc.IsWmi) await Task.Run(() => MonitorService.SetWmiBrightness(val));
-                    else          await Task.Run(() => MonitorService.SetBrightnessForIndex(mc.Index, val));
+                    while (mc.PendingBrightness >= 0)
+                    {
+                        int v = mc.PendingBrightness;
+                        mc.PendingBrightness = -1;
+                        if (mc.IsWmi) await Task.Run(() => MonitorService.SetWmiBrightness(v));
+                        else          await Task.Run(() => MonitorService.SetBrightnessForIndex(mc.Index, v));
+                    }
                 }
                 catch (Exception ex) { TxtStatus.Text = $"Erro brilho: {ex.Message}"; }
+                finally { mc.BrightnessBusy = false; }
             };
 
             if (sliderC != null && txtC != null)
@@ -294,12 +303,20 @@ namespace PCOptimizer.Views
                     if (!_initialized || !entry.SupportsContrast) return;
                     int val = (int)ev.NewValue;
                     capturedTxtC.Text = $"{val}%";
-                    mc.LastContrastChange = DateTime.Now;
-                    var stamp = mc.LastContrastChange;
-                    await Task.Delay(150);
-                    if (stamp != mc.LastContrastChange) return;
-                    try { await Task.Run(() => MonitorService.SetContrastForIndex(mc.Index, val)); }
+                    mc.PendingContrast = val;
+                    if (mc.ContrastBusy) return;
+                    mc.ContrastBusy = true;
+                    try
+                    {
+                        while (mc.PendingContrast >= 0)
+                        {
+                            int v = mc.PendingContrast;
+                            mc.PendingContrast = -1;
+                            await Task.Run(() => MonitorService.SetContrastForIndex(mc.Index, v));
+                        }
+                    }
                     catch (Exception ex) { TxtStatus.Text = $"Erro contraste: {ex.Message}"; }
+                    finally { mc.ContrastBusy = false; }
                 };
             }
 
