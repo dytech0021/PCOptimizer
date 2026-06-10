@@ -12,6 +12,13 @@ namespace PCOptimizer
     {
         private bool _isRunning;
 
+        // Progresso ponderado: cada otimização tem uma duração típica estimada,
+        // então a previsão é do PROCESSO TOTAL (não passo a passo) e a barra
+        // avança proporcional ao trabalho real, não à contagem de passos.
+        private int _completedSteps, _totalSelectedSteps;
+        private double _doneWeight, _totalWeight;
+        private DateTime _runStart;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -130,33 +137,82 @@ namespace PCOptimizer
             return $"{bytes} bytes";
         }
 
-        private void UpdateProgress(int completed, int total, DateTime startTime)
+        // Duração típica estimada de cada otimização, em segundos — base da
+        // previsão de tempo total, refinada pelo tempo real durante a execução.
+        private double GetWeight(System.Windows.Controls.CheckBox chk)
         {
-            if (total == 0) return;
-            double pct = completed * 100.0 / total;
+            if (chk == ChkTemp) return 6;
+            if (chk == ChkDisk) return 8;
+            if (chk == ChkRecycleBin) return 3;
+            if (chk == ChkStartup) return 20;       // interativo (janela do usuário)
+            if (chk == ChkServices) return 8;
+            if (chk == ChkNetwork) return 10;
+            if (chk == ChkRegistry) return 2;
+            if (chk == ChkCortana) return 2;
+            if (chk == ChkDefrag) return 240;
+            if (chk == ChkPowerPlan) return 5;
+            if (chk == ChkVisualEffects) return 2;
+            if (chk == ChkBackgroundApps) return 2;
+            if (chk == ChkStandbyRam) return 6;
+            if (chk == ChkGpuScheduling) return 1;
+            if (chk == ChkTelemetry) return 4;
+            if (chk == ChkGameBar) return 1;
+            if (chk == ChkSsdTrim) return 20;
+            if (chk == ChkWinUpdateCache) return 12;
+            if (chk == ChkThumbnails) return 2;
+            if (chk == ChkShaderCache) return 4;
+            if (chk == ChkFastStartup) return 3;
+            if (chk == ChkHibernation) return 4;
+            if (chk == ChkSystemRepair) return 420;
+            if (chk == ChkBloatware) return 60;
+            if (chk == ChkGameMode) return 1;
+            if (chk == ChkGamePriority) return 1;
+            if (chk == ChkGameNetwork) return 2;
+            if (chk == ChkPowerThrottling) return 1;
+            if (chk == ChkFullscreenOpt) return 1;
+            if (chk == ChkMousePrecision) return 1;
+            if (chk == ChkCoreIsolation) return 1;
+            return 5;
+        }
+
+        private void StepDone(System.Windows.Controls.CheckBox chk)
+        {
+            _completedSteps++;
+            _doneWeight += GetWeight(chk);
+            UpdateProgressDisplay();
+        }
+
+        private void UpdateProgressDisplay()
+        {
+            if (_totalWeight <= 0) return;
+            double pct = Math.Min(100, _doneWeight * 100.0 / _totalWeight);
             Progress.Value = pct;
 
+            double elapsed = (DateTime.Now - _runStart).TotalSeconds;
             string timeText = "";
-            if (completed > 0 && completed < total)
+            if (_doneWeight < _totalWeight)
             {
-                double elapsed = (DateTime.Now - startTime).TotalSeconds;
-                if (completed >= 2 && elapsed >= 1.5)
-                {
-                    double remaining = elapsed / completed * (total - completed);
-                    if (remaining >= 60)
-                        timeText = $" • ~{(int)Math.Ceiling(remaining / 60)}min restantes";
-                    else if (remaining >= 10)
-                        timeText = $" • ~{(int)(Math.Ceiling(remaining / 5) * 5)}s restantes";
-                    else
-                        timeText = " • quase pronto";
-                }
-                else
-                {
-                    timeText = " • calculando...";
-                }
+                // Fator medido (segundos reais por unidade de peso), suavizado
+                // com o nominal enquanto pouca coisa rodou — evita previsões
+                // erráticas se o primeiro passo for atipicamente rápido/lento.
+                double measured = _doneWeight > 0 ? elapsed / _doneWeight : 1.0;
+                double blend = Math.Min(1.0, _doneWeight / Math.Max(1.0, _totalWeight * 0.2));
+                double factor = measured * blend + (1.0 - blend);
+                double remaining = factor * (_totalWeight - _doneWeight);
+                timeText = $" • restam ~{FormatDuration(remaining)} de ~{FormatDuration(elapsed + remaining)}";
             }
 
-            TxtProgress.Text = $"{completed} / {total} otimizações — {pct:F0}%{timeText}";
+            TxtProgress.Text = $"{_completedSteps} / {_totalSelectedSteps} otimizações — {pct:F0}%{timeText}";
+        }
+
+        private static string FormatDuration(double seconds)
+        {
+            if (seconds < 5) return "5s";
+            if (seconds < 60) return $"{(int)Math.Ceiling(seconds / 5) * 5}s";
+            int m = (int)(seconds / 60);
+            int s = (int)Math.Round(seconds % 60 / 10) * 10;
+            if (s == 60) { m++; s = 0; }
+            return s > 0 ? $"{m}min {s}s" : $"{m}min";
         }
 
         private void SetStatus(System.Windows.Controls.TextBlock status, string text, bool success)
@@ -249,17 +305,19 @@ namespace PCOptimizer
                 ChkHibernation, ChkSystemRepair, ChkBloatware, ChkGameMode, ChkGamePriority,
                 ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
                 ChkCoreIsolation };
-            int totalSelected = 0;
-            foreach (var c in allChecks) if (c.IsChecked == true) totalSelected++;
-
-            int completedSteps = 0;
-            var startTime = DateTime.Now;
+            _totalSelectedSteps = 0;
+            _totalWeight = 0;
+            foreach (var c in allChecks)
+                if (c.IsChecked == true) { _totalSelectedSteps++; _totalWeight += GetWeight(c); }
+            _completedSteps = 0;
+            _doneWeight = 0;
+            _runStart = DateTime.Now;
 
             Progress.Visibility = Visibility.Visible;
             Progress.IsIndeterminate = false;
             Progress.Value = 0;
             TxtProgress.Visibility = Visibility.Visible;
-            TxtProgress.Text = $"0 / {totalSelected} — 0%";
+            TxtProgress.Text = $"0 / {_totalSelectedSteps} otimizações — previsão total: ~{FormatDuration(_totalWeight)}";
             TxtLog.Text = "Iniciando otimizações selecionadas...";
 
             long totalFreed = 0;
@@ -275,7 +333,7 @@ namespace PCOptimizer
                 totalFreed += bytes; totalSteps++;
                 SetStatus(StatusTemp, "✅", true);
                 Log($"✅ Temporários: {files} arquivos ({FormatBytes(bytes)})");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkTemp);
             }
 
             if (ChkDisk.IsChecked == true)
@@ -286,7 +344,7 @@ namespace PCOptimizer
                 totalFreed += bytes; totalSteps++;
                 SetStatus(StatusDisk, "✅", true);
                 Log($"✅ Disco: {files} arquivos ({FormatBytes(bytes)})");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkDisk);
             }
 
             if (ChkRecycleBin.IsChecked == true)
@@ -297,7 +355,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusRecycleBin, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Lixeira esvaziada" : "⚠️ Lixeira já estava vazia");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkRecycleBin);
             }
 
             if (ChkStartup.IsChecked == true)
@@ -316,7 +374,7 @@ namespace PCOptimizer
                     SetStatus(StatusStartup, "⏭️", true);
                     Log("⏭️ Inicialização: ignorado");
                 }
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkStartup);
             }
 
             if (ChkServices.IsChecked == true)
@@ -327,7 +385,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusServices, "✅", true);
                 Log($"✅ Serviços: {count} otimizados");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkServices);
             }
 
             if (ChkNetwork.IsChecked == true)
@@ -338,7 +396,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusNetwork, "✅", true);
                 Log($"✅ Rede: {steps} otimizações");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkNetwork);
             }
 
             if (ChkRegistry.IsChecked == true)
@@ -349,7 +407,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusRegistry, "✅", true);
                 Log($"✅ Registro: {tweaks} tweaks");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkRegistry);
             }
 
             if (ChkCortana.IsChecked == true)
@@ -360,7 +418,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusCortana, ok ? "✅" : "❌", ok);
                 Log(ok ? "✅ Cortana desativada" : "❌ Erro ao desativar Cortana");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkCortana);
             }
 
             if (ChkDefrag.IsChecked == true)
@@ -371,7 +429,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusDefrag, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Disco desfragmentado" : "⚠️ Desfragmentação parcial ou SSD");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkDefrag);
             }
 
             if (ChkPowerPlan.IsChecked == true)
@@ -382,7 +440,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusPowerPlan, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Plano de energia: Desempenho Máximo ativado" : "⚠️ Plano de energia: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkPowerPlan);
             }
 
             if (ChkVisualEffects.IsChecked == true)
@@ -393,7 +451,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusVisualEffects, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Efeitos visuais otimizados" : "⚠️ Efeitos visuais: falhou");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkVisualEffects);
             }
 
             if (ChkBackgroundApps.IsChecked == true)
@@ -404,7 +462,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusBackgroundApps, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Apps em segundo plano desativados" : "⚠️ Apps em segundo plano: falhou");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkBackgroundApps);
             }
 
             if (ChkStandbyRam.IsChecked == true)
@@ -415,7 +473,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusStandbyRam, "✅", true);
                 Log($"✅ Memória liberada em {count} processos");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkStandbyRam);
             }
 
             if (ChkGpuScheduling.IsChecked == true)
@@ -426,7 +484,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusGpuScheduling, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Agendamento de GPU ativado (reinicie o PC)" : "⚠️ Agendamento de GPU: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkGpuScheduling);
             }
 
             if (ChkTelemetry.IsChecked == true)
@@ -437,7 +495,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusTelemetry, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Telemetria desativada" : "⚠️ Telemetria: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkTelemetry);
             }
 
             if (ChkGameBar.IsChecked == true)
@@ -448,7 +506,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusGameBar, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Xbox Game Bar / DVR desativado" : "⚠️ Game Bar: falhou");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkGameBar);
             }
 
             if (ChkSsdTrim.IsChecked == true)
@@ -459,7 +517,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusSsdTrim, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ SSD otimizado (TRIM)" : "⚠️ TRIM: falhou ou não aplicável");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkSsdTrim);
             }
 
             if (ChkWinUpdateCache.IsChecked == true)
@@ -470,7 +528,7 @@ namespace PCOptimizer
                 totalFreed += bytes; totalSteps++;
                 SetStatus(StatusWinUpdateCache, "✅", true);
                 Log($"✅ Cache do Windows Update: {FormatBytes(bytes)} liberados");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkWinUpdateCache);
             }
 
             if (ChkThumbnails.IsChecked == true)
@@ -481,7 +539,7 @@ namespace PCOptimizer
                 totalFreed += bytes; totalSteps++;
                 SetStatus(StatusThumbnails, "✅", true);
                 Log($"✅ Cache de miniaturas: {FormatBytes(bytes)} liberados");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkThumbnails);
             }
 
             if (ChkFastStartup.IsChecked == true)
@@ -492,7 +550,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusFastStartup, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Inicialização Rápida desativada" : "⚠️ Inicialização Rápida: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkFastStartup);
             }
 
             if (ChkHibernation.IsChecked == true)
@@ -503,7 +561,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusHibernation, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Hibernação desativada (hiberfil.sys removido)" : "⚠️ Hibernação: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkHibernation);
             }
 
             if (ChkSystemRepair.IsChecked == true)
@@ -514,7 +572,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusSystemRepair, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Verificação de arquivos do sistema concluída" : "⚠️ Reparo: requer admin ou houve erro");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkSystemRepair);
             }
 
             if (ChkBloatware.IsChecked == true)
@@ -525,7 +583,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusBloatware, "✅", true);
                 Log($"✅ Bloatware: {count} apps processados");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkBloatware);
             }
 
             if (ChkShaderCache.IsChecked == true)
@@ -536,7 +594,7 @@ namespace PCOptimizer
                 totalFreed += bytes; totalSteps++;
                 SetStatus(StatusShaderCache, "✅", true);
                 Log($"✅ Cache de shaders: {FormatBytes(bytes)} liberados");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkShaderCache);
             }
 
             if (ChkGameMode.IsChecked == true)
@@ -547,7 +605,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusGameMode, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Modo de Jogo ativado" : "⚠️ Modo de Jogo: falhou");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkGameMode);
             }
 
             if (ChkGamePriority.IsChecked == true)
@@ -558,7 +616,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusGamePriority, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Prioridade de jogos: CPU/GPU em modo High" : "⚠️ Prioridade de jogos: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkGamePriority);
             }
 
             if (ChkGameNetwork.IsChecked == true)
@@ -570,7 +628,7 @@ namespace PCOptimizer
                 bool ok = tweaks > 0;
                 SetStatus(StatusGameNetwork, ok ? "✅" : "⚠️", ok);
                 Log(ok ? $"✅ Latência de rede: {tweaks} ajustes aplicados" : "⚠️ Latência de rede: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkGameNetwork);
             }
 
             if (ChkPowerThrottling.IsChecked == true)
@@ -581,7 +639,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusPowerThrottling, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Power Throttling desativado" : "⚠️ Power Throttling: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkPowerThrottling);
             }
 
             if (ChkFullscreenOpt.IsChecked == true)
@@ -592,7 +650,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusFullscreenOpt, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Otimizações de Tela Cheia desativadas" : "⚠️ Tela Cheia: falhou");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkFullscreenOpt);
             }
 
             if (ChkMousePrecision.IsChecked == true)
@@ -603,7 +661,7 @@ namespace PCOptimizer
                 totalSteps++;
                 SetStatus(StatusMousePrecision, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Aceleração do mouse desativada" : "⚠️ Precisão do ponteiro: falhou");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkMousePrecision);
             }
 
             if (ChkCoreIsolation.IsChecked == true)
@@ -615,7 +673,7 @@ namespace PCOptimizer
                 SetStatus(StatusCoreIsolation, ok ? "✅" : "⚠️", ok);
                 Log(ok ? "✅ Isolamento de Núcleo desativado (reinicie o PC para aplicar)"
                        : "⚠️ Isolamento de Núcleo: requer admin");
-                completedSteps++; UpdateProgress(completedSteps, totalSelected, startTime);
+                StepDone(ChkCoreIsolation);
             }
 
                 Log($"\n🎉 Concluído! {totalSteps} otimizações. Espaço liberado: {FormatBytes(totalFreed)}");

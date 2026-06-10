@@ -120,30 +120,32 @@
                                           Cursor="Hand" Focusable="False">
                                 <ToggleButton.Template>
                                     <ControlTemplate TargetType="ToggleButton">
-                                        <Border Background="Transparent" Padding="6,10,6,8">
+                                        <Border x:Name="HeaderCard"
+                                                Background="{DynamicResource SurfaceBg}"
+                                                BorderBrush="{DynamicResource BorderColor}"
+                                                BorderThickness="1.5" CornerRadius="16"
+                                                Padding="18,16" Margin="0,6">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock x:Name="Arrow" Text="▶" FontSize="10"
-                                                           VerticalAlignment="Center"
+                                                <ContentPresenter VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="Arrow" Grid.Column="1" Text="▶"
+                                                           FontSize="16" VerticalAlignment="Center"
+                                                           Margin="12,0,4,0"
                                                            Foreground="{DynamicResource TextSecondary}"
                                                            RenderTransformOrigin="0.5,0.5">
                                                     <TextBlock.RenderTransform>
                                                         <RotateTransform Angle="0"/>
                                                     </TextBlock.RenderTransform>
                                                 </TextBlock>
-                                                <ContentPresenter Grid.Column="1" Margin="8,0,12,0"
-                                                                  VerticalAlignment="Center"/>
-                                                <Border Grid.Column="2" Height="1"
-                                                        Background="{DynamicResource BorderColor}"
-                                                        VerticalAlignment="Center"/>
                                             </Grid>
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="HeaderCard" Property="BorderBrush"
+                                                        Value="{DynamicResource Card5Border}"/>
                                                 <Trigger.EnterActions>
                                                     <BeginStoryboard>
                                                         <Storyboard>
@@ -164,6 +166,8 @@
                                                 </Trigger.ExitActions>
                                             </Trigger>
                                             <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="HeaderCard" Property="BorderBrush"
+                                                        Value="{DynamicResource Card5Border}"/>
                                                 <Setter TargetName="Arrow" Property="Foreground"
                                                         Value="{DynamicResource TextPrimary}"/>
                                             </Trigger>
@@ -304,13 +308,17 @@
                 <Expander Style="{StaticResource GroupExpanderStyle}" IsExpanded="False" Margin="0,2,0,0">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="🧹" FontSize="13" VerticalAlignment="Center"/>
-                            <TextBlock Text="LIMPEZA" FontSize="11" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text="(9)" FontSize="10"
-                                       Foreground="{DynamicResource TextTertiary}" Margin="6,0,0,0"
-                                       VerticalAlignment="Center"/>
+                            <Border Width="52" Height="52" CornerRadius="14"
+                                    Background="{DynamicResource Card7Bg}">
+                                <TextBlock Text="🧹" FontSize="24"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center" Margin="16,0,0,0">
+                                <TextBlock Text="Limpeza" FontSize="17" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="9 otimizações de espaço e arquivos" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                            </StackPanel>
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="0,2,0,4">
@@ -563,13 +571,17 @@
                 <Expander Style="{StaticResource GroupExpanderStyle}" IsExpanded="False" Margin="0,2,0,0">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="⚙️" FontSize="13" VerticalAlignment="Center"/>
-                            <TextBlock Text="SISTEMA E DESEMPENHO" FontSize="11" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text="(13)" FontSize="10"
-                                       Foreground="{DynamicResource TextTertiary}" Margin="6,0,0,0"
-                                       VerticalAlignment="Center"/>
+                            <Border Width="52" Height="52" CornerRadius="14"
+                                    Background="{DynamicResource Card2Bg}">
+                                <TextBlock Text="⚙️" FontSize="24"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center" Margin="16,0,0,0">
+                                <TextBlock Text="Sistema e Desempenho" FontSize="17" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="13 otimizações de velocidade e privacidade" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                            </StackPanel>
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="0,2,0,4">
@@ -930,13 +942,17 @@
                 <Expander Style="{StaticResource GroupExpanderStyle}" IsExpanded="False" Margin="0,2,0,0">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="🎮" FontSize="13" VerticalAlignment="Center"/>
-                            <TextBlock Text="GAMES" FontSize="11" FontWeight="Bold"
-                                       Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text="(9)" FontSize="10"
-                                       Foreground="{DynamicResource TextTertiary}" Margin="6,0,0,0"
-                                       VerticalAlignment="Center"/>
+                            <Border Width="52" Height="52" CornerRadius="14"
+                                    Background="{DynamicResource Card1Bg}">
+                                <TextBlock Text="🎮" FontSize="24"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center" Margin="16,0,0,0">
+                                <TextBlock Text="Games" FontSize="17" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="9 otimizações para máximo FPS e menor latência" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                            </StackPanel>
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="0,2,0,4">
