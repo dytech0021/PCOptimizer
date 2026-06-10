@@ -184,7 +184,8 @@ namespace PCOptimizer.Services
                     }
 
                     uint cMin = 0, cCur = 0, cMax = 0;
-                    if (GetMonitorContrast(pm.hPhysicalMonitor, ref cMin, ref cCur, ref cMax))
+                    if (GetMonitorContrast(pm.hPhysicalMonitor, ref cMin, ref cCur, ref cMax)
+                        && cMax > cMin)
                     {
                         info.MinContrast     = cMin;
                         info.CurrentContrast = cCur;

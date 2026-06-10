@@ -33,6 +33,7 @@ namespace PCOptimizer.Views
         private readonly List<MonitorControl> _monitorControls = new();
         private bool _capturingHotkey;
         private bool _winNlInitializing;
+        private DateTime _lastWinNlChange;
 
         public BrightnessWindow()
         {
@@ -50,7 +51,9 @@ namespace PCOptimizer.Views
             if (winNlOn)
             {
                 WinNightLightPanel.Visibility = Visibility.Visible;
-                SliderWinNightLight.Value = NightLightService.GetWindowsNightLightIntensity();
+                int winNlIntensity = NightLightService.GetWindowsNightLightIntensity();
+                SliderWinNightLight.Value = winNlIntensity;
+                TxtWinNightLightValue.Text = $"{winNlIntensity}%";
             }
             _winNlInitializing = false;
         }
@@ -404,10 +407,26 @@ namespace PCOptimizer.Views
         {
             WinNightLightPanel.Visibility = Visibility.Visible;
             if (_winNlInitializing) return;
+
             if (NightLightService.SetWindowsNightLight(true))
+            {
+                // Sincroniza o slider com a intensidade real do registro
+                _winNlInitializing = true;
+                int intensity = NightLightService.GetWindowsNightLightIntensity();
+                SliderWinNightLight.Value = intensity;
+                TxtWinNightLightValue.Text = $"{intensity}%";
+                _winNlInitializing = false;
                 TxtStatus.Text = "Luz noturna Windows ativada";
+            }
             else
+            {
+                // Reverte o checkbox sem disparar o Unchecked de novo
+                _winNlInitializing = true;
+                ChkWinNightLight.IsChecked = false;
+                WinNightLightPanel.Visibility = Visibility.Collapsed;
+                _winNlInitializing = false;
                 TxtStatus.Text = "Não foi possível ativar — abra Configurações > Sistema > Noturno";
+            }
         }
 
         private void ChkWinNightLight_Unchecked(object sender, RoutedEventArgs e)
@@ -418,13 +437,19 @@ namespace PCOptimizer.Views
             TxtStatus.Text = "Luz noturna Windows desativada";
         }
 
-        private void SliderWinNightLight_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private async void SliderWinNightLight_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (TxtWinNightLightValue == null || _winNlInitializing) return;
             int value = (int)e.NewValue;
             TxtWinNightLightValue.Text = $"{value}%";
-            if (ChkWinNightLight?.IsChecked == true)
-                NightLightService.SetWindowsNightLightIntensity(value);
+            if (ChkWinNightLight?.IsChecked != true) return;
+
+            // Debounce: evita gravar no registro + broadcast a cada pixel do arraste
+            _lastWinNlChange = DateTime.Now;
+            var stamp = _lastWinNlChange;
+            await Task.Delay(150);
+            if (stamp != _lastWinNlChange) return;
+            await Task.Run(() => NightLightService.SetWindowsNightLightIntensity(value));
         }
 
         private async void BtnScreenshot_Click(object sender, RoutedEventArgs e)

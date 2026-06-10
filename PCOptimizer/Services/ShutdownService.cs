@@ -18,8 +18,10 @@ namespace PCOptimizer.Services
             int seconds = minutes * 60;
             try
             {
-                // Cancela qualquer agendamento anterior antes de criar um novo
-                RunShutdown("/a");
+                // Cancela qualquer agendamento anterior e ESPERA concluir — se o /s
+                // rodar antes do /a terminar, o Windows rejeita com erro 1190 e o
+                // reagendamento falha silenciosamente.
+                RunShutdown("/a", wait: true);
                 RunShutdown($"/s /f /t {seconds}");
                 ScheduledAt = DateTime.Now.AddMinutes(minutes);
                 return true;
@@ -39,7 +41,7 @@ namespace PCOptimizer.Services
             catch { return false; }
         }
 
-        private static void RunShutdown(string args)
+        private static void RunShutdown(string args, bool wait = false)
         {
             var psi = new ProcessStartInfo
             {
@@ -49,7 +51,8 @@ namespace PCOptimizer.Services
                 UseShellExecute = false,
                 WindowStyle = ProcessWindowStyle.Hidden
             };
-            Process.Start(psi);
+            using var p = Process.Start(psi);
+            if (wait) p?.WaitForExit(5000);
         }
     }
 }
