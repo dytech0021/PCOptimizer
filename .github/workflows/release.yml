@@ -60,12 +60,9 @@ jobs:
 
       - name: Create release and upload exe
         if: steps.check.outputs.SKIP == 'false'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $tag = "${{ steps.version.outputs.TAG }}"
-          gh release create $tag publish-single/PCOptimizer.exe `
-            --title "PC Optimizer $tag" `
-            --notes "Baixe o **PCOptimizer.exe** e execute."
-          Write-Host "Release $tag created successfully."
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: "PC Optimizer ${{ steps.version.outputs.TAG }}"
+          body: "Baixe o **PCOptimizer.exe** e execute."
+          files: publish-single/PCOptimizer.exe
