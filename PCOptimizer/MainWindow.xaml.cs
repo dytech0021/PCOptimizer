@@ -18,6 +18,7 @@ namespace PCOptimizer
             Loaded += (_, _) =>
             {
                 ((App)Application.Current).InitHotkey(this);
+                TxtVersion.Text = "v" + (typeof(App).Assembly.GetName().Version?.ToString(3) ?? "?");
                 ChkSelectAll.IsChecked = true;
                 TxtVersion.Text = "v" + (typeof(App).Assembly.GetName().Version?.ToString(3) ?? "?");
                 UpdateSelectedCount();

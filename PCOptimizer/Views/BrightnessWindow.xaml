@@ -15,7 +15,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="#0EA5E9" CornerRadius="8"
+                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="8"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -33,12 +33,12 @@
         </Style>
     </Window.Resources>
 
-    <Border Margin="10" CornerRadius="14"
+    <Border Margin="12" CornerRadius="16"
             Background="{DynamicResource WindowBg}"
             BorderBrush="{DynamicResource BorderColor}"
             BorderThickness="1">
         <Border.Effect>
-            <DropShadowEffect Color="Black" BlurRadius="22" Opacity="0.45" ShadowDepth="0"/>
+            <DropShadowEffect Color="Black" BlurRadius="35" Opacity="0.65" ShadowDepth="0"/>
         </Border.Effect>
 
         <Grid Margin="16,14,16,14">
@@ -72,11 +72,13 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Button Content="📸" Click="BtnScreenshot_Click" Cursor="Hand"
                             Style="{StaticResource ScreenshotBtnStyle}"
+                            Background="{DynamicResource Card6Bg}"
                             Width="32" Height="32" FontSize="15" Padding="0"
                             BorderThickness="0" Margin="0,0,6,0"
                             ToolTip="Capturar área da tela"/>
                     <Button x:Name="BtnTimerToggle" Content="⏻" Click="BtnTimerToggle_Click" Cursor="Hand"
                             Style="{StaticResource ScreenshotBtnStyle}"
+                            Background="{DynamicResource Card1Bg}"
                             Width="32" Height="32" FontSize="15" Padding="0"
                             BorderThickness="0" Margin="0,0,6,0"
                             ToolTip="Timer para desligar o computador"/>
@@ -106,8 +108,10 @@
                     </Grid.ColumnDefinitions>
                     <Button x:Name="BtnPreset1" Grid.Column="0" Cursor="Hand"
                             Margin="0,0,4,0" Padding="0,8"
-                            Background="#2D1B4E" Foreground="#CBA6F7" BorderThickness="1"
-                            BorderBrush="#45375A"
+                            Background="{DynamicResource Preset1Bg}"
+                            Foreground="{DynamicResource Preset1Fg}"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource Preset1Border}"
                             Click="Preset1_Click" MouseRightButtonUp="Preset1_Edit">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock x:Name="TxtPreset1Icon" FontSize="16" HorizontalAlignment="Center"/>
@@ -117,8 +121,10 @@
                     </Button>
                     <Button x:Name="BtnPreset2" Grid.Column="1" Cursor="Hand"
                             Margin="2,0,2,0" Padding="0,8"
-                            Background="#1B3A4E" Foreground="#89B4FA" BorderThickness="1"
-                            BorderBrush="#2A4A5E"
+                            Background="{DynamicResource Preset2Bg}"
+                            Foreground="{DynamicResource Preset2Fg}"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource Preset2Border}"
                             Click="Preset2_Click" MouseRightButtonUp="Preset2_Edit">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock x:Name="TxtPreset2Icon" FontSize="16" HorizontalAlignment="Center"/>
@@ -128,8 +134,10 @@
                     </Button>
                     <Button x:Name="BtnPreset3" Grid.Column="2" Cursor="Hand"
                             Margin="4,0,0,0" Padding="0,8"
-                            Background="#1B4E2D" Foreground="#A6E3A1" BorderThickness="1"
-                            BorderBrush="#2A5E3A"
+                            Background="{DynamicResource Preset3Bg}"
+                            Foreground="{DynamicResource Preset3Fg}"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource Preset3Border}"
                             Click="Preset3_Click" MouseRightButtonUp="Preset3_Edit">
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock x:Name="TxtPreset3Icon" FontSize="16" HorizontalAlignment="Center"/>
@@ -232,16 +240,24 @@
                     </Grid.ColumnDefinitions>
                     <Button Content="15min" Grid.Column="0" Tag="15" Click="TimerPreset_Click" Cursor="Hand"
                             Margin="0,0,3,0" Padding="0,7" FontSize="11"
-                            Background="#1B3A4E" Foreground="#89B4FA" BorderThickness="1" BorderBrush="#2A4A5E"/>
+                            Background="{DynamicResource Preset2Bg}"
+                            Foreground="{DynamicResource Preset2Fg}"
+                            BorderThickness="1" BorderBrush="{DynamicResource Preset2Border}"/>
                     <Button Content="30min" Grid.Column="1" Tag="30" Click="TimerPreset_Click" Cursor="Hand"
                             Margin="3,0,3,0" Padding="0,7" FontSize="11"
-                            Background="#1B3A4E" Foreground="#89B4FA" BorderThickness="1" BorderBrush="#2A4A5E"/>
+                            Background="{DynamicResource Preset2Bg}"
+                            Foreground="{DynamicResource Preset2Fg}"
+                            BorderThickness="1" BorderBrush="{DynamicResource Preset2Border}"/>
                     <Button Content="1h" Grid.Column="2" Tag="60" Click="TimerPreset_Click" Cursor="Hand"
                             Margin="3,0,3,0" Padding="0,7" FontSize="11"
-                            Background="#1B3A4E" Foreground="#89B4FA" BorderThickness="1" BorderBrush="#2A4A5E"/>
+                            Background="{DynamicResource Preset2Bg}"
+                            Foreground="{DynamicResource Preset2Fg}"
+                            BorderThickness="1" BorderBrush="{DynamicResource Preset2Border}"/>
                     <Button Content="2h" Grid.Column="3" Tag="120" Click="TimerPreset_Click" Cursor="Hand"
                             Margin="3,0,0,0" Padding="0,7" FontSize="11"
-                            Background="#1B3A4E" Foreground="#89B4FA" BorderThickness="1" BorderBrush="#2A4A5E"/>
+                            Background="{DynamicResource Preset2Bg}"
+                            Foreground="{DynamicResource Preset2Fg}"
+                            BorderThickness="1" BorderBrush="{DynamicResource Preset2Border}"/>
                 </Grid>
                 <Grid Margin="0,6,0,0">
                     <Grid.ColumnDefinitions>
@@ -260,10 +276,14 @@
                              ToolTip="Minutos personalizados"/>
                     <Button Content="OK" Grid.Column="2" Click="TimerCustom_Click" Cursor="Hand"
                             Padding="12,5" FontSize="11" Margin="0,0,4,0"
-                            Background="#1B4E2D" Foreground="#A6E3A1" BorderThickness="1" BorderBrush="#2A5E3A"/>
+                            Background="{DynamicResource Preset3Bg}"
+                            Foreground="{DynamicResource Preset3Fg}"
+                            BorderThickness="1" BorderBrush="{DynamicResource Preset3Border}"/>
                     <Button x:Name="BtnTimerCancel" Content="Cancelar" Grid.Column="3" Click="TimerCancel_Click" Cursor="Hand"
                             Padding="10,5" FontSize="11" Visibility="Collapsed"
-                            Background="#4E1B1B" Foreground="#F38BA8" BorderThickness="1" BorderBrush="#5E2A2A"/>
+                            Background="{DynamicResource Preset1Bg}"
+                            Foreground="{DynamicResource Preset1Fg}"
+                            BorderThickness="1" BorderBrush="{DynamicResource Preset1Border}"/>
                 </Grid>
             </StackPanel>
 
