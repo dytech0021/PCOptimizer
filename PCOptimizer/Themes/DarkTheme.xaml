@@ -6,6 +6,13 @@
     <SolidColorBrush x:Key="SurfaceBg" Color="#1A1A2E"/>
     <SolidColorBrush x:Key="BorderColor" Color="#2A2A45"/>
 
+    <!-- Faixa de destaque no topo — tons profundos que se fundem com o fundo escuro -->
+    <LinearGradientBrush x:Key="AccentStripBg" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#3D4DB8" Offset="0"/>
+        <GradientStop Color="#5C3D99" Offset="0.5"/>
+        <GradientStop Color="#A03468" Offset="1"/>
+    </LinearGradientBrush>
+
     <!-- Text -->
     <SolidColorBrush x:Key="TextPrimary" Color="#E8E8F8"/>
     <SolidColorBrush x:Key="TextSecondary" Color="#9CA0C0"/>

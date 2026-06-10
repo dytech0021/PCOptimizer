@@ -18,9 +18,9 @@ namespace PCOptimizer
             Loaded += (_, _) =>
             {
                 ((App)Application.Current).InitHotkey(this);
+                ApplyTitleBarColor();
                 TxtVersion.Text = "v" + (typeof(App).Assembly.GetName().Version?.ToString(3) ?? "?");
                 ChkSelectAll.IsChecked = true;
-                TxtVersion.Text = "v" + (typeof(App).Assembly.GetName().Version?.ToString(3) ?? "?");
                 UpdateSelectedCount();
                 _ = CheckForUpdatesAsync();
             };
@@ -569,7 +569,33 @@ namespace PCOptimizer
         private void BtnThemeToggle_Click(object sender, RoutedEventArgs e)
         {
             ThemeManager.Toggle();
+            ApplyTitleBarColor();
             Log($"🎨 Tema alterado para {(ThemeManager.Current == AppTheme.Dark ? "escuro" : "claro")}");
+        }
+
+        // ── Barra de título nativa acompanha a cor do tema ─────────────────
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Win10 1809+
+        private const int DWMWA_CAPTION_COLOR = 35;           // Win11 — COLORREF 0x00BBGGRR
+
+        private void ApplyTitleBarColor()
+        {
+            try
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero) return;
+
+                bool dark = ThemeManager.Current == AppTheme.Dark;
+                int darkMode = dark ? 1 : 0;
+                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+
+                // Mesma cor do WindowBg de cada tema (formato COLORREF: 0x00BBGGRR)
+                int caption = dark ? 0x1E1111 : 0xF8F2F0;
+                DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
+            }
+            catch { /* DWM indisponível (Win10 antigo) — barra fica padrão */ }
         }
     }
 }

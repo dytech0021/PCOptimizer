@@ -6,6 +6,13 @@
     <SolidColorBrush x:Key="SurfaceBg" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="BorderColor" Color="#E2E8F0"/>
 
+    <!-- Faixa de destaque no topo -->
+    <LinearGradientBrush x:Key="AccentStripBg" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#667EEA" Offset="0"/>
+        <GradientStop Color="#A78BFA" Offset="0.5"/>
+        <GradientStop Color="#F472B6" Offset="1"/>
+    </LinearGradientBrush>
+
     <!-- Text -->
     <SolidColorBrush x:Key="TextPrimary" Color="#1A202C"/>
     <SolidColorBrush x:Key="TextSecondary" Color="#718096"/>

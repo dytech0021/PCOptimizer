@@ -42,6 +42,24 @@ namespace PCOptimizer.Views
         {
             InitializeComponent();
             Loaded += BrightnessWindow_Loaded;
+
+            // Fade-in + leve deslize sempre que a janela aparece
+            IsVisibleChanged += (_, ev) =>
+            {
+                if (ev.NewValue is not true) return;
+                var fade = new System.Windows.Media.Animation.DoubleAnimation(0, 1,
+                    TimeSpan.FromMilliseconds(220));
+                BeginAnimation(OpacityProperty, fade);
+                if (Content is FrameworkElement root)
+                {
+                    var tt = new TranslateTransform();
+                    root.RenderTransform = tt;
+                    var slide = new System.Windows.Media.Animation.DoubleAnimation(14, 0,
+                        TimeSpan.FromMilliseconds(220))
+                    { EasingFunction = new System.Windows.Media.Animation.CubicEase() };
+                    tt.BeginAnimation(TranslateTransform.YProperty, slide);
+                }
+            };
             TxtHotkey.Text = SettingsService.Current.HotkeyDisplay;
             RefreshPresetButtons();
             SliderNightLight.Value = SettingsService.Current.NightLightIntensity;
