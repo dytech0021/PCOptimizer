@@ -51,23 +51,39 @@ namespace PCOptimizer
                 return true;
             }
 
-            // Case 3: leftover .new file from a previous failed update attempt — apply it now
+            // Case 3: leftover .new file from a previous failed update attempt.
+            // Só aplica se o .new for realmente mais novo — relançar cegamente
+            // causava loop infinito (o app nunca abria) quando a troca falhava.
             if (!args.Contains("--updated") && !string.IsNullOrEmpty(processPath))
             {
                 string pending = processPath + ".new";
                 if (File.Exists(pending))
                 {
-                    var psi = new ProcessStartInfo { FileName = pending, UseShellExecute = false };
-                    psi.ArgumentList.Add("--install-over");
-                    psi.ArgumentList.Add(processPath);
-                    psi.ArgumentList.Add(Environment.ProcessId.ToString());
-                    Process.Start(psi);
-                    Shutdown();
-                    return true;
+                    if (IsNewerVersion(pending, processPath))
+                    {
+                        UpdaterService.ApplyAndRestart(pending);
+                        Shutdown();
+                        return true;
+                    }
+                    // .new igual/antigo/corrompido — limpa e abre normalmente
+                    try { File.Delete(pending); } catch { }
                 }
             }
 
             return false;
+        }
+
+        private static bool IsNewerVersion(string candidatePath, string currentPath)
+        {
+            try
+            {
+                var cand = FileVersionInfo.GetVersionInfo(candidatePath);
+                var curr = FileVersionInfo.GetVersionInfo(currentPath);
+                return Version.TryParse(cand.FileVersion ?? "", out var vNew) &&
+                       Version.TryParse(curr.FileVersion ?? "", out var vCur) &&
+                       vNew > vCur;
+            }
+            catch { return false; }
         }
 
         private static void InstallSelfOver(string sourcePath, string targetPath, int oldPid, bool showUi)
@@ -89,9 +105,7 @@ namespace PCOptimizer
                 try
                 {
                     File.Move(sourcePath, targetPath, overwrite: true);
-                    var psi = new ProcessStartInfo { FileName = targetPath, UseShellExecute = false };
-                    psi.ArgumentList.Add("--updated");
-                    Process.Start(psi);
+                    StartUpdated(targetPath);
                     return;
                 }
                 catch
@@ -106,8 +120,25 @@ namespace PCOptimizer
                 }
             }
 
-            // Fallback: launch target as-is
-            try { Process.Start(new ProcessStartInfo { FileName = targetPath, UseShellExecute = false }); }
+            // O Move falha quando este exe single-file em execução não pode ser
+            // renomeado — mas LER o próprio arquivo é sempre permitido: copia o
+            // conteúdo por cima do alvo. O .new que sobra é limpo no próximo
+            // startup (Case 3 compara versões e apaga).
+            try { File.Copy(sourcePath, targetPath, overwrite: true); }
+            catch { }
+
+            StartUpdated(targetPath);
+        }
+
+        private static void StartUpdated(string targetPath)
+        {
+            try
+            {
+                // --updated evita que o Case 3 redetecte o .new e entre em loop
+                var psi = new ProcessStartInfo { FileName = targetPath, UseShellExecute = false };
+                psi.ArgumentList.Add("--updated");
+                Process.Start(psi);
+            }
             catch { }
         }
 

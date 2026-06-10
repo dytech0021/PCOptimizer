@@ -2,15 +2,18 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace PCOptimizer.Services
 {
     /// <summary>
-    /// Baixa a nova versao, substitui o executavel atual e reinicia o app.
-    /// A troca e feita por um processo externo (PowerShell) que espera o app
-    /// fechar antes de sobrescrever o arquivo .exe.
+    /// Baixa a nova versao e troca o executavel atual por ela.
+    /// A troca e feita por um PowerShell oculto que espera este processo fechar,
+    /// move o .new por cima do .exe e reinicia. O .new NUNCA e executado — exe
+    /// single-file em execucao nao pode ser renomeado de forma confiavel, o que
+    /// deixava o updater antigo em loop infinito sem nunca abrir o app.
     /// </summary>
     public static class UpdaterService
     {
@@ -43,9 +46,8 @@ namespace PCOptimizer.Services
         }
 
         /// <summary>
-        /// Inicia a instalacao da nova versao: executa o novo .exe diretamente com --install-over.
-        /// O novo exe (quando inicia com essa flag) espera o processo atual fechar, move o arquivo
-        /// sobre si mesmo e reinicia. Isso e mais confiavel do que PowerShell Move-Item.
+        /// Aplica a atualizacao: um PowerShell oculto espera este processo fechar,
+        /// move newExePath por cima do exe atual e reabre o app com --updated.
         /// O chamador deve encerrar o app logo apos chamar este metodo.
         /// </summary>
         public static void ApplyAndRestart(string newExePath)
@@ -54,17 +56,47 @@ namespace PCOptimizer.Services
                 ?? Process.GetCurrentProcess().MainModule!.FileName!;
             int pid = Environment.ProcessId;
 
-            // Executa o novo exe com --install-over para que ele mesmo se instale apos sairmos.
-            // Usa ArgumentList para escape correto de caminhos com espacos ou caracteres especiais.
+            // Aspas simples do PowerShell: o unico escape necessario e ' -> ''.
+            // Parenteses e espacos no caminho (ex.: "PCOptimizer (5).exe") sao seguros.
+            static string Esc(string s) => s.Replace("'", "''");
+
+            string script = $@"
+$ErrorActionPreference = 'SilentlyContinue'
+Wait-Process -Id {pid} -Timeout 60
+Start-Sleep -Milliseconds 500
+$new = '{Esc(newExePath)}'
+$old = '{Esc(currentExe)}'
+$moved = $false
+for ($i = 0; $i -lt 30; $i++) {{
+    try {{
+        Move-Item -LiteralPath $new -Destination $old -Force -ErrorAction Stop
+        $moved = $true
+        break
+    }} catch {{ Start-Sleep -Seconds 1 }}
+}}
+if (-not $moved) {{
+    try {{
+        Copy-Item -LiteralPath $new -Destination $old -Force -ErrorAction Stop
+        Remove-Item -LiteralPath $new -Force
+    }} catch {{ }}
+}}
+Start-Process -FilePath $old -ArgumentList '--updated'
+";
+
             var psi = new ProcessStartInfo
             {
-                FileName = newExePath,
+                FileName = "powershell.exe",
                 UseShellExecute = false,
-                CreateNoWindow = false
+                CreateNoWindow = true
             };
-            psi.ArgumentList.Add("--install-over");
-            psi.ArgumentList.Add(currentExe);
-            psi.ArgumentList.Add(pid.ToString());
+            psi.ArgumentList.Add("-NoProfile");
+            psi.ArgumentList.Add("-ExecutionPolicy");
+            psi.ArgumentList.Add("Bypass");
+            psi.ArgumentList.Add("-WindowStyle");
+            psi.ArgumentList.Add("Hidden");
+            // EncodedCommand elimina qualquer problema de quoting no caminho
+            psi.ArgumentList.Add("-EncodedCommand");
+            psi.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
 
             Process.Start(psi);
         }
