@@ -96,7 +96,7 @@ namespace PCOptimizer.Views
                     return;
                 }
 
-                bool isWmi = entries.Exists(m => m.IsWmi);
+                bool isWmi = entries.TrueForAll(m => m.IsWmi);
                 TxtMonitorCount.Text = isWmi
                     ? "Notebook — controle via WMI"
                     : entries.Count == 1 ? "1 monitor" : $"{entries.Count} monitores";
@@ -248,11 +248,24 @@ namespace PCOptimizer.Views
             {
                 var note = new TextBlock
                 {
-                    Text = "Modo notebook — somente brilho",
+                    Text = "Painel do notebook — somente brilho",
                     FontSize = 9, Opacity = 0.65, Margin = new Thickness(0, 0, 0, 4)
                 };
                 note.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
                 container.Children.Add(note);
+            }
+
+            // Monitor externo sem DDC/CI: avisa em vez de fingir controle
+            if (!entry.IsWmi && !entry.SupportsBrightness)
+            {
+                var ddcNote = new TextBlock
+                {
+                    Text = "⚠ Sem resposta DDC/CI — ative \"DDC/CI\" no menu (OSD) do monitor",
+                    FontSize = 9, Opacity = 0.8, Margin = new Thickness(0, 0, 0, 4),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF))
+                };
+                container.Children.Add(ddcNote);
             }
 
             var mc = new MonitorControl

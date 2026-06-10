@@ -228,6 +228,39 @@ namespace PCOptimizer.Services
                         info.SupportsBrightness = true;
                     }
 
+                    // DDC/CI falha esporadicamente (barramento I2C lento/ocupado) —
+                    // uma segunda tentativa após pausa resolve muitos casos.
+                    if (!info.SupportsBrightness && !info.SupportsContrast)
+                    {
+                        System.Threading.Thread.Sleep(120);
+
+                        if (GetMonitorBrightness(pm.hPhysicalMonitor, ref bMin, ref bCur, ref bMax)
+                            && bMax > bMin)
+                        {
+                            info.MinBrightness      = bMin;
+                            info.CurrentBrightness  = bCur;
+                            info.MaxBrightness      = bMax;
+                            info.SupportsBrightness = true;
+                        }
+                        else if (GetVCPFeatureAndVCPFeatureReply(pm.hPhysicalMonitor, VCP_LUMINANCE,
+                                     out _, out uint vcpCur2, out uint vcpMax2) && vcpMax2 > 0)
+                        {
+                            info.MinBrightness      = 0;
+                            info.CurrentBrightness  = vcpCur2;
+                            info.MaxBrightness      = vcpMax2;
+                            info.SupportsBrightness = true;
+                        }
+
+                        if (GetMonitorContrast(pm.hPhysicalMonitor, ref cMin, ref cCur, ref cMax)
+                            && cMax > cMin)
+                        {
+                            info.MinContrast      = cMin;
+                            info.CurrentContrast  = cCur;
+                            info.MaxContrast      = cMax;
+                            info.SupportsContrast = true;
+                        }
+                    }
+
                     // Last resort: monitor responds to DDC/CI (contrast works) but brightness is
                     // unreadable. Expose a 0-100 slider; SetMonitorBrightness/SetVCPFeature may
                     // still work write-only.
@@ -475,14 +508,6 @@ namespace PCOptimizer.Services
                     contrast = (int)Math.Round((m.CurrentContrast - m.MinContrast) * 100.0
                                                / (m.MaxContrast - m.MinContrast));
 
-                // WMI fallback when DDC cannot control brightness (e.g. laptop internal panel)
-                if (!supportsBrightness && wmiAvailable)
-                {
-                    brightness         = wmiBrightness;
-                    supportsBrightness = true;
-                    isWmi              = true;
-                }
-
                 // HDR info — correlate by screen position (rcMonitor.left/top == DisplayConfig source position)
                 int srcX = 0, srcY = 0;
                 var mInfoEx = new MONITORINFOEX { cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>() };
@@ -492,6 +517,17 @@ namespace PCOptimizer.Services
                     srcY = mInfoEx.rcMonitor.top;
                 }
                 var hdr = hdrInfos.Find(h => h.SourceX == srcX && h.SourceY == srcY);
+
+                // WMI fallback SÓ para o painel interno do notebook — WmiSetBrightness
+                // não controla monitores externos; aplicá-lo neles fazia a barra do
+                // monitor externo mudar o brilho do painel do notebook.
+                bool isInternalPanel = hdr?.IsInternal ?? (monitors.Count == 1);
+                if (!supportsBrightness && wmiAvailable && isInternalPanel)
+                {
+                    brightness         = wmiBrightness;
+                    supportsBrightness = true;
+                    isWmi              = true;
+                }
 
                 entries.Add(new MonitorEntry
                 {

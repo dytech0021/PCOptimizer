@@ -13,6 +13,8 @@ namespace PCOptimizer.Services
         public uint AdapterIdLow { get; set; }
         public int AdapterIdHigh { get; set; }
         public uint TargetId { get; set; }
+        // Painel interno do notebook (eDP/LVDS/INTERNAL) — WMI só controla este
+        public bool IsInternal { get; set; }
     }
 
     public static class HdrService
@@ -159,6 +161,13 @@ namespace PCOptimizer.Services
                     };
 
                     int hdrResult = DisplayConfigGetDeviceInfo(ref req);
+
+                    // D3DKMDT_VIDEO_OUTPUT_TECHNOLOGY: 6=LVDS, 11=DisplayPort embutido,
+                    // 13=UDI embutido, 0x80000000=INTERNAL — todos são painel de notebook
+                    int tech = path.targetInfo.outputTechnology;
+                    bool isInternal = tech == unchecked((int)0x80000000)
+                                   || tech == 6 || tech == 11 || tech == 13;
+
                     result.Add(new HdrInfo
                     {
                         SourceX       = srcX,
@@ -167,7 +176,8 @@ namespace PCOptimizer.Services
                         IsEnabled     = hdrResult == 0 && (req.value & 2) != 0,
                         AdapterIdLow  = path.targetInfo.adapterId.LowPart,
                         AdapterIdHigh = path.targetInfo.adapterId.HighPart,
-                        TargetId      = path.targetInfo.id
+                        TargetId      = path.targetInfo.id,
+                        IsInternal    = isInternal
                     });
                 }
             }
