@@ -6,7 +6,7 @@
         Background="{DynamicResource WindowBg}" MinWidth="450" MinHeight="550">
 
     <Window.Resources>
-        <!-- Rounded button template -->
+        <!-- Rounded button template com transição suave -->
         <Style x:Key="RunButtonStyle" TargetType="Button">
             <Setter Property="Template">
                 <Setter.Value>
@@ -19,10 +19,44 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.88"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="border"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.85" Duration="0:0:0.15"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="border"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.25"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.7"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="border"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.65" Duration="0:0:0.08"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="border"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.2"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="border" Property="Opacity" Value="0.5"/>
@@ -33,17 +67,59 @@
             </Setter>
         </Style>
 
-        <!-- Tool card with hover highlight -->
-        <Style x:Key="ToolCardStyle" TargetType="Border">
-            <Setter Property="BorderBrush" Value="{DynamicResource Card7Border}"/>
-            <Setter Property="BorderThickness" Value="1.5"/>
+        <!-- Card de otimização com hover animado (leve zoom + borda destacada) -->
+        <Style x:Key="OptCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBg}"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Margin" Value="0,3"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform ScaleX="1" ScaleY="1"/>
+                </Setter.Value>
+            </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="BorderBrush" Value="{DynamicResource ButtonPrimaryBg}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource Card5Border}"/>
+                    <Trigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX"
+                                                 To="1.012" Duration="0:0:0.15"/>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY"
+                                                 To="1.012" Duration="0:0:0.15"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.EnterActions>
+                    <Trigger.ExitActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX"
+                                                 To="1" Duration="0:0:0.2"/>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY"
+                                                 To="1" Duration="0:0:0.2"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.ExitActions>
                 </Trigger>
             </Style.Triggers>
         </Style>
     </Window.Resources>
+
+    <!-- Fade-in suave ao abrir a janela -->
+    <Window.Triggers>
+        <EventTrigger RoutedEvent="Window.Loaded">
+            <BeginStoryboard>
+                <Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                     From="0" To="1" Duration="0:0:0.35"/>
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+    </Window.Triggers>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -55,16 +131,8 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- ═══ Accent gradient strip ═══ -->
-        <Border Grid.Row="0">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                    <GradientStop Color="#667EEA" Offset="0"/>
-                    <GradientStop Color="#A78BFA" Offset="0.5"/>
-                    <GradientStop Color="#F472B6" Offset="1"/>
-                </LinearGradientBrush>
-            </Border.Background>
-        </Border>
+        <!-- ═══ Accent gradient strip (acompanha o tema) ═══ -->
+        <Border Grid.Row="0" Background="{DynamicResource AccentStripBg}"/>
 
         <!-- ═══ Header ═══ -->
         <Border Grid.Row="1" Background="{DynamicResource SurfaceBg}" Padding="24,18,24,16"
@@ -105,14 +173,23 @@
                             BorderThickness="0" Margin="0,0,6,0"
                             Cursor="Hand" Click="BtnScreenshot_Click"
                             ToolTip="Capturar área da tela"/>
-                    <Button x:Name="BtnBrightness" Content="🌞"
-                            Width="40" Height="40" FontSize="20"
+                    <Button x:Name="BtnBrightness"
+                            Height="44" Padding="14,0"
                             Style="{StaticResource RunButtonStyle}"
-                            Background="{DynamicResource ButtonSecondaryBg}"
-                            Foreground="{DynamicResource ButtonSecondaryFg}"
+                            Background="{DynamicResource RunButtonBg}"
+                            Foreground="White"
                             BorderThickness="0" Margin="0,0,6,0"
                             Cursor="Hand" Click="BtnBrightnessHeader_Click"
-                            ToolTip="Abrir Brilho e Contraste"/>
+                            ToolTip="Abrir Brilho e Contraste (janela flutuante)">
+                        <Button.Effect>
+                            <DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.6" Color="#8B5CF6"/>
+                        </Button.Effect>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="💡" FontSize="20" VerticalAlignment="Center"/>
+                            <TextBlock Text="Brilho" FontSize="13" FontWeight="Bold"
+                                       Foreground="White" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button x:Name="BtnThemeToggle" Content="{DynamicResource ThemeToggleIcon}"
                             VerticalAlignment="Center"
                             Width="40" Height="40" FontSize="18"
@@ -165,8 +242,7 @@
                 </Grid>
 
                 <!-- Limpar Temporários -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -193,8 +269,7 @@
                 </Border>
 
                 <!-- Limpar Disco -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -221,8 +296,7 @@
                 </Border>
 
                 <!-- Limpar Lixeira -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -264,8 +338,7 @@
                 </Grid>
 
                 <!-- Otimizar Inicialização -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -292,8 +365,7 @@
                 </Border>
 
                 <!-- Serviços do Windows -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -320,8 +392,7 @@
                 </Border>
 
                 <!-- Otimizar Rede -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -348,8 +419,7 @@
                 </Border>
 
                 <!-- Registro do Windows -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -391,8 +461,7 @@
                 </Grid>
 
                 <!-- Desativar Cortana -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -419,8 +488,7 @@
                 </Border>
 
                 <!-- Desfragmentar Disco -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -462,8 +530,7 @@
                 </Grid>
 
                 <!-- Plano de Energia -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -490,8 +557,7 @@
                 </Border>
 
                 <!-- Efeitos Visuais -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -518,8 +584,7 @@
                 </Border>
 
                 <!-- Apps em Segundo Plano -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -546,8 +611,7 @@
                 </Border>
 
                 <!-- Limpar RAM -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -574,8 +638,7 @@
                 </Border>
 
                 <!-- Agendamento de GPU -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -617,8 +680,7 @@
                 </Grid>
 
                 <!-- Telemetria -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -645,8 +707,7 @@
                 </Border>
 
                 <!-- Xbox Game Bar -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -688,8 +749,7 @@
                 </Grid>
 
                 <!-- Otimizar SSD (TRIM) -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -716,8 +776,7 @@
                 </Border>
 
                 <!-- Cache Windows Update -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -744,8 +803,7 @@
                 </Border>
 
                 <!-- Cache de Miniaturas -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -772,8 +830,7 @@
                 </Border>
 
                 <!-- Desativar Hibernação -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -800,8 +857,7 @@
                 </Border>
 
                 <!-- Inicialização Rápida -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -843,8 +899,7 @@
                 </Grid>
 
                 <!-- Reparar Sistema -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -871,8 +926,7 @@
                 </Border>
 
                 <!-- Remover Bloatware -->
-                <Border Background="{DynamicResource SurfaceBg}" CornerRadius="12" Margin="0,3" Padding="12,10"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
+                <Border Style="{StaticResource OptCardStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
