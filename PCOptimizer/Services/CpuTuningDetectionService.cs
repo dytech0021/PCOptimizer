@@ -3,27 +3,28 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using Microsoft.Win32;
 
 namespace PCOptimizer.Services
 {
-    /// <summary>
-    /// Detecta ferramentas de tuning/monitoramento já presentes no PC e aproveita
-    /// o que estiver instalado: se houver uma ferramenta de undervolt dedicada
-    /// (ThrottleStop/XTU para Intel, Ryzen Master para AMD), o app a abre direto,
-    /// sem precisar baixar nada. Monitores (HWiNFO/CPU-Z/AIDA64/Afterburner) também
-    /// são reportados — úteis para acompanhar tensão/temperatura durante o ajuste.
-    /// </summary>
     public static class CpuTuningDetectionService
     {
         public enum ToolKind { Undervolt, Monitor }
 
         public record DetectedTool(string Name, ToolKind Kind, string? InstalledPath, bool Running);
 
-        private record Candidate(string Name, ToolKind Kind, string[] Paths, string[] ProcessNames);
+        private record Candidate(
+            string Name,
+            ToolKind Kind,
+            string[] Paths,
+            string[] ProcessNames,
+            // Busca de fallback no registro: DisplayName contém essa string
+            string? RegistrySearch = null,
+            // Nomes de exe para tentar dentro de InstallLocation (+ subpasta bin\)
+            string[]? RegistryExeNames = null);
 
         private static readonly Candidate[] Catalog =
         {
-            // Ferramentas de undervolt dedicadas
             new("ThrottleStop", ToolKind.Undervolt,
                 new[]
                 {
@@ -34,22 +35,33 @@ namespace PCOptimizer.Services
                         "ThrottleStop", "ThrottleStop.exe"),
                 },
                 new[] { "ThrottleStop" }),
+
             new("Intel XTU", ToolKind.Undervolt,
                 new[]
                 {
                     @"C:\Program Files (x86)\Intel\Intel(R) Extreme Tuning Utility\Client\XtuShell.exe",
                     @"C:\Program Files\Intel\Intel(R) Extreme Tuning Utility\Client\XtuShell.exe",
                 },
-                new[] { "XtuShell", "XTU" }),
+                new[] { "XtuShell", "XTU" },
+                "Extreme Tuning Utility",
+                new[] { "XtuShell.exe", "XTU.exe" }),
+
             new("Ryzen Master", ToolKind.Undervolt,
                 new[]
                 {
                     @"C:\Program Files\AMD\RyzenMaster\bin\AMD Ryzen Master.exe",
                     @"C:\Program Files\AMD\RyzenMaster\bin\Ryzen Master.exe",
+                    @"C:\Program Files\AMD\RyzenMaster\bin\AMDRyzenMaster.exe",
+                    @"C:\Program Files\AMD\RyzenMaster\bin\RyzenMaster.exe",
+                    @"C:\Program Files\AMD\RyzenMaster\AMD Ryzen Master.exe",
+                    @"C:\Program Files\AMD\RyzenMaster\AMDRyzenMaster.exe",
+                    @"C:\Program Files\AMD\AMD Ryzen Master\bin\AMD Ryzen Master.exe",
+                    @"C:\Program Files\AMD\AMD Ryzen Master\bin\AMDRyzenMaster.exe",
                 },
-                new[] { "AMD Ryzen Master", "Ryzen Master" }),
+                new[] { "AMD Ryzen Master", "RyzenMaster", "Ryzen Master", "AMDRyzenMaster" },
+                "Ryzen Master",
+                new[] { "AMD Ryzen Master.exe", "Ryzen Master.exe", "AMDRyzenMaster.exe", "RyzenMaster.exe" }),
 
-            // Monitores com driver de MSR (úteis para acompanhar o ajuste)
             new("HWiNFO64", ToolKind.Monitor,
                 new[]
                 {
@@ -57,6 +69,7 @@ namespace PCOptimizer.Services
                     @"C:\Program Files (x86)\HWiNFO64\HWiNFO64.exe",
                 },
                 new[] { "HWiNFO64", "HWiNFO" }),
+
             new("CPU-Z", ToolKind.Monitor,
                 new[]
                 {
@@ -64,6 +77,7 @@ namespace PCOptimizer.Services
                     @"C:\Program Files (x86)\CPUID\CPU-Z\cpuz.exe",
                 },
                 new[] { "cpuz", "cpuz_x64" }),
+
             new("AIDA64", ToolKind.Monitor,
                 new[]
                 {
@@ -71,6 +85,7 @@ namespace PCOptimizer.Services
                     @"C:\Program Files\FinalWire\AIDA64\aida64.exe",
                 },
                 new[] { "aida64" }),
+
             new("MSI Afterburner", ToolKind.Monitor,
                 new[]
                 {
@@ -82,8 +97,7 @@ namespace PCOptimizer.Services
 
         public static List<DetectedTool> Detect()
         {
-            // Snapshot único dos processos — guarda nome -> caminho do executável.
-            // O caminho do processo vivo cobre instalações em pastas fora do padrão.
+            // Snapshot dos processos: nome -> caminho do executável
             var running = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
             try
             {
@@ -93,16 +107,15 @@ namespace PCOptimizer.Services
                     {
                         string name = p.ProcessName;
                         if (name.Length == 0) continue;
-                        string? path = null;
-                        try { path = p.MainModule?.FileName; } catch { /* acesso negado */ }
-                        // Mantém o primeiro caminho não-nulo encontrado para o nome
+                        string? exePath = null;
+                        try { exePath = p.MainModule?.FileName; } catch { }
                         if (!running.TryGetValue(name, out var existing) || existing == null)
-                            running[name] = path;
+                            running[name] = exePath;
                     }
-                    catch { /* processo encerrou no meio do snapshot */ }
+                    catch { }
                 }
             }
-            catch { /* sem acesso à lista de processos */ }
+            catch { }
 
             var result = new List<DetectedTool>();
             foreach (var c in Catalog)
@@ -110,7 +123,7 @@ namespace PCOptimizer.Services
                 string? path = c.Paths.FirstOrDefault(File.Exists);
                 bool isRunning = c.ProcessNames.Any(running.ContainsKey);
 
-                // Instalado em pasta fora do padrão, mas rodando: usa o caminho do processo
+                // Processo rodando em pasta fora do padrão: pega caminho do processo vivo
                 if (path == null && isRunning)
                 {
                     path = c.ProcessNames
@@ -118,10 +131,82 @@ namespace PCOptimizer.Services
                         .FirstOrDefault(fp => !string.IsNullOrEmpty(fp) && File.Exists(fp));
                 }
 
+                // Fallback: busca no registro de programas instalados do Windows
+                if (path == null && c.RegistrySearch != null && c.RegistryExeNames != null)
+                    path = FindViaRegistry(c.RegistrySearch, c.RegistryExeNames);
+
                 if (path != null || isRunning)
                     result.Add(new DetectedTool(c.Name, c.Kind, path, isRunning));
             }
             return result;
+        }
+
+        /// <summary>
+        /// Procura no registro de desinstalação do Windows por uma entrada cujo
+        /// DisplayName contenha <paramref name="displayNameContains"/>, depois
+        /// tenta localizar o exe pelos caminhos: DisplayIcon, InstallLocation\ e
+        /// InstallLocation\bin\.
+        /// </summary>
+        public static string? FindViaRegistry(string displayNameContains, string[] exeNames)
+        {
+            string[] uninstallRoots = {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+            };
+
+            foreach (var root in uninstallRoots)
+            {
+                try
+                {
+                    using var hive = Registry.LocalMachine.OpenSubKey(root);
+                    if (hive == null) continue;
+
+                    foreach (var subName in hive.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using var sub = hive.OpenSubKey(subName);
+                            if (sub == null) continue;
+
+                            var displayName = sub.GetValue("DisplayName") as string;
+                            if (displayName == null ||
+                                !displayName.Contains(displayNameContains, StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            // DisplayIcon costuma apontar diretamente para o exe ("path\app.exe,0")
+                            var icon = sub.GetValue("DisplayIcon") as string;
+                            if (!string.IsNullOrWhiteSpace(icon))
+                            {
+                                var iconPath = icon.Split(',')[0].Trim('"').Trim();
+                                if (Path.GetExtension(iconPath).Equals(".exe", StringComparison.OrdinalIgnoreCase)
+                                    && File.Exists(iconPath))
+                                    return iconPath;
+                            }
+
+                            // InstallLocation: tenta pasta raiz e subpasta bin\
+                            var installDir = sub.GetValue("InstallLocation") as string;
+                            if (!string.IsNullOrWhiteSpace(installDir))
+                            {
+                                foreach (var exe in exeNames)
+                                {
+                                    foreach (var candidate in new[]
+                                    {
+                                        Path.Combine(installDir, exe),
+                                        Path.Combine(installDir, "bin", exe),
+                                    })
+                                    {
+                                        if (File.Exists(candidate)) return candidate;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+
+            return null;
         }
 
         /// <summary>Melhor ferramenta de undervolt já instalada para a CPU atual (null se nenhuma).</summary>
@@ -129,7 +214,7 @@ namespace PCOptimizer.Services
         {
             return tools
                 .Where(t => t.Kind == ToolKind.Undervolt && t.InstalledPath != null)
-                .OrderByDescending(t => t.Running) // prioriza a que já está aberta
+                .OrderByDescending(t => t.Running)
                 .FirstOrDefault();
         }
     }

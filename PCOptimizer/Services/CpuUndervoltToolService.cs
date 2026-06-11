@@ -33,8 +33,16 @@ namespace PCOptimizer.Services
                 {
                     @"C:\Program Files\AMD\RyzenMaster\bin\AMD Ryzen Master.exe",
                     @"C:\Program Files\AMD\RyzenMaster\bin\Ryzen Master.exe",
+                    @"C:\Program Files\AMD\RyzenMaster\bin\AMDRyzenMaster.exe",
+                    @"C:\Program Files\AMD\RyzenMaster\bin\RyzenMaster.exe",
+                    @"C:\Program Files\AMD\RyzenMaster\AMD Ryzen Master.exe",
+                    @"C:\Program Files\AMD\RyzenMaster\AMDRyzenMaster.exe",
+                    @"C:\Program Files\AMD\AMD Ryzen Master\bin\AMD Ryzen Master.exe",
+                    @"C:\Program Files\AMD\AMD Ryzen Master\bin\AMDRyzenMaster.exe",
                 };
-                string? found = FirstExisting(ryzenMaster);
+                string[] ryzenExeNames = { "AMD Ryzen Master.exe", "Ryzen Master.exe", "AMDRyzenMaster.exe", "RyzenMaster.exe" };
+                string? found = FirstExisting(ryzenMaster)
+                    ?? CpuTuningDetectionService.FindViaRegistry("Ryzen Master", ryzenExeNames);
                 return new ToolInfo("AMD", "Ryzen Master", found,
                     "https://download.amd.com/dir/bin/AMDRyzenMasterSetup.exe",
                     "https://www.amd.com/pt/products/software/ryzen-master.html");
