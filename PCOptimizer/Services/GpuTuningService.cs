@@ -56,22 +56,25 @@ namespace PCOptimizer.Services
         /// curva com offset positivo — mesmo clock final com tensão menor.
         /// lockFactor: 0.95 (leve) / 0.90 (médio) / 0.85 (agressivo).
         /// </summary>
-        public static (bool ok, int lockMhz) ApplyUndervolt(GpuInfo gpu, double lockFactor, int offsetMhz)
+        public static (bool ok, int lockMhz, string? falha) ApplyUndervolt(
+            GpuInfo gpu, double lockFactor, int offsetMhz)
         {
-            if (!gpu.SupportsLock || gpu.BoostMhz <= 0) return (false, 0);
+            if (!gpu.SupportsLock || gpu.BoostMhz <= 0)
+                return (false, 0, "GPU sem suporte a trava de clock");
 
             // Clocks NVIDIA andam em degraus de 15 MHz
             int lockMhz = (int)(gpu.BoostMhz * lockFactor / 15) * 15;
 
             // Offset primeiro: se a trava falhar, um offset positivo sozinho é inócuo;
             // o inverso (trava sem offset) derrubaria o desempenho.
-            if (!NvapiService.SetCoreOffsetMhz(offsetMhz)) return (false, 0);
+            if (!NvapiService.SetCoreOffsetMhz(offsetMhz))
+                return (false, 0, $"driver recusou o offset (NVAPI {NvapiService.LastStatus})");
             if (!NvidiaSmiService.LockGraphicsClock(0, lockMhz))
             {
                 NvapiService.SetCoreOffsetMhz(0);
-                return (false, 0);
+                return (false, 0, "trava de clock recusada (nvidia-smi -lgc)");
             }
-            return (true, lockMhz);
+            return (true, lockMhz, null);
         }
 
         /// <summary>Reverte tudo para o padrão de fábrica: offsets 0, sem trava, power limit default.</summary>

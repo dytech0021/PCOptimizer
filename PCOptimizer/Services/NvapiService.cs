@@ -33,9 +33,16 @@ namespace PCOptimizer.Services
         public const int ClockGraphics = 0;
         public const int ClockMemory = 4;
 
-        // NV_GPU_PERF_PSTATES20_INFO_V2: header 20 + 16 pstates de 456 bytes + ov 104
-        private const int InfoSize = 20 + 16 * 456 + 104;
-        private const uint InfoVersion = (2u << 16) | InfoSize; // MAKE_NVAPI_VERSION(.., 2)
+        // NV_GPU_PERF_PSTATES20_INFO: header 20 + 16 pstates de 456 bytes.
+        // V2 acrescenta o bloco ov: numVoltages (4) + 4 entradas de 24 = 100 bytes.
+        // O driver valida o campo version contra sizeof exato — 7416, não 7420.
+        private const int V1Size = 20 + 16 * 456;       // 7316 (0x1C94)
+        private const int V2Size = V1Size + 4 + 4 * 24; // 7416 (0x1CF8)
+
+        private const int NvapiIncompatibleStructVersion = -9;
+
+        /// <summary>Último status devolvido pela NVAPI (0 = OK) — para diagnóstico na UI.</summary>
+        public static int LastStatus { get; private set; }
 
         private static IntPtr _gpu = IntPtr.Zero;
         private static SetPstates20Del? _setPstates;
@@ -86,12 +93,22 @@ namespace PCOptimizer.Services
         {
             if (!EnsureInit() || _setPstates == null) return false;
 
-            var buf = new byte[InfoSize];
+            // V2 primeiro (drivers atuais); se o driver pedir outra versão, tenta V1
+            if (TrySetOffset(domainId, offsetKHz, 2, V2Size)) return true;
+            if (LastStatus == NvapiIncompatibleStructVersion &&
+                TrySetOffset(domainId, offsetKHz, 1, V1Size)) return true;
+            return false;
+        }
+
+        private static bool TrySetOffset(int domainId, int offsetKHz, int structVer, int structSize)
+        {
+            var buf = new byte[structSize];
             var h = GCHandle.Alloc(buf, GCHandleType.Pinned);
             try
             {
+                uint version = ((uint)structVer << 16) | (uint)structSize;
                 IntPtr p = h.AddrOfPinnedObject();
-                Marshal.WriteInt32(p, 0, unchecked((int)InfoVersion)); // version
+                Marshal.WriteInt32(p, 0, unchecked((int)version)); // version
                 Marshal.WriteInt32(p, 8, 1);   // numPstates
                 Marshal.WriteInt32(p, 12, 1);  // numClocks
                 Marshal.WriteInt32(p, 16, 0);  // numBaseVoltages
@@ -101,10 +118,12 @@ namespace PCOptimizer.Services
                 Marshal.WriteInt32(p, 32, 0);          // typeId = single
                 Marshal.WriteInt32(p, 40, offsetKHz);  // freqDelta_kHz.value
 
-                return _setPstates(_gpu, p) == 0;
+                LastStatus = _setPstates!(_gpu, p);
+                return LastStatus == 0;
             }
             catch
             {
+                LastStatus = int.MinValue;
                 return false;
             }
             finally

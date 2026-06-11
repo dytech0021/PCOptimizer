@@ -1004,10 +1004,10 @@ namespace PCOptimizer
             TxtGpuOcStatus.Text = "Aplicando...";
             var (okCore, okMem) = await Task.Run(() => GpuTuningService.ApplyOverclock(core, mem));
             TxtGpuOcStatus.Text = okCore && okMem ? $"✅ Core +{core} / Mem +{mem}"
-                                : okCore ? $"✅ Core +{core} • ⚠️ memória falhou"
-                                : "⚠️ Falhou — driver não aceitou o offset";
+                                : okCore ? $"✅ Core +{core} • ⚠️ memória falhou (NVAPI {NvapiService.LastStatus})"
+                                : $"⚠️ Falhou — driver não aceitou o offset (NVAPI {NvapiService.LastStatus})";
             Log(okCore ? $"📈 OC GPU aplicado: core +{core} MHz, memória +{mem} MHz"
-                       : "⚠️ OC GPU: o driver rejeitou o offset");
+                       : $"⚠️ OC GPU: o driver rejeitou o offset (NVAPI {NvapiService.LastStatus})");
         }
 
         private async void BtnGpuPowerMax_Click(object sender, RoutedEventArgs e)
@@ -1024,13 +1024,13 @@ namespace PCOptimizer
         {
             if (!ConfirmExpertOnce() || _gpuInfo is not { } gpu) return;
             TxtGpuUvStatus.Text = "Aplicando undervolt...";
-            var (ok, lockMhz) = await Task.Run(() =>
+            var (ok, lockMhz, falha) = await Task.Run(() =>
                 GpuTuningService.ApplyUndervolt(gpu, lockFactor, offsetMhz));
             TxtGpuUvStatus.Text = ok
                 ? $"✅ Undervolt {nome}: clock travado em {lockMhz} MHz com offset +{offsetMhz} — teste num jogo"
-                : "⚠️ Falhou — requer admin e GPU Turing ou mais nova";
+                : $"⚠️ Falhou: {falha}";
             Log(ok ? $"🌡️ Undervolt {nome} aplicado: trava {lockMhz} MHz, offset +{offsetMhz} MHz"
-                   : "⚠️ Undervolt: falhou ao aplicar");
+                   : $"⚠️ Undervolt: {falha}");
         }
 
         private void BtnUvLeve_Click(object sender, RoutedEventArgs e) => ApplyUndervolt(0.95, 120, "leve");
