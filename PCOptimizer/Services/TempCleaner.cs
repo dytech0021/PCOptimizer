@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace PCOptimizer.Services
 {
@@ -10,13 +12,15 @@ namespace PCOptimizer.Services
             int deleted = 0;
             long freed = 0;
 
-            string[] tempPaths =
+            var tempPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                Path.GetTempPath(),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"),
-                @"C:\Windows\Temp",
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Windows", "INetCache"),
+                Path.GetTempPath(),                           // %TEMP%
+                Environment.GetEnvironmentVariable("TMP") ?? "",   // %TMP% (pode diferir)
+                @"C:\Windows\Temp",                           // temp do sistema
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Microsoft", "Windows", "INetCache"),
             };
+            tempPaths.RemoveWhere(string.IsNullOrWhiteSpace);
 
             foreach (var path in tempPaths)
             {
@@ -32,6 +36,18 @@ namespace PCOptimizer.Services
                             info.Delete();
                             deleted++;
                             freed += size;
+                        }
+                        catch { }
+                    }
+
+                    // Remove subdiretórios vazios após limpar os arquivos
+                    foreach (var dir in Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories)
+                                                 .OrderByDescending(d => d.Length))
+                    {
+                        try
+                        {
+                            if (!Directory.EnumerateFileSystemEntries(dir).Any())
+                                Directory.Delete(dir);
                         }
                         catch { }
                     }

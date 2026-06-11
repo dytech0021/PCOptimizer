@@ -8,9 +8,8 @@
 
     <!-- Faixa de destaque no topo -->
     <LinearGradientBrush x:Key="AccentStripBg" StartPoint="0,0.5" EndPoint="1,0.5">
-        <GradientStop Color="#667EEA" Offset="0"/>
-        <GradientStop Color="#A78BFA" Offset="0.5"/>
-        <GradientStop Color="#F472B6" Offset="1"/>
+        <GradientStop Color="#5568D4" Offset="0"/>
+        <GradientStop Color="#8860CC" Offset="1"/>
     </LinearGradientBrush>
 
     <!-- Text -->
@@ -76,11 +75,10 @@
     <SolidColorBrush x:Key="Card6Border" Color="#B5E8F5"/>
     <SolidColorBrush x:Key="Card7Border" Color="#B5F5E4"/>
 
-    <!-- Run button gradient -->
+    <!-- Run button gradient (azul-roxo, sem rosa) -->
     <LinearGradientBrush x:Key="RunButtonBg" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#5B8DEF" Offset="0"/>
-        <GradientStop Color="#7C3AED" Offset="0.5"/>
-        <GradientStop Color="#EC4899" Offset="1"/>
+        <GradientStop Color="#4E78D8" Offset="0"/>
+        <GradientStop Color="#6628D4" Offset="1"/>
     </LinearGradientBrush>
     <SolidColorBrush x:Key="RunButtonFg" Color="#FFFFFF"/>
 

@@ -579,7 +579,7 @@
                             <StackPanel VerticalAlignment="Center" Margin="16,0,0,0">
                                 <TextBlock Text="Sistema e Desempenho" FontSize="17" FontWeight="Bold"
                                            Foreground="{DynamicResource TextPrimary}"/>
-                                <TextBlock Text="13 otimizações de velocidade e privacidade" FontSize="11"
+                                <TextBlock Text="14 otimizações de velocidade e privacidade" FontSize="11"
                                            Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
                             </StackPanel>
                         </StackPanel>
@@ -935,6 +935,33 @@
                                        VerticalAlignment="Center" Margin="8,0,4,0"/>
                         </Grid>
                     </Border>
+
+                    <!-- Maximizar Núcleos de CPU no Boot -->
+                    <Border Style="{StaticResource OptCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="ChkBootProcessors" IsChecked="True" VerticalAlignment="Center"
+                                      Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                    Background="{DynamicResource Card4Bg}" Margin="10,0,14,0">
+                                <TextBlock Text="💻" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock Text="Maximizar Núcleos de CPU no Boot" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Define o número máximo de processadores nas opções avançadas de boot (bcdedit)" FontSize="10"
+                                           Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="3" x:Name="StatusBootProcessors" Text="—"
+                                       Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       VerticalAlignment="Center" Margin="8,0,4,0"/>
+                        </Grid>
+                    </Border>
                     </StackPanel>
                 </Expander>
 
@@ -1254,7 +1281,7 @@
                                     Background="{DynamicResource Card1Bg}" Foreground="White"
                                     BorderThickness="0" Padding="0,14" Cursor="Hand"
                                     Click="BtnPresetFull_Click"
-                                    ToolTip="TODAS as 31 otimizações — inclui aviso (~15min)">
+                                    ToolTip="TODAS as 32 otimizações — inclui aviso (~15min)">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="💥" FontSize="22" HorizontalAlignment="Center"/>
                                     <TextBlock Text="Full" FontSize="12" FontWeight="Bold"

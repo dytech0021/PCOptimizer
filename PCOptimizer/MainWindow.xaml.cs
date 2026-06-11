@@ -172,6 +172,7 @@ namespace PCOptimizer
             if (chk == ChkFullscreenOpt) return 1;
             if (chk == ChkMousePrecision) return 1;
             if (chk == ChkCoreIsolation) return 1;
+            if (chk == ChkBootProcessors) return 2;
             return 5;
         }
 
@@ -237,7 +238,7 @@ namespace PCOptimizer
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache,
                 ChkHibernation, ChkSystemRepair, ChkBloatware,
                 ChkGameMode, ChkGamePriority, ChkGameNetwork, ChkPowerThrottling,
-                ChkFullscreenOpt, ChkMousePrecision, ChkCoreIsolation
+                ChkFullscreenOpt, ChkMousePrecision, ChkCoreIsolation, ChkBootProcessors
             };
 
             int total = boxes.Length;
@@ -285,6 +286,7 @@ namespace PCOptimizer
             ChkGamePriority.IsChecked = value;
             ChkGameNetwork.IsChecked = value;
             ChkPowerThrottling.IsChecked = value;
+            ChkBootProcessors.IsChecked = value;
             // Nota: Hibernação, Inicialização Rápida, Reparo, Bloatware e as opções
             // de games com trade-off (Tela Cheia, Ponteiro, Isolamento de Núcleo)
             // ficam de fora do "selecionar tudo" — opt-in manual.
@@ -304,7 +306,7 @@ namespace PCOptimizer
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache, ChkFastStartup,
                 ChkHibernation, ChkSystemRepair, ChkBloatware, ChkGameMode, ChkGamePriority,
                 ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
-                ChkCoreIsolation };
+                ChkCoreIsolation, ChkBootProcessors };
             _totalSelectedSteps = 0;
             _totalWeight = 0;
             foreach (var c in allChecks)
@@ -676,6 +678,18 @@ namespace PCOptimizer
                 StepDone(ChkCoreIsolation);
             }
 
+            if (ChkBootProcessors.IsChecked == true)
+            {
+                Log($"Maximizando núcleos de CPU no boot ({Environment.ProcessorCount} núcleos)...");
+                StatusBootProcessors.Text = "⏳";
+                bool ok = await Task.Run(() => BootConfigService.SetMaxProcessors());
+                totalSteps++;
+                SetStatus(StatusBootProcessors, ok ? "✅" : "⚠️", ok);
+                Log(ok ? $"✅ Boot: {Environment.ProcessorCount} núcleos configurados via bcdedit"
+                       : "⚠️ Boot processors: requer admin");
+                StepDone(ChkBootProcessors);
+            }
+
                 Log($"\n🎉 Concluído! {totalSteps} otimizações. Espaço liberado: {FormatBytes(totalFreed)}");
 
                 MessageBox.Show(
@@ -733,7 +747,7 @@ namespace PCOptimizer
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache, ChkFastStartup,
                 ChkHibernation, ChkSystemRepair, ChkBloatware, ChkGameMode, ChkGamePriority,
                 ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
-                ChkCoreIsolation })
+                ChkCoreIsolation, ChkBootProcessors })
                 chk.IsChecked = value;
         }
 
@@ -748,6 +762,7 @@ namespace PCOptimizer
             ChkRegistry.IsChecked = true;
             ChkNetwork.IsChecked = true;
             ChkGameBar.IsChecked = true;
+            ChkBootProcessors.IsChecked = true;
             UpdateSelectedCount();
         }
 
@@ -771,6 +786,7 @@ namespace PCOptimizer
             ChkTelemetry.IsChecked = true;
             ChkGameMode.IsChecked = true;
             ChkGameNetwork.IsChecked = true;
+            ChkBootProcessors.IsChecked = true;
             UpdateSelectedCount();
         }
 
@@ -801,6 +817,7 @@ namespace PCOptimizer
             ChkGamePriority.IsChecked = true;
             ChkPowerThrottling.IsChecked = true;
             ChkFastStartup.IsChecked = true;
+            ChkBootProcessors.IsChecked = true;
             UpdateSelectedCount();
         }
 
@@ -808,7 +825,7 @@ namespace PCOptimizer
         {
             var result = MessageBox.Show(
                 "⚠️ ATENÇÃO — Otimização Full\n\n" +
-                "Esta opção marcará TODAS as 31 otimizações sem exceção, incluindo:\n\n" +
+                "Esta opção marcará TODAS as 32 otimizações sem exceção, incluindo:\n\n" +
                 "• Desfragmentação de disco (pode demorar horas em HDDs)\n" +
                 "• Reparo do sistema SFC + DISM (~5-10 minutos)\n" +
                 "• Remoção de bloatware (apps Microsoft serão desinstalados)\n" +
