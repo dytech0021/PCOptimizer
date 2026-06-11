@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -23,6 +24,7 @@ namespace PCOptimizer
         private bool _expertWarned;
         private GpuTuningService.GpuInfo? _gpuInfo;
         private CpuUndervoltToolService.ToolInfo? _cpuUvTool;
+        private System.Collections.Generic.List<CpuTuningDetectionService.DetectedTool>? _detectedTools;
 
         public MainWindow()
         {
@@ -919,11 +921,52 @@ namespace PCOptimizer
             }
 
             _cpuUvTool = await Task.Run(CpuUndervoltToolService.Detect);
-            TxtCpuUvStatus.Text = _cpuUvTool.InstalledPath != null
-                ? $"CPU {_cpuUvTool.CpuVendor} — {_cpuUvTool.ToolName} detectado, clique para abrir"
-                : $"CPU {_cpuUvTool.CpuVendor} — requer driver de kernel; recomendamos o {_cpuUvTool.ToolName} (clique para baixar)";
-            BtnCpuUvTool.Content = _cpuUvTool.InstalledPath != null ? "Abrir" : "Baixar";
+            _detectedTools = await Task.Run(CpuTuningDetectionService.Detect);
+
+            // Aproveita o que já está instalado: se houver uma ferramenta de undervolt
+            // dedicada no PC (mesmo que para a outra marca), abre direto sem baixar nada.
+            var installedUv = CpuTuningDetectionService.BestInstalledUndervoltTool(_detectedTools);
+            UpdateCpuUvStatus(installedUv);
         }
+
+        private void UpdateCpuUvStatus(CpuTuningDetectionService.DetectedTool? installedUv)
+        {
+            if (_cpuUvTool == null) return;
+
+            // Monitores detectados (HWiNFO/CPU-Z/AIDA64/Afterburner) — úteis para
+            // acompanhar tensão e temperatura enquanto se faz o undervolt.
+            var monitors = _detectedTools?
+                .Where(t => t.Kind == CpuTuningDetectionService.ToolKind.Monitor)
+                .Select(t => t.Name + (t.Running ? " (aberto)" : ""))
+                .ToList() ?? new System.Collections.Generic.List<string>();
+            string monitorNote = monitors.Count > 0
+                ? $" • Monitor detectado: {string.Join(", ", monitors)}"
+                : "";
+
+            if (installedUv != null)
+            {
+                // Ferramenta de undervolt já instalada — leverage direto
+                _cpuUvToolToOpen = installedUv.InstalledPath;
+                TxtCpuUvStatus.Text = installedUv.Running
+                    ? $"✅ {installedUv.Name} já está aberto — clique para focar e fazer o undervolt{monitorNote}"
+                    : $"✅ {installedUv.Name} instalado — clique para abrir e fazer o undervolt{monitorNote}";
+                BtnCpuUvTool.Content = "Abrir";
+            }
+            else if (_cpuUvTool.InstalledPath != null)
+            {
+                _cpuUvToolToOpen = _cpuUvTool.InstalledPath;
+                TxtCpuUvStatus.Text = $"✅ CPU {_cpuUvTool.CpuVendor} — {_cpuUvTool.ToolName} instalado, clique para abrir{monitorNote}";
+                BtnCpuUvTool.Content = "Abrir";
+            }
+            else
+            {
+                _cpuUvToolToOpen = null;
+                TxtCpuUvStatus.Text = $"CPU {_cpuUvTool.CpuVendor} — requer ferramenta dedicada; recomendamos o {_cpuUvTool.ToolName} (clique para baixar){monitorNote}";
+                BtnCpuUvTool.Content = "Baixar";
+            }
+        }
+
+        private string? _cpuUvToolToOpen;
 
         /// <summary>Aviso único por sessão antes da primeira ação Expert. Retorna true se o usuário aceitou.</summary>
         private bool ConfirmExpertOnce()
@@ -1009,11 +1052,20 @@ namespace PCOptimizer
         {
             if (_cpuUvTool == null || !ConfirmExpertOnce()) return;
 
-            // Já instalada: abre direto, sem barra de progresso.
-            if (_cpuUvTool.InstalledPath != null)
+            // Ferramenta de undervolt já instalada (detectada no PC): abre direto,
+            // sem baixar nada nem barra de progresso.
+            if (_cpuUvToolToOpen != null)
             {
-                await CpuUndervoltToolService.AcquireAsync(_cpuUvTool, null);
-                Log($"🧬 {_cpuUvTool.ToolName} aberto para undervolt de CPU");
+                try
+                {
+                    System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo(_cpuUvToolToOpen) { UseShellExecute = true });
+                    Log($"🧬 Ferramenta de undervolt aberta: {System.IO.Path.GetFileNameWithoutExtension(_cpuUvToolToOpen)}");
+                }
+                catch (Exception ex)
+                {
+                    Log($"⚠️ Falha ao abrir a ferramenta de undervolt: {ex.Message}");
+                }
                 return;
             }
 
