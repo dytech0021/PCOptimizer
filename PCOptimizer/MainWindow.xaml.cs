@@ -1052,6 +1052,13 @@ namespace PCOptimizer
         {
             if (_cpuUvTool == null || !ConfirmExpertOnce()) return;
 
+            // Re-detecta na hora do clique: se o usuário instalou a ferramenta
+            // com o app já aberto (ex.: acabou de instalar o Ryzen Master), a
+            // detecção do startup está desatualizada. Atualiza antes de decidir.
+            _cpuUvTool = await Task.Run(CpuUndervoltToolService.Detect);
+            _detectedTools = await Task.Run(CpuTuningDetectionService.Detect);
+            UpdateCpuUvStatus(CpuTuningDetectionService.BestInstalledUndervoltTool(_detectedTools));
+
             // Ferramenta de undervolt já instalada (detectada no PC): abre direto,
             // sem baixar nada nem barra de progresso.
             if (_cpuUvToolToOpen != null)

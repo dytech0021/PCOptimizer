@@ -82,25 +82,42 @@ namespace PCOptimizer.Services
 
         public static List<DetectedTool> Detect()
         {
-            // Snapshot único dos processos — evita varrer a lista por candidato
-            HashSet<string> running;
+            // Snapshot único dos processos — guarda nome -> caminho do executável.
+            // O caminho do processo vivo cobre instalações em pastas fora do padrão.
+            var running = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                running = Process.GetProcesses()
-                    .Select(p => { try { return p.ProcessName; } catch { return ""; } })
-                    .Where(n => n.Length > 0)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in Process.GetProcesses())
+                {
+                    try
+                    {
+                        string name = p.ProcessName;
+                        if (name.Length == 0) continue;
+                        string? path = null;
+                        try { path = p.MainModule?.FileName; } catch { /* acesso negado */ }
+                        // Mantém o primeiro caminho não-nulo encontrado para o nome
+                        if (!running.TryGetValue(name, out var existing) || existing == null)
+                            running[name] = path;
+                    }
+                    catch { /* processo encerrou no meio do snapshot */ }
+                }
             }
-            catch
-            {
-                running = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            }
+            catch { /* sem acesso à lista de processos */ }
 
             var result = new List<DetectedTool>();
             foreach (var c in Catalog)
             {
                 string? path = c.Paths.FirstOrDefault(File.Exists);
-                bool isRunning = c.ProcessNames.Any(running.Contains);
+                bool isRunning = c.ProcessNames.Any(running.ContainsKey);
+
+                // Instalado em pasta fora do padrão, mas rodando: usa o caminho do processo
+                if (path == null && isRunning)
+                {
+                    path = c.ProcessNames
+                        .Select(n => running.TryGetValue(n, out var fp) ? fp : null)
+                        .FirstOrDefault(fp => !string.IsNullOrEmpty(fp) && File.Exists(fp));
+                }
+
                 if (path != null || isRunning)
                     result.Add(new DetectedTool(c.Name, c.Kind, path, isRunning));
             }
