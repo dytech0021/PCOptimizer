@@ -63,7 +63,9 @@ namespace PCOptimizer.Services
             if (code != 0) return -1;
             // Multi-GPU: usa a primeira linha (GPU 0)
             string first = output.Split('\n')[0].Trim();
-            return double.TryParse(first, System.Globalization.CultureInfo.InvariantCulture, out double v)
+            return double.TryParse(first,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double v)
                 ? (int)Math.Round(v) : -1;
         }
 
