@@ -1,20 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <PackageReference Include="System.Management" Version="9.0.5" />
+    <PackageReference Include="System.Management" Version="6.0.2" />
   </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <!-- net6.0 é a última LTS com suporte ao Windows 7 SP1; .NET 7+ removeu o Win7.
+         net6.0-windows roda do Win7 SP1 ao Win11 sem perder nenhuma função. -->
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     <AssemblyName>PCOptimizer</AssemblyName>
     <RootNamespace>PCOptimizer</RootNamespace>
-    <Version>1.42.0</Version>
-    <AssemblyVersion>1.42.0.0</AssemblyVersion>
-    <FileVersion>1.42.0.0</FileVersion>
+    <Version>1.43.0</Version>
+    <AssemblyVersion>1.43.0.0</AssemblyVersion>
+    <FileVersion>1.43.0.0</FileVersion>
     <Product>PC Optimizer</Product>
     <Company>dytech0021</Company>
     <!-- Debug (F5): sem admin. Release (.exe publicado): exige admin. -->

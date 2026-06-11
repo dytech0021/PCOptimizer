@@ -132,8 +132,7 @@ namespace PCOptimizer.Services
         {
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-                http.DefaultRequestHeaders.UserAgent.ParseAdd("PCOptimizer");
+                using var http = HttpFactory.Create(TimeSpan.FromMinutes(5), "PCOptimizer");
 
                 using var resp = await http.GetAsync(tool.DirectUrl,
                     HttpCompletionOption.ResponseHeadersRead, ct);

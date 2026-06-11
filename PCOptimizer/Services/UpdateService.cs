@@ -24,8 +24,7 @@ namespace PCOptimizer.Services
         {
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-                http.DefaultRequestHeaders.UserAgent.ParseAdd("PCOptimizer-UpdateCheck");
+                using var http = HttpFactory.Create(TimeSpan.FromSeconds(10), "PCOptimizer-UpdateCheck");
 
                 var json = await http.GetStringAsync(ApiUrl);
                 using var doc = JsonDocument.Parse(json);

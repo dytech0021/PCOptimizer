@@ -23,8 +23,7 @@ namespace PCOptimizer.Services
         public static async Task DownloadAsync(string url, string destPath,
             IProgress<double>? progress, CancellationToken ct = default)
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("PCOptimizer-Updater");
+            using var http = HttpFactory.Create(TimeSpan.FromMinutes(5), "PCOptimizer-Updater");
 
             using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             resp.EnsureSuccessStatusCode();

@@ -16,8 +16,8 @@ namespace PCOptimizer.Views
         {
             public int Index { get; init; }
             public bool IsWmi { get; init; }
-            public required Slider SliderBrightness { get; init; }
-            public required TextBlock TxtBrightness { get; init; }
+            public Slider SliderBrightness { get; init; } = null!;
+            public TextBlock TxtBrightness { get; init; } = null!;
             public Slider? SliderContrast { get; init; }
             public TextBlock? TxtContrast { get; init; }
             // Throttle "último valor vence": -1 = nada pendente
