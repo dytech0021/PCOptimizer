@@ -19,6 +19,11 @@ namespace PCOptimizer
         private double _doneWeight, _totalWeight;
         private DateTime _runStart;
 
+        // Modo Expert: aviso único por sessão + dados da GPU/ferramenta detectadas
+        private bool _expertWarned;
+        private GpuTuningService.GpuInfo? _gpuInfo;
+        private CpuUndervoltToolService.ToolInfo? _cpuUvTool;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -30,6 +35,7 @@ namespace PCOptimizer
                 ChkSelectAll.IsChecked = true;
                 UpdateSelectedCount();
                 _ = CheckForUpdatesAsync();
+                _ = InitExpertAsync();
             };
         }
 
@@ -173,6 +179,9 @@ namespace PCOptimizer
             if (chk == ChkMousePrecision) return 1;
             if (chk == ChkCoreIsolation) return 1;
             if (chk == ChkBootProcessors) return 2;
+            if (chk == ChkExpertCpuMax) return 4;
+            if (chk == ChkExpertTimer) return 1;
+            if (chk == ChkExpertMsi) return 3;
             return 5;
         }
 
@@ -238,7 +247,8 @@ namespace PCOptimizer
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache,
                 ChkHibernation, ChkSystemRepair, ChkBloatware,
                 ChkGameMode, ChkGamePriority, ChkGameNetwork, ChkPowerThrottling,
-                ChkFullscreenOpt, ChkMousePrecision, ChkCoreIsolation, ChkBootProcessors
+                ChkFullscreenOpt, ChkMousePrecision, ChkCoreIsolation, ChkBootProcessors,
+                ChkExpertCpuMax, ChkExpertTimer, ChkExpertMsi
             };
 
             int total = boxes.Length;
@@ -306,7 +316,8 @@ namespace PCOptimizer
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache, ChkFastStartup,
                 ChkHibernation, ChkSystemRepair, ChkBloatware, ChkGameMode, ChkGamePriority,
                 ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
-                ChkCoreIsolation, ChkBootProcessors };
+                ChkCoreIsolation, ChkBootProcessors, ChkExpertCpuMax, ChkExpertTimer,
+                ChkExpertMsi };
             _totalSelectedSteps = 0;
             _totalWeight = 0;
             foreach (var c in allChecks)
@@ -690,6 +701,43 @@ namespace PCOptimizer
                 StepDone(ChkBootProcessors);
             }
 
+            if (ChkExpertCpuMax.IsChecked == true)
+            {
+                Log("⚠️ Expert: travando CPU no clock máximo (C-States off)...");
+                StatusExpertCpuMax.Text = "⏳";
+                bool ok = await Task.Run(() => CpuMaxPerformanceService.Apply());
+                totalSteps++;
+                SetStatus(StatusExpertCpuMax, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ CPU travada no clock máximo — consumo/temperatura ficarão altos"
+                       : "⚠️ CPU clock máximo: requer admin");
+                StepDone(ChkExpertCpuMax);
+            }
+
+            if (ChkExpertTimer.IsChecked == true)
+            {
+                Log("⚠️ Expert: aplicando Timer Resolution 0.5ms...");
+                StatusExpertTimer.Text = "⏳";
+                bool ok = await Task.Run(() => TimerResolutionService.Apply());
+                totalSteps++;
+                SetStatus(StatusExpertTimer, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Timer em 0.5ms — válido enquanto o PC Optimizer estiver aberto"
+                       : "⚠️ Timer Resolution: falhou");
+                StepDone(ChkExpertTimer);
+            }
+
+            if (ChkExpertMsi.IsChecked == true)
+            {
+                Log("⚠️ Expert: ativando MSI Mode na GPU/rede...");
+                StatusExpertMsi.Text = "⏳";
+                int count = await Task.Run(() => MsiModeService.Apply());
+                totalSteps++;
+                bool ok = count > 0;
+                SetStatus(StatusExpertMsi, ok ? "✅" : "⚠️", ok);
+                Log(ok ? $"✅ MSI Mode: {count} ajustes aplicados (reinicie o PC)"
+                       : "⚠️ MSI Mode: requer admin");
+                StepDone(ChkExpertMsi);
+            }
+
                 Log($"\n🎉 Concluído! {totalSteps} otimizações. Espaço liberado: {FormatBytes(totalFreed)}");
 
                 MessageBox.Show(
@@ -832,6 +880,7 @@ namespace PCOptimizer
                 "• Desativar Hibernação (remove o hiberfil.sys)\n" +
                 "• Desativar Isolamento de Núcleo — reduz segurança do sistema\n" +
                 "• Desativar Precisão do Ponteiro — muda a sensação do mouse\n\n" +
+                "O grupo Expert ⚠️ (overclock/undervolt) NÃO é incluído — ele é 100% manual.\n\n" +
                 "Deseja continuar e marcar tudo?",
                 "PC Optimizer — Modo Full",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -840,6 +889,128 @@ namespace PCOptimizer
 
             SetAllChecksForPreset(true);
             UpdateSelectedCount();
+        }
+
+        // ════════════════ Modo Expert ════════════════
+
+        private async Task InitExpertAsync()
+        {
+            _gpuInfo = await Task.Run(GpuTuningService.Detect);
+            if (_gpuInfo == null)
+            {
+                TxtGpuName.Text = "GPU NVIDIA não detectada — OC/undervolt indisponíveis";
+            }
+            else
+            {
+                TxtGpuName.Text = $"{_gpuInfo.Name} — boost {_gpuInfo.BoostMhz} MHz, " +
+                    $"power limit {_gpuInfo.DefaultPowerW}W (máx {_gpuInfo.MaxPowerW}W)";
+                bool nvapi = await Task.Run(NvapiService.IsAvailable);
+                BtnGpuOcApply.IsEnabled = nvapi;
+                BtnGpuPowerMax.IsEnabled = _gpuInfo.MaxPowerW > 0;
+                BtnGpuRevert.IsEnabled = true;
+                bool uv = nvapi && _gpuInfo.SupportsLock;
+                BtnUvLeve.IsEnabled = uv;
+                BtnUvMedio.IsEnabled = uv;
+                BtnUvAgressivo.IsEnabled = uv;
+                if (!uv)
+                    TxtGpuUvStatus.Text = nvapi
+                        ? "Esta GPU não suporta trava de clock (precisa ser GTX 16xx / RTX ou mais nova)."
+                        : "NVAPI indisponível — undervolt desativado.";
+            }
+
+            _cpuUvTool = await Task.Run(CpuUndervoltToolService.Detect);
+            TxtCpuUvStatus.Text = _cpuUvTool.InstalledPath != null
+                ? $"CPU {_cpuUvTool.CpuVendor} — {_cpuUvTool.ToolName} detectado, clique para abrir"
+                : $"CPU {_cpuUvTool.CpuVendor} — requer driver de kernel; recomendamos o {_cpuUvTool.ToolName} (clique para baixar)";
+            BtnCpuUvTool.Content = _cpuUvTool.InstalledPath != null ? "Abrir" : "Baixar";
+        }
+
+        /// <summary>Aviso único por sessão antes da primeira ação Expert. Retorna true se o usuário aceitou.</summary>
+        private bool ConfirmExpertOnce()
+        {
+            if (_expertWarned) return true;
+            var result = MessageBox.Show(
+                "⚠️ MODO EXPERT — Usuários experientes\n\n" +
+                "As opções deste grupo mexem em overclock, tensão e comportamento " +
+                "interno do Windows. Podem causar instabilidade (tela preta, crash de " +
+                "jogo/driver) até você encontrar os valores certos para o seu hardware.\n\n" +
+                "Nada danifica o hardware permanentemente e tudo pode ser revertido " +
+                "(botão Stock / reiniciar o PC).\n\n" +
+                "Deseja continuar?",
+                "PC Optimizer — Modo Expert",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            _expertWarned = result == MessageBoxResult.Yes;
+            return _expertWarned;
+        }
+
+        private void ExpertCheckChanged(object sender, RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.CheckBox chk && !ConfirmExpertOnce())
+            {
+                chk.IsChecked = false;
+                return;
+            }
+            OptCheckChanged(sender, e);
+        }
+
+        private async void BtnGpuOcApply_Click(object sender, RoutedEventArgs e)
+        {
+            if (!ConfirmExpertOnce()) return;
+            int core = (int)SldGpuCore.Value;
+            int mem = (int)SldGpuMem.Value;
+            TxtGpuOcStatus.Text = "Aplicando...";
+            var (okCore, okMem) = await Task.Run(() => GpuTuningService.ApplyOverclock(core, mem));
+            TxtGpuOcStatus.Text = okCore && okMem ? $"✅ Core +{core} / Mem +{mem}"
+                                : okCore ? $"✅ Core +{core} • ⚠️ memória falhou"
+                                : "⚠️ Falhou — driver não aceitou o offset";
+            Log(okCore ? $"📈 OC GPU aplicado: core +{core} MHz, memória +{mem} MHz"
+                       : "⚠️ OC GPU: o driver rejeitou o offset");
+        }
+
+        private async void BtnGpuPowerMax_Click(object sender, RoutedEventArgs e)
+        {
+            if (!ConfirmExpertOnce() || _gpuInfo is not { } gpu) return;
+            bool ok = await Task.Run(() => GpuTuningService.ApplyMaxPowerLimit(gpu));
+            TxtGpuOcStatus.Text = ok ? $"✅ Power limit: {gpu.MaxPowerW}W"
+                                     : "⚠️ Esta placa não permite alterar o power limit";
+            Log(ok ? $"⚡ Power limit da GPU elevado para {gpu.MaxPowerW}W"
+                   : "⚠️ Power limit: não suportado nesta placa");
+        }
+
+        private async void ApplyUndervolt(double lockFactor, int offsetMhz, string nome)
+        {
+            if (!ConfirmExpertOnce() || _gpuInfo is not { } gpu) return;
+            TxtGpuUvStatus.Text = "Aplicando undervolt...";
+            var (ok, lockMhz) = await Task.Run(() =>
+                GpuTuningService.ApplyUndervolt(gpu, lockFactor, offsetMhz));
+            TxtGpuUvStatus.Text = ok
+                ? $"✅ Undervolt {nome}: clock travado em {lockMhz} MHz com offset +{offsetMhz} — teste num jogo"
+                : "⚠️ Falhou — requer admin e GPU Turing ou mais nova";
+            Log(ok ? $"🌡️ Undervolt {nome} aplicado: trava {lockMhz} MHz, offset +{offsetMhz} MHz"
+                   : "⚠️ Undervolt: falhou ao aplicar");
+        }
+
+        private void BtnUvLeve_Click(object sender, RoutedEventArgs e) => ApplyUndervolt(0.95, 120, "leve");
+        private void BtnUvMedio_Click(object sender, RoutedEventArgs e) => ApplyUndervolt(0.90, 150, "médio");
+        private void BtnUvAgressivo_Click(object sender, RoutedEventArgs e) => ApplyUndervolt(0.85, 180, "agressivo");
+
+        private async void BtnGpuRevert_Click(object sender, RoutedEventArgs e)
+        {
+            TxtGpuUvStatus.Text = "Revertendo...";
+            bool ok = await Task.Run(() => GpuTuningService.RevertAll(_gpuInfo));
+            TxtGpuUvStatus.Text = ok ? "✅ GPU revertida para o padrão de fábrica"
+                                     : "⚠️ Reversão parcial — reinicie o PC para garantir";
+            TxtGpuOcStatus.Text = "";
+            Log(ok ? "↩️ GPU revertida para stock (offsets 0, sem trava, power limit padrão)"
+                   : "⚠️ Reversão de GPU parcial — reinicie o PC");
+        }
+
+        private void BtnCpuUvTool_Click(object sender, RoutedEventArgs e)
+        {
+            if (_cpuUvTool == null || !ConfirmExpertOnce()) return;
+            bool opened = CpuUndervoltToolService.OpenToolOrDownload(_cpuUvTool);
+            Log(opened ? $"🧬 {_cpuUvTool.ToolName} aberto para undervolt de CPU"
+                       : $"🌐 Página de download do {_cpuUvTool.ToolName} aberta no navegador");
         }
 
         private void BtnThemeToggle_Click(object sender, RoutedEventArgs e)

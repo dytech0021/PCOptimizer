@@ -1228,6 +1228,249 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- ═══ Grupo: EXPERT (100% manual — fora dos combos e do Selecionar Tudo) ═══ -->
+                <Expander Style="{StaticResource GroupExpanderStyle}" IsExpanded="False" Margin="0,2,0,0">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="52" Height="52" CornerRadius="14"
+                                    Background="{DynamicResource Card3Bg}">
+                                <TextBlock Text="🔥" FontSize="24"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center" Margin="16,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Expert" FontSize="17" FontWeight="Bold"
+                                               Foreground="{DynamicResource TextPrimary}"/>
+                                    <TextBlock Text="⚠️" FontSize="15" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="Overclock, undervolt e tweaks agressivos — por sua conta e risco" FontSize="11"
+                                           Foreground="#F9E2AF" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Margin="0,2,0,4">
+
+                    <!-- Aviso -->
+                    <Border Style="{StaticResource OptCardStyle}" BorderBrush="#F38BA8">
+                        <TextBlock FontSize="10" TextWrapping="Wrap" Foreground="#F9E2AF"
+                                   Text="⚠️ Área para usuários experientes. Overclock e undervolt podem causar instabilidade (crash do jogo/driver). Nada aqui danifica o hardware — as proteções do driver continuam ativas — e tudo é revertido ao reiniciar o PC ou pelo botão Stock. Estas opções nunca entram nos combos nem no Selecionar Tudo."/>
+                    </Border>
+
+                    <!-- Overclock GPU NVIDIA -->
+                    <Border Style="{StaticResource OptCardStyle}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="40" Height="40" CornerRadius="12"
+                                        Background="{DynamicResource Card4Bg}" Margin="0,0,14,0">
+                                    <TextBlock Text="📈" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Overclock GPU NVIDIA ⚠️" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}"/>
+                                    <TextBlock x:Name="TxtGpuName" Text="Detectando GPU..." FontSize="10"
+                                               Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="52"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Core" FontSize="11" Width="56"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                                <Slider Grid.Row="0" Grid.Column="1" x:Name="SldGpuCore" Minimum="0" Maximum="200"
+                                        Value="75" TickFrequency="15" IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="0" Grid.Column="2" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                           HorizontalAlignment="Right"
+                                           Text="{Binding ElementName=SldGpuCore, Path=Value, StringFormat=+{0:F0}}"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Memória" FontSize="11" Width="56"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                                <Slider Grid.Row="1" Grid.Column="1" x:Name="SldGpuMem" Minimum="0" Maximum="500"
+                                        Value="200" TickFrequency="25" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                        Margin="0,6,0,0"/>
+                                <TextBlock Grid.Row="1" Grid.Column="2" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"
+                                           HorizontalAlignment="Right" Margin="0,6,0,0"
+                                           Text="{Binding ElementName=SldGpuMem, Path=Value, StringFormat=+{0:F0}}"/>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="BtnGpuOcApply" Content="Aplicar OC" FontSize="11" FontWeight="Bold"
+                                        Style="{StaticResource RunButtonStyle}" Padding="14,7" Cursor="Hand"
+                                        Background="{DynamicResource ButtonPrimaryBg}" Foreground="White"
+                                        BorderThickness="0" IsEnabled="False" Click="BtnGpuOcApply_Click"/>
+                                <Button x:Name="BtnGpuPowerMax" Content="Power Limit Máx" FontSize="11" FontWeight="Bold"
+                                        Style="{StaticResource RunButtonStyle}" Padding="14,7" Margin="8,0,0,0" Cursor="Hand"
+                                        Background="{DynamicResource ButtonSecondaryBg}"
+                                        Foreground="{DynamicResource ButtonSecondaryFg}"
+                                        BorderThickness="0" IsEnabled="False" Click="BtnGpuPowerMax_Click"/>
+                                <TextBlock x:Name="TxtGpuOcStatus" Text="" FontSize="11" Margin="12,0,0,0"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Undervolt GPU NVIDIA -->
+                    <Border Style="{StaticResource OptCardStyle}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="40" Height="40" CornerRadius="12"
+                                        Background="{DynamicResource Card6Bg}" Margin="0,0,14,0">
+                                    <TextBlock Text="🌡️" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Undervolt GPU NVIDIA ⚠️" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}"/>
+                                    <TextBlock Text="Mesmo desempenho com menos tensão: -10 a -15°C, menos ruído e consumo (Turing+)" FontSize="10"
+                                               Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="BtnUvLeve" Content="🟢 Leve" FontSize="11" FontWeight="Bold"
+                                        Style="{StaticResource RunButtonStyle}" Padding="12,7" Cursor="Hand"
+                                        Background="{DynamicResource Preset3Bg}" Foreground="{DynamicResource Preset3Fg}"
+                                        BorderBrush="{DynamicResource Preset3Border}" BorderThickness="1"
+                                        IsEnabled="False" Click="BtnUvLeve_Click"
+                                        ToolTip="Trava ~95% do boost com offset +120 — praticamente sem risco"/>
+                                <Button x:Name="BtnUvMedio" Content="🟡 Médio" FontSize="11" FontWeight="Bold"
+                                        Style="{StaticResource RunButtonStyle}" Padding="12,7" Margin="6,0,0,0" Cursor="Hand"
+                                        Background="{DynamicResource Preset2Bg}" Foreground="{DynamicResource Preset2Fg}"
+                                        BorderBrush="{DynamicResource Preset2Border}" BorderThickness="1"
+                                        IsEnabled="False" Click="BtnUvMedio_Click"
+                                        ToolTip="Trava ~90% do boost com offset +150 — sweet spot da maioria das placas"/>
+                                <Button x:Name="BtnUvAgressivo" Content="🔴 Agressivo" FontSize="11" FontWeight="Bold"
+                                        Style="{StaticResource RunButtonStyle}" Padding="12,7" Margin="6,0,0,0" Cursor="Hand"
+                                        Background="{DynamicResource Preset1Bg}" Foreground="{DynamicResource Preset1Fg}"
+                                        BorderBrush="{DynamicResource Preset1Border}" BorderThickness="1"
+                                        IsEnabled="False" Click="BtnUvAgressivo_Click"
+                                        ToolTip="Trava ~85% do boost com offset +180 — máxima eficiência, teste a estabilidade"/>
+                                <Button x:Name="BtnGpuRevert" Content="↩️ Stock" FontSize="11" FontWeight="Bold"
+                                        Style="{StaticResource RunButtonStyle}" Padding="12,7" Margin="6,0,0,0" Cursor="Hand"
+                                        Background="{DynamicResource ButtonSecondaryBg}"
+                                        Foreground="{DynamicResource ButtonSecondaryFg}"
+                                        BorderThickness="0" IsEnabled="False" Click="BtnGpuRevert_Click"
+                                        ToolTip="Reverte OC, undervolt e power limit para o padrão de fábrica"/>
+                            </StackPanel>
+                            <TextBlock x:Name="TxtGpuUvStatus" Text="" FontSize="11" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondary}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CPU no clock máximo -->
+                    <Border Style="{StaticResource OptCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="ChkExpertCpuMax" IsChecked="False" VerticalAlignment="Center"
+                                      Checked="ExpertCheckChanged" Unchecked="OptCheckChanged"/>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                    Background="{DynamicResource Card1Bg}" Margin="10,0,14,0">
+                                <TextBlock Text="🔒" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock Text="Travar CPU no Clock Máximo ⚠️" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Desativa os C-States: latência mínima, mas consumo e temperatura sempre altos" FontSize="10"
+                                           Foreground="#F9E2AF" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="3" x:Name="StatusExpertCpuMax" Text="—"
+                                       Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       VerticalAlignment="Center" Margin="8,0,4,0"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Timer Resolution -->
+                    <Border Style="{StaticResource OptCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="ChkExpertTimer" IsChecked="False" VerticalAlignment="Center"
+                                      Checked="ExpertCheckChanged" Unchecked="OptCheckChanged"/>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                    Background="{DynamicResource Card5Bg}" Margin="10,0,14,0">
+                                <TextBlock Text="⏱️" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock Text="Timer Resolution 0.5ms ⚠️" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Frametimes mais consistentes em jogos competitivos — ativo enquanto o app estiver aberto" FontSize="10"
+                                           Foreground="#F9E2AF" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="3" x:Name="StatusExpertTimer" Text="—"
+                                       Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       VerticalAlignment="Center" Margin="8,0,4,0"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- MSI Mode -->
+                    <Border Style="{StaticResource OptCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="ChkExpertMsi" IsChecked="False" VerticalAlignment="Center"
+                                      Checked="ExpertCheckChanged" Unchecked="OptCheckChanged"/>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                    Background="{DynamicResource Card2Bg}" Margin="10,0,14,0">
+                                <TextBlock Text="📨" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock Text="MSI Mode + Prioridade de Interrupção ⚠️" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Interrupções mais rápidas na GPU/rede e boost do app em foco (requer reiniciar)" FontSize="10"
+                                           Foreground="#F9E2AF" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="3" x:Name="StatusExpertMsi" Text="—"
+                                       Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       VerticalAlignment="Center" Margin="8,0,4,0"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Undervolt CPU (ferramenta externa) -->
+                    <Border Style="{StaticResource OptCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="12"
+                                    Background="{DynamicResource Card7Bg}" Margin="0,0,14,0">
+                                <TextBlock Text="🧬" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Undervolt de CPU ⚠️" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock x:Name="TxtCpuUvStatus" Text="Detectando ferramenta recomendada..." FontSize="10"
+                                           Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Button Grid.Column="2" x:Name="BtnCpuUvTool" Content="Abrir" FontSize="11" FontWeight="Bold"
+                                    Style="{StaticResource RunButtonStyle}" Padding="14,7" Cursor="Hand"
+                                    Background="{DynamicResource ButtonSecondaryBg}"
+                                    Foreground="{DynamicResource ButtonSecondaryFg}"
+                                    BorderThickness="0" VerticalAlignment="Center"
+                                    Click="BtnCpuUvTool_Click"/>
+                        </Grid>
+                    </Border>
+                    </StackPanel>
+                </Expander>
+
                 <!-- ═══ Combos Rápidos ═══ -->
                 <Border Margin="0,10,0,6">
                     <StackPanel>
