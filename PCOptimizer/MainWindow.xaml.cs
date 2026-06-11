@@ -1005,12 +1005,53 @@ namespace PCOptimizer
                    : "⚠️ Reversão de GPU parcial — reinicie o PC");
         }
 
-        private void BtnCpuUvTool_Click(object sender, RoutedEventArgs e)
+        private async void BtnCpuUvTool_Click(object sender, RoutedEventArgs e)
         {
             if (_cpuUvTool == null || !ConfirmExpertOnce()) return;
-            bool opened = CpuUndervoltToolService.OpenToolOrDownload(_cpuUvTool);
-            Log(opened ? $"🧬 {_cpuUvTool.ToolName} aberto para undervolt de CPU"
-                       : $"🌐 Página de download do {_cpuUvTool.ToolName} aberta no navegador");
+
+            // Já instalada: abre direto, sem barra de progresso.
+            if (_cpuUvTool.InstalledPath != null)
+            {
+                await CpuUndervoltToolService.AcquireAsync(_cpuUvTool, null);
+                Log($"🧬 {_cpuUvTool.ToolName} aberto para undervolt de CPU");
+                return;
+            }
+
+            BtnCpuUvTool.IsEnabled = false;
+            TxtCpuUvStatus.Text = $"Baixando {_cpuUvTool.ToolName}...";
+            Progress.Visibility = Visibility.Visible;
+            Progress.IsIndeterminate = false;
+            Progress.Value = 0;
+            TxtProgress.Visibility = Visibility.Visible;
+            TxtProgress.Text = $"Baixando {_cpuUvTool.ToolName}... 0%";
+
+            var progress = new Progress<double>(p =>
+            {
+                Progress.Value = p * 100;
+                TxtProgress.Text = $"Baixando {_cpuUvTool.ToolName}... {p * 100:F0}%";
+            });
+
+            var result = await CpuUndervoltToolService.AcquireAsync(_cpuUvTool, progress);
+
+            Progress.Visibility = Visibility.Collapsed;
+            TxtProgress.Visibility = Visibility.Collapsed;
+            BtnCpuUvTool.IsEnabled = true;
+
+            switch (result)
+            {
+                case CpuUndervoltToolService.AcquireResult.Downloaded:
+                    TxtCpuUvStatus.Text = $"✅ {_cpuUvTool.ToolName} baixado e iniciado — siga a instalação";
+                    Log($"🧬 {_cpuUvTool.ToolName} baixado na pasta Downloads e instalador aberto");
+                    break;
+                case CpuUndervoltToolService.AcquireResult.OpenedPage:
+                    TxtCpuUvStatus.Text = $"🌐 Página do {_cpuUvTool.ToolName} aberta — baixe por lá";
+                    Log($"🌐 Download direto indisponível; página oficial do {_cpuUvTool.ToolName} aberta no navegador");
+                    break;
+                default:
+                    TxtCpuUvStatus.Text = $"⚠️ Não foi possível abrir o {_cpuUvTool.ToolName}";
+                    Log($"⚠️ Falha ao baixar/abrir o {_cpuUvTool.ToolName}");
+                    break;
+            }
         }
 
         private void BtnThemeToggle_Click(object sender, RoutedEventArgs e)
