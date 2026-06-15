@@ -143,24 +143,50 @@ namespace PCOptimizer.Services
         // entrelaçar com outro toggle vindo da UI ou de um arraste seguinte.
         private static readonly object _winNlLock = new();
 
-        // Localiza a subchave correta — o nome da folha varia entre versões do Windows.
+        // Localiza a subchave correta — o nome do container e da folha variam entre versões do Windows.
+        // Estratégia: tenta os nomes conhecidos primeiro, depois enumera todas as subchaves de
+        // DefaultAccount\Current\ procurando qualquer container que contenha o nome do recurso.
         private static string? FindNlKeyPath(bool settings)
         {
             const string baseP =
                 @"Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\";
-            string container = settings
-                ? "default$windows.data.bluelightreduction.settings"
-                : "default$windows.data.bluelightreduction.bluelightreductionstate";
-            string[] leaves = settings
+            string targetFragment = settings
+                ? "bluelightreduction.settings"
+                : "bluelightreduction.bluelightreductionstate";
+            string[] knownLeaves = settings
                 ? new[] { "Current", "windows.data.bluelightreduction.settings" }
                 : new[] { "Current", "windows.data.bluelightreduction.bluelightreductionstate" };
 
-            foreach (var leaf in leaves)
+            try
             {
-                string p = baseP + container + "\\" + leaf;
-                using var k = Registry.CurrentUser.OpenSubKey(p);
-                if (k?.GetValue("Data") is byte[]) return p;
+                using var baseKey = Registry.CurrentUser.OpenSubKey(baseP);
+                if (baseKey == null) return null;
+
+                foreach (var containerName in baseKey.GetSubKeyNames())
+                {
+                    if (containerName.IndexOf(targetFragment, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+
+                    // Tenta as folhas conhecidas primeiro
+                    foreach (var leaf in knownLeaves)
+                    {
+                        string p = baseP + containerName + "\\" + leaf;
+                        using var k = Registry.CurrentUser.OpenSubKey(p);
+                        if (k?.GetValue("Data") is byte[]) return p;
+                    }
+
+                    // Enumera todas as folhas sob este container como fallback
+                    using var containerKey = baseKey.OpenSubKey(containerName);
+                    if (containerKey == null) continue;
+                    foreach (var leafName in containerKey.GetSubKeyNames())
+                    {
+                        string p = baseP + containerName + "\\" + leafName;
+                        using var k = Registry.CurrentUser.OpenSubKey(p);
+                        if (k?.GetValue("Data") is byte[]) return p;
+                    }
+                }
             }
+            catch { }
             return null;
         }
 

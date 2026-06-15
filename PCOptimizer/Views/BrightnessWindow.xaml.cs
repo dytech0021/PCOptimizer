@@ -493,7 +493,23 @@ namespace PCOptimizer.Views
                 ChkWinNightLight.IsChecked = false;
                 WinNightLightPanel.Visibility = Visibility.Collapsed;
                 _winNlInitializing = false;
-                TxtStatus.Text = "Não foi possível ativar — abra Configurações > Sistema > Noturno";
+
+                // Abre diretamente as Configurações de Luz Noturna do Windows para que o
+                // usuário ative o recurso lá (o que cria a chave de registro necessária);
+                // depois basta clicar na chave aqui novamente.
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "ms-settings:nightlight",
+                        UseShellExecute = true
+                    });
+                    TxtStatus.Text = "Ative a Luz Noturna nas Configurações do Windows e tente novamente";
+                }
+                catch
+                {
+                    TxtStatus.Text = "Não foi possível ativar — abra Configurações > Sistema > Luz Noturna";
+                }
             }
         }
 
