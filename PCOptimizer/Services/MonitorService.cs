@@ -31,6 +31,12 @@ namespace PCOptimizer.Services
         public bool SupportsBrightness { get; set; }
         public bool SupportsContrast { get; set; }
         public bool IsWmi { get; set; }
+        public bool IsSoftware { get; set; }      // brilho via overlay (sem DDC/CI nem WMI)
+        public string DeviceKey { get; set; } = ""; // identidade p/ o overlay de software
+        public int ScreenLeft { get; set; }       // bounds em pixels físicos (PerMonitorV2)
+        public int ScreenTop { get; set; }
+        public int ScreenWidth { get; set; }
+        public int ScreenHeight { get; set; }
         public bool SupportsHdr { get; set; }
         public bool HdrEnabled { get; set; }
         public uint HdrAdapterIdLow { get; set; }
@@ -509,12 +515,18 @@ namespace PCOptimizer.Services
                                                / (m.MaxContrast - m.MinContrast));
 
                 // HDR info — correlate by screen position (rcMonitor.left/top == DisplayConfig source position)
-                int srcX = 0, srcY = 0;
+                // Também guarda os bounds em px físicos e o nome do device (\\.\DISPLAYn),
+                // usados para posicionar o overlay de brilho por software.
+                int srcX = 0, srcY = 0, scrW = 0, scrH = 0;
+                string deviceKey = "";
                 var mInfoEx = new MONITORINFOEX { cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>() };
                 if (GetMonitorInfo(m.LogicalHandle, ref mInfoEx))
                 {
                     srcX = mInfoEx.rcMonitor.left;
                     srcY = mInfoEx.rcMonitor.top;
+                    scrW = mInfoEx.rcMonitor.right - mInfoEx.rcMonitor.left;
+                    scrH = mInfoEx.rcMonitor.bottom - mInfoEx.rcMonitor.top;
+                    deviceKey = mInfoEx.szDevice;
                 }
                 var hdr = hdrInfos.Find(h => h.SourceX == srcX && h.SourceY == srcY);
 
@@ -529,6 +541,17 @@ namespace PCOptimizer.Services
                     isWmi              = true;
                 }
 
+                // Sem DDC/CI e sem WMI (monitor simples por HDMI): brilho por software
+                // — escurece a imagem via overlay. Melhor que um controle morto.
+                bool isSoftware = false;
+                string swKey = !string.IsNullOrEmpty(deviceKey) ? deviceKey : hwId;
+                if (!supportsBrightness)
+                {
+                    brightness         = SoftwareBrightnessService.GetBrightness(swKey);
+                    supportsBrightness = true;
+                    isSoftware         = true;
+                }
+
                 entries.Add(new MonitorEntry
                 {
                     Index              = i,
@@ -539,6 +562,12 @@ namespace PCOptimizer.Services
                     SupportsBrightness = supportsBrightness,
                     SupportsContrast   = supportsContrast,
                     IsWmi              = isWmi,
+                    IsSoftware         = isSoftware,
+                    DeviceKey          = swKey,
+                    ScreenLeft         = srcX,
+                    ScreenTop          = srcY,
+                    ScreenWidth        = scrW,
+                    ScreenHeight       = scrH,
                     SupportsHdr        = hdr != null,
                     HdrEnabled         = hdr?.IsEnabled ?? false,
                     HdrAdapterIdLow    = hdr?.AdapterIdLow ?? 0,

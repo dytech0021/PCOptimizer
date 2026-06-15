@@ -16,6 +16,12 @@ namespace PCOptimizer.Views
         {
             public int Index { get; init; }
             public bool IsWmi { get; init; }
+            public bool IsSoftware { get; init; }
+            public string DeviceKey { get; init; } = "";
+            public int ScreenLeft { get; init; }
+            public int ScreenTop { get; init; }
+            public int ScreenWidth { get; init; }
+            public int ScreenHeight { get; init; }
             public Slider SliderBrightness { get; init; } = null!;
             public TextBlock TxtBrightness { get; init; } = null!;
             public Slider? SliderContrast { get; init; }
@@ -239,11 +245,11 @@ namespace PCOptimizer.Views
             txtB.SetResourceReference(TextBlock.ForegroundProperty, "ButtonPrimaryBg");
             container.Children.Add(MakeSliderRow("☀️", sliderB, txtB, new Thickness(0, 0, 0, 6)));
 
-            // Contrast slider (DDC/CI only)
+            // Contrast slider (DDC/CI only) — não existe em WMI nem no modo software
             Slider? sliderC = null;
             TextBlock? txtC = null;
 
-            if (!entry.IsWmi)
+            if (!entry.IsWmi && !entry.IsSoftware)
             {
                 sliderC = new Slider
                 {
@@ -262,7 +268,7 @@ namespace PCOptimizer.Views
                 txtC.SetResourceReference(TextBlock.ForegroundProperty, "ButtonPrimaryBg");
                 container.Children.Add(MakeSliderRow("🌗", sliderC, txtC, new Thickness(0, 0, 0, 4)));
             }
-            else
+            else if (entry.IsWmi)
             {
                 var note = new TextBlock
                 {
@@ -273,22 +279,29 @@ namespace PCOptimizer.Views
                 container.Children.Add(note);
             }
 
-            // Monitor externo sem DDC/CI: avisa em vez de fingir controle
-            if (!entry.IsWmi && !entry.SupportsBrightness)
+            // Monitor sem DDC/CI nem WMI: brilho por software (escurecimento via overlay).
+            if (entry.IsSoftware)
             {
-                var ddcNote = new TextBlock
+                var swNote = new TextBlock
                 {
-                    Text = "⚠ Sem resposta DDC/CI — ative \"DDC/CI\" no menu (OSD) do monitor",
-                    FontSize = 9, Opacity = 0.8, Margin = new Thickness(0, 0, 0, 4),
+                    Text = "🖌 Brilho por software (escurece a imagem) — DDC/CI indisponível. " +
+                           "Para brilho real do backlight, ative \"DDC/CI\" no menu (OSD) do monitor.",
+                    FontSize = 9, Opacity = 0.85, Margin = new Thickness(0, 0, 0, 4),
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF))
                 };
-                container.Children.Add(ddcNote);
+                container.Children.Add(swNote);
             }
 
             var mc = new MonitorControl
             {
                 Index = entry.Index, IsWmi = entry.IsWmi,
+                IsSoftware   = entry.IsSoftware,
+                DeviceKey    = entry.DeviceKey,
+                ScreenLeft   = entry.ScreenLeft,
+                ScreenTop    = entry.ScreenTop,
+                ScreenWidth  = entry.ScreenWidth,
+                ScreenHeight = entry.ScreenHeight,
                 SliderBrightness = sliderB, TxtBrightness = txtB,
                 SliderContrast   = sliderC, TxtContrast   = txtC,
                 SupportsHdr      = entry.SupportsHdr,
@@ -318,8 +331,15 @@ namespace PCOptimizer.Views
                     {
                         int v = mc.PendingBrightness;
                         mc.PendingBrightness = -1;
-                        if (mc.IsWmi) await Task.Run(() => MonitorService.SetWmiBrightness(v));
-                        else          await Task.Run(() => MonitorService.SetBrightnessForIndex(mc.Index, v));
+                        if (mc.IsWmi)
+                            await Task.Run(() => MonitorService.SetWmiBrightness(v));
+                        else if (mc.IsSoftware)
+                            // Overlay roda na thread de UI (operação instantânea)
+                            SoftwareBrightnessService.SetBrightness(
+                                mc.DeviceKey, mc.ScreenLeft, mc.ScreenTop,
+                                mc.ScreenWidth, mc.ScreenHeight, v);
+                        else
+                            await Task.Run(() => MonitorService.SetBrightnessForIndex(mc.Index, v));
                     }
                 }
                 catch (Exception ex) { TxtStatus.Text = $"Erro brilho: {ex.Message}"; }
