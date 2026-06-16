@@ -172,6 +172,7 @@ namespace PCOptimizer
             if (chk == ChkFastStartup) return 3;
             if (chk == ChkHibernation) return 4;
             if (chk == ChkSystemRepair) return 420;
+            if (chk == ChkFixDate) return 6;
             if (chk == ChkBloatware) return 60;
             if (chk == ChkGameMode) return 1;
             if (chk == ChkGamePriority) return 1;
@@ -247,7 +248,7 @@ namespace PCOptimizer
                 ChkPowerPlan, ChkVisualEffects, ChkBackgroundApps, ChkStandbyRam,
                 ChkGpuScheduling, ChkFastStartup, ChkTelemetry, ChkGameBar,
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache,
-                ChkHibernation, ChkSystemRepair, ChkBloatware,
+                ChkHibernation, ChkSystemRepair, ChkFixDate, ChkBloatware,
                 ChkGameMode, ChkGamePriority, ChkGameNetwork, ChkPowerThrottling,
                 ChkFullscreenOpt, ChkMousePrecision, ChkCoreIsolation, ChkBootProcessors,
                 ChkExpertCpuMax, ChkExpertTimer, ChkExpertMsi
@@ -299,6 +300,8 @@ namespace PCOptimizer
             ChkGameNetwork.IsChecked = value;
             ChkPowerThrottling.IsChecked = value;
             ChkBootProcessors.IsChecked = value;
+            // Correção de data/hora: segura e rápida, entra no "selecionar tudo".
+            ChkFixDate.IsChecked = value;
             // Nota: Hibernação, Inicialização Rápida, Reparo, Bloatware e as opções
             // de games com trade-off (Tela Cheia, Ponteiro, Isolamento de Núcleo)
             // ficam de fora do "selecionar tudo" — opt-in manual.
@@ -316,7 +319,7 @@ namespace PCOptimizer
                 ChkNetwork, ChkRegistry, ChkCortana, ChkDefrag, ChkPowerPlan, ChkVisualEffects,
                 ChkBackgroundApps, ChkStandbyRam, ChkGpuScheduling, ChkTelemetry, ChkGameBar,
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache, ChkFastStartup,
-                ChkHibernation, ChkSystemRepair, ChkBloatware, ChkGameMode, ChkGamePriority,
+                ChkHibernation, ChkSystemRepair, ChkFixDate, ChkBloatware, ChkGameMode, ChkGamePriority,
                 ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
                 ChkCoreIsolation, ChkBootProcessors, ChkExpertCpuMax, ChkExpertTimer,
                 ChkExpertMsi };
@@ -590,6 +593,18 @@ namespace PCOptimizer
                 StepDone(ChkSystemRepair);
             }
 
+            if (ChkFixDate.IsChecked == true)
+            {
+                Log("Corrigindo data e hora (sincronizando com a internet)...");
+                StatusFixDate.Text = "⏳";
+                bool ok = await Task.Run(() => WindowsDateService.Fix());
+                totalSteps++;
+                SetStatus(StatusFixDate, ok ? "✅" : "⚠️", ok);
+                Log(ok ? "✅ Data e hora sincronizadas com a internet (NTP)"
+                       : "⚠️ Data/hora: requer admin ou sem conexão com a internet");
+                StepDone(ChkFixDate);
+            }
+
             if (ChkBloatware.IsChecked == true)
             {
                 Log("Removendo bloatware...");
@@ -795,7 +810,7 @@ namespace PCOptimizer
                 ChkNetwork, ChkRegistry, ChkCortana, ChkDefrag, ChkPowerPlan, ChkVisualEffects,
                 ChkBackgroundApps, ChkStandbyRam, ChkGpuScheduling, ChkTelemetry, ChkGameBar,
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache, ChkFastStartup,
-                ChkHibernation, ChkSystemRepair, ChkBloatware, ChkGameMode, ChkGamePriority,
+                ChkHibernation, ChkSystemRepair, ChkFixDate, ChkBloatware, ChkGameMode, ChkGamePriority,
                 ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
                 ChkCoreIsolation, ChkBootProcessors })
                 chk.IsChecked = value;

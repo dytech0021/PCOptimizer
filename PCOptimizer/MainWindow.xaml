@@ -909,6 +909,33 @@
                         </Grid>
                     </Border>
 
+                    <!-- Corrigir Data e Hora -->
+                    <Border Style="{StaticResource OptCardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" x:Name="ChkFixDate" IsChecked="False" VerticalAlignment="Center"
+                                      Checked="OptCheckChanged" Unchecked="OptCheckChanged"/>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="12"
+                                    Background="{DynamicResource Card3Bg}" Margin="10,0,14,0">
+                                <TextBlock Text="🕒" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock Text="Corrigir Data e Hora do Windows" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Reativa o horário automático e sincroniza com a internet (NTP)" FontSize="10"
+                                           Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="3" x:Name="StatusFixDate" Text="—"
+                                       Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       VerticalAlignment="Center" Margin="8,0,4,0"/>
+                        </Grid>
+                    </Border>
+
                     <!-- Remover Bloatware -->
                     <Border Style="{StaticResource OptCardStyle}">
                         <Grid>
