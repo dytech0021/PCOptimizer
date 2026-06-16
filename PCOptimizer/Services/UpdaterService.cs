@@ -10,10 +10,22 @@ namespace PCOptimizer.Services
 {
     /// <summary>
     /// Baixa a nova versao e troca o executavel atual por ela.
-    /// A troca e feita por um PowerShell oculto que espera este processo fechar,
-    /// move o .new por cima do .exe e reinicia. O .new NUNCA e executado — exe
-    /// single-file em execucao nao pode ser renomeado de forma confiavel, o que
-    /// deixava o updater antigo em loop infinito sem nunca abrir o app.
+    ///
+    /// Estrategia de troca (duas etapas, do mais simples ao mais robusto):
+    ///
+    /// Etapa 1 — troca em-processo:
+    ///   No Windows, um exe em execucao pode ser renomeado (o OS abre com
+    ///   FILE_SHARE_DELETE). Entao enquanto o app ainda roda nos renomeamos
+    ///   para .bak, movemos o .new para o nosso lugar (agora vago, sem
+    ///   overwrite) e lancamos o novo exe diretamente. E a abordagem mais
+    ///   confiavel pois nao precisa esperar o processo fechar.
+    ///
+    /// Etapa 2 — script PowerShell (fallback):
+    ///   Se a etapa 1 falhar (raro — ex.: disco somente leitura, AV), um
+    ///   script oculto espera o processo fechar e repete a mesma logica
+    ///   rename-first: move old→.bak, depois new→old (sem overwrite).
+    ///   Se mesmo assim falhar, reinicia sem --updated para o usuario tentar
+    ///   de novo em vez de ficar preso na versao antiga silenciosamente.
     /// </summary>
     public static class UpdaterService
     {
@@ -45,59 +57,118 @@ namespace PCOptimizer.Services
         }
 
         /// <summary>
-        /// Aplica a atualizacao: um PowerShell oculto espera este processo fechar,
-        /// move newExePath por cima do exe atual e reabre o app com --updated.
+        /// Aplica a atualizacao e reinicia o app.
         /// O chamador deve encerrar o app logo apos chamar este metodo.
         /// </summary>
         public static void ApplyAndRestart(string newExePath)
         {
             string currentExe = Environment.ProcessPath
                 ?? Process.GetCurrentProcess().MainModule!.FileName!;
-            int pid = Environment.ProcessId;
+            string backupPath = currentExe + ".bak";
 
-            // Aspas simples do PowerShell: o unico escape necessario e ' -> ''.
-            // Parenteses e espacos no caminho (ex.: "PCOptimizer (5).exe") sao seguros.
+            // ── Etapa 1: troca em-processo ───────────────────────────────────
+            // Um exe em execucao no Windows pode ser RENOMEADO (FILE_SHARE_DELETE)
+            // mas nao sobrescrito. Renomear nos mesmos para .bak libera o nome
+            // original; mover o .new para esse nome vago nao precisa de overwrite.
+            try
+            {
+                if (File.Exists(backupPath)) File.Delete(backupPath);
+                File.Move(currentExe, backupPath);      // nos mesmos → .bak
+                try
+                {
+                    File.Move(newExePath, currentExe);  // .new → nome original (vago)
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName        = currentExe,
+                        Arguments       = "--updated",
+                        UseShellExecute = false,
+                        CreateNoWindow  = false
+                    });
+                    return; // caller chama Shutdown()
+                }
+                catch
+                {
+                    // Move do .new falhou — restaura o nome original
+                    try { File.Move(backupPath, currentExe); } catch { }
+                    throw;
+                }
+            }
+            catch { /* cai no fallback PowerShell abaixo */ }
+
+            // ── Etapa 2: PowerShell (fallback) ───────────────────────────────
+            int pid = Environment.ProcessId;
             static string Esc(string s) => s.Replace("'", "''");
 
             string script = $@"
 $ErrorActionPreference = 'SilentlyContinue'
-Wait-Process -Id {pid} -Timeout 60
-Start-Sleep -Milliseconds 500
+Wait-Process -Id {pid} -Timeout 60 -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
 $new = '{Esc(newExePath)}'
 $old = '{Esc(currentExe)}'
-$moved = $false
-for ($i = 0; $i -lt 30; $i++) {{
+$bak = $old + '.bak'
+if (Test-Path -LiteralPath $bak) {{ Remove-Item -LiteralPath $bak -Force }}
+$applied = $false
+for ($i = 0; $i -lt 20; $i++) {{
     try {{
+        if (Test-Path -LiteralPath $old) {{
+            Move-Item -LiteralPath $old -Destination $bak -Force -ErrorAction Stop
+        }}
         Move-Item -LiteralPath $new -Destination $old -Force -ErrorAction Stop
-        $moved = $true
+        Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
+        $applied = $true
         break
-    }} catch {{ Start-Sleep -Seconds 1 }}
+    }} catch {{
+        if (-not (Test-Path -LiteralPath $old) -and (Test-Path -LiteralPath $bak)) {{
+            Move-Item -LiteralPath $bak -Destination $old -Force -ErrorAction SilentlyContinue
+        }}
+        Start-Sleep -Seconds 1
+    }}
 }}
-if (-not $moved) {{
+if (-not $applied) {{
     try {{
         Copy-Item -LiteralPath $new -Destination $old -Force -ErrorAction Stop
-        Remove-Item -LiteralPath $new -Force
+        Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue
+        $applied = $true
     }} catch {{ }}
 }}
-Start-Process -FilePath $old -ArgumentList '--updated'
+if ($applied) {{
+    Start-Process -FilePath $old -ArgumentList '--updated'
+}} else {{
+    if (Test-Path -LiteralPath $old) {{ Start-Process -FilePath $old }}
+}}
 ";
 
             var psi = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
+                FileName       = "powershell.exe",
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow  = true
             };
             psi.ArgumentList.Add("-NoProfile");
             psi.ArgumentList.Add("-ExecutionPolicy");
             psi.ArgumentList.Add("Bypass");
             psi.ArgumentList.Add("-WindowStyle");
             psi.ArgumentList.Add("Hidden");
-            // EncodedCommand elimina qualquer problema de quoting no caminho
             psi.ArgumentList.Add("-EncodedCommand");
             psi.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
 
             Process.Start(psi);
+        }
+
+        /// <summary>
+        /// Remove o .bak deixado pela etapa 1 da atualizacao anterior, se existir.
+        /// Deve ser chamado na inicializacao quando --updated estiver presente.
+        /// </summary>
+        public static void CleanupBackup()
+        {
+            try
+            {
+                string? exe = Environment.ProcessPath;
+                if (exe == null) return;
+                string bak = exe + ".bak";
+                if (File.Exists(bak)) File.Delete(bak);
+            }
+            catch { }
         }
     }
 }

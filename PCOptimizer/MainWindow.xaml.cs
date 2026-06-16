@@ -44,8 +44,11 @@ namespace PCOptimizer
         private async Task CheckForUpdatesAsync()
         {
             // --updated is passed by the updater on relaunch to prevent infinite loop
-            // (Move-Item may fail silently, restarting the old exe which would loop forever).
-            if (Array.IndexOf(Environment.GetCommandLineArgs(), "--updated") >= 0) return;
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "--updated") >= 0)
+            {
+                UpdaterService.CleanupBackup();
+                return;
+            }
 
             try
             {
@@ -91,7 +94,9 @@ namespace PCOptimizer
                 return;
             }
 
-            string newPath = currentExe + ".new";
+            // Baixa para %TEMP% — sempre gravável, independente de onde o exe está instalado.
+            string newPath = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), "PCOptimizer_update.exe");
 
             BtnRun.IsEnabled = false;
             Progress.Visibility = Visibility.Visible;
