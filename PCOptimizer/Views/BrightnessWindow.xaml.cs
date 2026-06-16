@@ -42,7 +42,7 @@ namespace PCOptimizer.Views
         private readonly List<MonitorControl> _monitorControls = new();
         private bool _capturingHotkey;
         private bool _winNlInitializing;
-        private DateTime _lastWinNlChange;
+        private int _winNlSerial;
 
         public BrightnessWindow()
         {
@@ -528,11 +528,12 @@ namespace PCOptimizer.Views
             TxtWinNightLightValue.Text = $"{value}%";
             if (ChkWinNightLight?.IsChecked != true) return;
 
-            // Debounce: evita gravar no registro + broadcast a cada pixel do arraste
-            _lastWinNlChange = DateTime.Now;
-            var stamp = _lastWinNlChange;
-            await Task.Delay(150);
-            if (stamp != _lastWinNlChange) return;
+            // Debounce via serial: só aplica quando o usuário para de arrastar.
+            // Serial inteiro evita o problema de DateTime.Now retornar o mesmo
+            // valor para dois eventos consecutivos.
+            int serial = ++_winNlSerial;
+            await Task.Delay(200);
+            if (serial != _winNlSerial) return;
             await Task.Run(() => NightLightService.SetWindowsNightLightIntensity(value));
         }
 

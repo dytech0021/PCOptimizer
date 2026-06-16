@@ -299,7 +299,7 @@ namespace PCOptimizer.Services
                 if (GetWindowsNightLightEnabled())
                 {
                     SetWindowsNightLight(false);
-                    Thread.Sleep(250);
+                    Thread.Sleep(60);
                     SetWindowsNightLight(true);
                 }
                 return true;
