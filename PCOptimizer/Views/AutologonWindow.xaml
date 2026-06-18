@@ -1,7 +1,7 @@
 <Window x:Class="PCOptimizer.Views.AutologonWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Auto-login" Width="420" Height="400"
+        Title="Auto-login" Width="420" Height="460"
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" Topmost="True"
         ResizeMode="NoResize"
@@ -78,11 +78,17 @@
                              BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"/>
             </Grid>
 
-            <!-- Dica conta sem senha -->
-            <TextBlock Grid.Row="4"
-                       Text="Sem senha? Deixe o campo vazio. Para conta Microsoft use a senha da sua conta Microsoft."
-                       FontSize="9" Foreground="{DynamicResource TextSecondary}"
-                       Margin="80,0,0,14" TextWrapping="Wrap"/>
+            <!-- Dica conta sem senha / conta Microsoft -->
+            <Border Grid.Row="4" CornerRadius="8" Padding="10,8" Margin="0,0,0,12"
+                    Background="#2A220F" BorderBrush="#5A4A1A" BorderThickness="1">
+                <TextBlock FontSize="10" Foreground="#F9E2AF" TextWrapping="Wrap">
+                    <Run FontWeight="SemiBold" Text="Conta Microsoft? "/>
+                    <Run Text="Use o e-mail completo no campo Usuário e a SENHA da conta Microsoft — NÃO o PIN. O auto-login não funciona com PIN."/>
+                    <LineBreak/>
+                    <Run FontWeight="SemiBold" Text="Conta local sem senha? "/>
+                    <Run Text="Deixe o campo de senha vazio."/>
+                </TextBlock>
+            </Border>
 
             <!-- Mensagem de feedback -->
             <TextBlock x:Name="TxtMsg" Grid.Row="5" FontSize="11" TextWrapping="Wrap"

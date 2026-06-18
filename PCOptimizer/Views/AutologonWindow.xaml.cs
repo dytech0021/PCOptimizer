@@ -97,8 +97,10 @@ namespace PCOptimizer.Views
             if (ok)
             {
                 TxtPassword.Clear();
-                ShowMsg("✅ Auto-login ativado! Na próxima vez que ligar o PC o Windows entrará " +
-                        "direto na área de trabalho, sem pedir senha.", true);
+                ShowMsg("✅ Auto-login ativado e a trava do Windows 11 (login só por Hello) foi " +
+                        "desligada. Reinicie o PC para testar: ele deve ir direto à área de trabalho. " +
+                        "Se ainda pedir senha, confira se o Usuário é o e-mail e a senha é a da conta " +
+                        "Microsoft (não o PIN).", true);
                 RefreshStatus();
             }
             else

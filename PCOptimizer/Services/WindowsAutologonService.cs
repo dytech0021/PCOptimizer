@@ -20,6 +20,13 @@ namespace PCOptimizer.Services
         private const string WinlogonPath =
             @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon";
 
+        // Trava do Windows 10 2004+/Windows 11: quando = 2 (padrão), força login
+        // só por Windows Hello em contas Microsoft e ESCONDE a opção do netplwiz,
+        // fazendo o Winlogon ignorar o AutoAdminLogon. Zerar (=0) reabilita o
+        // login por senha e é o que faz o auto-login funcionar no Windows 11 25H2.
+        private const string PasswordLessPath =
+            @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\PasswordLess\Device";
+
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern bool LogonUser(string username, string domain, string password,
             int logonType, int logonProvider, out IntPtr token);
@@ -80,12 +87,30 @@ namespace PCOptimizer.Services
         }
 
         /// <summary>
+        /// Reabilita o login por senha desativando a trava "somente Windows Hello"
+        /// do Windows 11/10 2004+. Sem isto o AutoAdminLogon é ignorado em contas
+        /// Microsoft. Cria a chave se não existir.
+        /// </summary>
+        private static void EnablePasswordLogin()
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.CreateSubKey(PasswordLessPath, writable: true);
+                key?.SetValue("DevicePasswordLessBuildVersion", 0, RegistryValueKind.DWord);
+            }
+            catch { /* sem permissão: o Enable ainda tenta, mas pode não bastar no Win11 */ }
+        }
+
+        /// <summary>
         /// Ativa o auto-login. Não valida internamente — chame ValidateCredentials antes.
         /// </summary>
         public static bool Enable(string username, string password)
         {
             try
             {
+                // PASSO 1 (crítico no Win11 25H2): reabilita login por senha.
+                EnablePasswordLogin();
+
                 using var key = Registry.LocalMachine.OpenSubKey(WinlogonPath, writable: true);
                 if (key == null) return false;
 
@@ -97,6 +122,11 @@ namespace PCOptimizer.Services
                     key.SetValue("DefaultPassword", password, RegistryValueKind.String);
                 else
                     try { key.DeleteValue("DefaultPassword", false); } catch { }
+
+                // Remove travas que fariam o auto-login valer só algumas vezes ou
+                // exibir a tela de bloqueio antes da área de trabalho.
+                try { key.DeleteValue("AutoLogonCount", false); } catch { }
+                try { key.DeleteValue("ForceAutoLogon", false); } catch { }
 
                 return true;
             }
