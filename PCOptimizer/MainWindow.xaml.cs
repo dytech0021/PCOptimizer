@@ -38,6 +38,7 @@ namespace PCOptimizer
                 UpdateSelectedCount();
                 _ = CheckForUpdatesAsync();
                 _ = InitExpertAsync();
+                RefreshAutologonStatus();
             };
         }
 
@@ -797,6 +798,22 @@ namespace PCOptimizer
             {
                 Log($"❌ Erro ao capturar tela: {ex.Message}");
             }
+        }
+
+        private void BtnAutologon_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new Views.AutologonWindow { Owner = this };
+            win.ShowDialog();
+            RefreshAutologonStatus();
+        }
+
+        private void RefreshAutologonStatus()
+        {
+            if (TxtAutologonStatus == null) return;
+            bool enabled = Services.WindowsAutologonService.IsEnabled();
+            TxtAutologonStatus.Text = enabled
+                ? $"✅ Ativo — entrará como {Services.WindowsAutologonService.GetConfiguredUser()}"
+                : "🔒 Desativado — senha pedida ao iniciar";
         }
 
         private void Card_Brightness(object sender, MouseButtonEventArgs e)
