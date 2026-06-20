@@ -1,7 +1,7 @@
 <Window x:Class="PCOptimizer.Views.WakeOnLanWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Wake-on-LAN" Width="440" Height="600"
+        Title="Wake-on-LAN" Width="440" Height="640"
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" Topmost="True"
         ResizeMode="NoResize"
@@ -55,6 +55,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- Seletor de adaptador (só aparece quando há 2 ou mais) -->
@@ -85,7 +86,7 @@
                 </Grid>
 
                 <!-- MAC address + copiar -->
-                <Grid Grid.Row="2">
+                <Grid Grid.Row="2" Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="80"/>
                         <ColumnDefinition Width="*"/>
@@ -101,6 +102,19 @@
                             Background="Transparent" Foreground="{DynamicResource TextSecondary}"
                             BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
                             Click="BtnCopyMac_Click"/>
+                </Grid>
+
+                <!-- IP local -->
+                <Grid Grid.Row="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="IP local:" FontSize="12" Foreground="{DynamicResource TextSecondary}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtIp" Grid.Column="1" FontSize="12"
+                               FontFamily="Consolas" Foreground="{DynamicResource TextPrimary}"
+                               VerticalAlignment="Center" Text="—"/>
                 </Grid>
             </Grid>
 
@@ -129,8 +143,10 @@
             </Border>
 
             <!-- Mensagem de feedback -->
-            <TextBlock x:Name="TxtMsg" Grid.Row="5" FontSize="11" TextWrapping="Wrap"
-                       VerticalAlignment="Top"/>
+            <ScrollViewer Grid.Row="5" VerticalScrollBarVisibility="Auto">
+                <TextBlock x:Name="TxtMsg" FontSize="11" TextWrapping="Wrap"
+                           VerticalAlignment="Top"/>
+            </ScrollViewer>
 
             <!-- Botões -->
             <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
@@ -138,6 +154,10 @@
                         Background="Transparent" Foreground="{DynamicResource TextSecondary}"
                         BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
                         FontSize="12" Cursor="Hand" Click="BtnClose_Click"/>
+                <Button x:Name="BtnDiagnose" Content="🔍 Diagnóstico" Padding="14,7" Margin="0,0,8,0"
+                        Background="Transparent" Foreground="{DynamicResource TextSecondary}"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
+                        FontSize="12" Cursor="Hand" Click="BtnDiagnose_Click"/>
                 <Button x:Name="BtnEnable" Content="📡 Ativar no Windows" Padding="16,7"
                         Background="{DynamicResource ButtonPrimaryBg}"
                         Foreground="{DynamicResource ButtonPrimaryFg}"

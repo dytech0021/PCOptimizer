@@ -8,6 +8,18 @@ namespace PCOptimizer.Services
     /// </summary>
     public static class FastStartupService
     {
+        public static bool IsEnabled()
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Control\Session Manager\Power");
+                if (key == null) return false;
+                return Convert.ToInt32(key.GetValue("HiberbootEnabled") ?? 0) == 1;
+            }
+            catch { return false; }
+        }
+
         public static bool Disable()
         {
             try

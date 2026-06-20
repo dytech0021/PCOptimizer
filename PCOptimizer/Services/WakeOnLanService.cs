@@ -53,6 +53,49 @@ namespace PCOptimizer.Services
         /// Isso indica que a configuração no lado do Windows está ativa.
         /// Atenção: o BIOS também precisa estar habilitado — isso não verificamos.
         /// </summary>
+        public static string GetAdapterIpAddress(AdapterInfo adapter)
+        {
+            try
+            {
+                foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (!string.Equals(ni.Id, adapter.Id, StringComparison.OrdinalIgnoreCase)) continue;
+                    foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (ua.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                            return ua.Address.ToString();
+                    }
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, "GetAdapterIpAddress"); }
+            return "—";
+        }
+
+        /// <summary>
+        /// Retorna dispositivos atualmente "armados" para acordar o PC (powercfg /devicequery wake_armed).
+        /// Requer admin para resultado completo.
+        /// </summary>
+        public static string[] GetWakeArmedDevices()
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("powercfg")
+                {
+                    Arguments        = "/devicequery wake_armed",
+                    RedirectStandardOutput = true,
+                    UseShellExecute  = false,
+                    CreateNoWindow   = true
+                };
+                using var p = System.Diagnostics.Process.Start(psi);
+                if (p == null) return Array.Empty<string>();
+                string output = p.StandardOutput.ReadToEnd();
+                p.WaitForExit(5000);
+                return output.Split(new[] { '\r', '\n' },
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            }
+            catch (Exception ex) { Logger.Error(ex, "GetWakeArmedDevices"); return Array.Empty<string>(); }
+        }
+
         public static bool IsWoLEnabled(AdapterInfo adapter)
         {
             try

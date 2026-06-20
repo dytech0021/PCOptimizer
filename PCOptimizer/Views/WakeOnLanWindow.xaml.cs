@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -49,9 +50,10 @@ namespace PCOptimizer.Views
 
         private void SelectAdapter(AdapterInfo adapter)
         {
-            _selected         = adapter;
+            _selected           = adapter;
             TxtAdapterName.Text = adapter.Description;
             TxtMac.Text         = adapter.MacFormatted;
+            TxtIp.Text          = WakeOnLanService.GetAdapterIpAddress(adapter);
             RefreshStatus();
         }
 
@@ -132,6 +134,46 @@ namespace PCOptimizer.Views
             {
                 ShowMsg("⚠ Não foi possível copiar. MAC: " + _selected.MacFormatted, null);
             }
+        }
+
+        private async void BtnDiagnose_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selected == null) return;
+            BtnDiagnose.IsEnabled = false;
+            ShowMsg("Verificando...", null);
+
+            var r = await Task.Run(() =>
+            {
+                bool wol        = WakeOnLanService.IsWoLEnabled(_selected);
+                bool fastStartup = FastStartupService.IsEnabled();
+                string ip       = WakeOnLanService.GetAdapterIpAddress(_selected);
+                string[] armed  = WakeOnLanService.GetWakeArmedDevices();
+                bool adapterArmed = armed.Any(d =>
+                    d.Contains(_selected.Description, StringComparison.OrdinalIgnoreCase) ||
+                    d.Contains(_selected.Name,        StringComparison.OrdinalIgnoreCase));
+                return (wol, fastStartup, ip, armed, adapterArmed);
+            });
+
+            BtnDiagnose.IsEnabled = true;
+
+            var sb = new StringBuilder();
+            sb.AppendLine(r.wol
+                ? "✅ Registro: *WakeOnMagicPacket = 1"
+                : "❌ Registro: *WakeOnMagicPacket ≠ 1 → clique Ativar!");
+            sb.AppendLine(r.fastStartup
+                ? "❌ Inicialização Rápida ATIVA → clique Ativar para desabilitar"
+                : "✅ Inicialização Rápida desativada");
+            sb.AppendLine(r.adapterArmed
+                ? "✅ Placa armada (powercfg wake_armed)"
+                : "❌ Placa NÃO armada (powercfg) → clique Ativar!");
+            if (!r.adapterArmed && r.armed.Length > 0)
+                sb.AppendLine("   Armados: " + string.Join(", ", r.armed));
+            else if (!r.adapterArmed && r.armed.Length == 0)
+                sb.AppendLine("   Nenhum dispositivo armado (execute como admin)");
+            sb.AppendLine($"IP local: {r.ip}  ← use este no app do celular");
+
+            bool allGood = r.wol && !r.fastStartup && r.adapterArmed;
+            ShowMsg(sb.ToString().TrimEnd(), allGood ? (bool?)true : false);
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
