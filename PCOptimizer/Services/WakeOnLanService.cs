@@ -99,80 +99,131 @@ namespace PCOptimizer.Services
             catch (Exception ex) { Logger.Error(ex, "GetWakeArmedDevices"); return Array.Empty<string>(); }
         }
 
+        /// <summary>
+        /// Acha o nome da subchave (0000, 0001 …) do driver desta placa no registro,
+        /// casando pelo NetCfgInstanceId. Retorna null se não encontrar.
+        /// </summary>
+        private static string? FindAdapterRegistrySubKey(AdapterInfo adapter)
+        {
+            using var classKey = Registry.LocalMachine.OpenSubKey(AdapterClassKey);
+            if (classKey == null) return null;
+
+            // NetworkInterface.Id tem o formato "{GUID}", o registro não tem chaves
+            string id = adapter.Id.Trim('{', '}');
+
+            foreach (var sub in classKey.GetSubKeyNames())
+            {
+                // As entradas numéricas (0000, 0001 …) são instâncias de dispositivos.
+                if (!int.TryParse(sub, out _)) continue;
+                using var key = classKey.OpenSubKey(sub);
+                if (key == null) continue;
+
+                var netId = (key.GetValue("NetCfgInstanceId") as string)?.Trim('{', '}');
+                if (string.Equals(netId, id, StringComparison.OrdinalIgnoreCase))
+                    return sub;
+            }
+            return null;
+        }
+
         public static bool IsWoLEnabled(AdapterInfo adapter)
         {
             try
             {
-                using var classKey = Registry.LocalMachine.OpenSubKey(AdapterClassKey);
-                if (classKey == null) return false;
-
-                // NetworkInterface.Id tem o formato "{GUID}", o registro não tem chaves
-                string id = adapter.Id.Trim('{', '}');
-
-                foreach (var sub in classKey.GetSubKeyNames())
-                {
-                    // As entradas numéricas (0000, 0001 …) são instâncias de dispositivos.
-                    if (!int.TryParse(sub, out _)) continue;
-                    using var key = classKey.OpenSubKey(sub);
-                    if (key == null) continue;
-
-                    var netId = (key.GetValue("NetCfgInstanceId") as string)?.Trim('{', '}');
-                    if (!string.Equals(netId, id, StringComparison.OrdinalIgnoreCase)) continue;
-
-                    return (key.GetValue("*WakeOnMagicPacket") as string) == "1";
-                }
+                string? sub = FindAdapterRegistrySubKey(adapter);
+                if (sub == null) return false;
+                using var key = Registry.LocalMachine.OpenSubKey($@"{AdapterClassKey}\{sub}");
+                return (key?.GetValue("*WakeOnMagicPacket") as string) == "1";
             }
             catch (Exception ex) { Logger.Error(ex, "IsWoLEnabled"); }
             return false;
         }
 
         /// <summary>
-        /// Habilita WoL na placa via PowerShell:
-        ///   1. *WakeOnMagicPacket = 1 (config do driver)
-        ///   2. Enable-NetAdapterPowerManagement → "Permitir que este dispositivo ative o computador"
-        ///   3. Desliga Energy Efficient Ethernet / Green Ethernet (atrapalham o WoL
-        ///      ao colocar a placa em economia de energia profunda)
-        ///   4. Desativa a Inicialização Rápida (Fast Startup) — o "desligamento falso"
-        ///      do Windows impede o rearme do WoL após desligar.
-        /// Requer admin. Retorna true se o PowerShell saiu com ExitCode 0.
+        /// Escreve as chaves de Wake-on-LAN direto no registro do driver. Funciona mesmo
+        /// quando o driver (ex.: Realtek GbE) não expõe as propriedades avançadas via CIM
+        /// (Set-NetAdapterAdvancedProperty). O driver lê esses valores ao reiniciar a placa.
+        /// </summary>
+        private static string WriteWoLRegistry(AdapterInfo adapter)
+        {
+            try
+            {
+                string? sub = FindAdapterRegistrySubKey(adapter);
+                if (sub == null) return "registro: chave da placa não encontrada";
+
+                using var key = Registry.LocalMachine.OpenSubKey(
+                    $@"{AdapterClassKey}\{sub}", writable: true);
+                if (key == null) return "registro: sem permissão de escrita";
+
+                var sb = new StringBuilder();
+                void Set(string name, string val)
+                {
+                    key.SetValue(name, val, RegistryValueKind.String);
+                    sb.Append(name).Append('=').Append(val).Append(' ');
+                }
+
+                // Liga o magic packet e o WoL de desligado (Realtek = EnableWakeOnLan):
+                Set("*WakeOnMagicPacket", "1");
+                Set("*WakeOnPattern",     "1");
+                Set("EnableWakeOnLan",    "1");
+                Set("WolShutdownLinkSpeed", "0"); // 0 = mantém velocidade (não derruba o link)
+                // Desliga economias que botam a placa em sono profundo (matam o WoL):
+                Set("*EEE",                "0");
+                Set("EnableGreenEthernet", "0");
+                Set("*PMARPOffload",       "0");
+                Set("*PMNSOffload",        "0");
+
+                return "registro: " + sb.ToString().Trim();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "WriteWoLRegistry");
+                return "registro: erro " + ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// Habilita WoL de forma robusta (funciona em drivers Realtek que não expõem
+        /// propriedades avançadas):
+        ///   1. Escreve as chaves de WoL direto no registro do driver
+        ///   2. Liga o gerenciamento de energia (acordar por magic packet)
+        ///   3. Reinicia a placa para aplicar o registro
+        ///   4. Arma o dispositivo via powercfg -deviceenablewake
+        ///   5. Desativa a Inicialização Rápida (impede o rearme após desligar)
+        /// Requer admin. Confirma lendo o registro e a lista wake_armed.
         /// </summary>
         public static bool EnableWoL(AdapterInfo adapter)
         {
-            string safeName = adapter.Name.Replace("'", "''");
             string safeDesc = adapter.Description.Replace("'", "''");
-            // Muitos drivers (em especial Realtek "GbE Family Controller") NÃO expõem
-            // a keyword padrão '*WakeOnMagicPacket'. Eles usam propriedades por nome:
-            // "Wake on Magic Packet", "Shutdown Wake-On-Lan" (essencial para acordar de
-            // desligado/S5), "Wake on pattern match". Tentamos por keyword E por nome,
-            // registramos cada falha (sem SilentlyContinue) e reiniciamos a placa para
-            // aplicar. No fim, imprimimos as propriedades disponíveis para diagnóstico.
+            string mac      = adapter.MacFormatted; // "E0:E0:4C:F3:06:C1"
+
+            // 1) Escreve as chaves de WoL DIRETO no registro. Funciona mesmo quando o
+            //    driver (ex.: Realtek GbE) não expõe nada via Set-NetAdapterAdvancedProperty.
+            string regResult = WriteWoLRegistry(adapter);
+
+            // 2) PowerShell só para: aplicar (reiniciar a placa), ligar o gerenciamento
+            //    de energia e armar via powercfg. Acha a placa pelo MAC (à prova de nome).
+            //    ProgressPreference Silent evita a saída embaralhada de progresso.
             string script = $@"
-$n = '{safeName}'
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'SilentlyContinue'
+$mac = '{mac}'
+$a = Get-NetAdapter | Where-Object {{ ($_.MacAddress -replace '-',':') -eq $mac }} | Select-Object -First 1
+if (-not $a) {{ $a = Get-NetAdapter -InterfaceDescription '{safeDesc}' | Select-Object -First 1 }}
+if (-not $a) {{ Write-Output 'FAIL-> placa nao encontrada por MAC nem descricao'; exit 1 }}
+$n = $a.Name
+Write-Output ('Placa: ' + $n + ' / ' + $a.InterfaceDescription)
 function TrySet($desc, $sb) {{
     try {{ & $sb; Write-Output ('OK  -> ' + $desc) }}
     catch {{ Write-Output ('FAIL-> ' + $desc + ' :: ' + $_.Exception.Message) }}
 }}
-TrySet '*WakeOnMagicPacket=1' {{ Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1 -NoRestart -ErrorAction Stop }}
-TrySet 'DisplayName Wake on Magic Packet=Enabled' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Wake on Magic Packet' -DisplayValue 'Enabled' -NoRestart -ErrorAction Stop }}
-TrySet 'DisplayName Shutdown Wake-On-Lan=Enabled' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Shutdown Wake-On-Lan' -DisplayValue 'Enabled' -NoRestart -ErrorAction Stop }}
-TrySet 'DisplayName Shutdown Wake On Lan=Enabled' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Shutdown Wake On Lan' -DisplayValue 'Enabled' -NoRestart -ErrorAction Stop }}
-TrySet 'DisplayName Wake on pattern match=Enabled' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Wake on pattern match' -DisplayValue 'Enabled' -NoRestart -ErrorAction Stop }}
-TrySet 'WOL & Shutdown Link Speed=10 Mbps First' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'WOL & Shutdown Link Speed' -DisplayValue '10 Mbps First' -NoRestart -ErrorAction Stop }}
-TrySet 'PowerManagement WakeOnMagicPacket' {{ Enable-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket -NoRestart -ErrorAction Stop }}
-# Desliga economias que botam a placa em sono profundo (matam o WoL):
-TrySet 'EEE off' {{ Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*EEE' -RegistryValue 0 -NoRestart -ErrorAction Stop }}
-TrySet 'Energy Efficient Ethernet off' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Energy Efficient Ethernet' -DisplayValue 'Disabled' -NoRestart -ErrorAction Stop }}
-TrySet 'Green Ethernet off' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Green Ethernet' -DisplayValue 'Disabled' -NoRestart -ErrorAction Stop }}
-# Reinicia a placa para aplicar (rede cai por alguns segundos):
-TrySet 'Restart-NetAdapter' {{ Restart-NetAdapter -Name $n -ErrorAction Stop }}
-# powercfg usa a DESCRIÇÃO do dispositivo, não o nome da conexão:
-TrySet 'powercfg deviceenablewake' {{ $r = powercfg -deviceenablewake '{safeDesc}'; if ($LASTEXITCODE -ne 0) {{ throw ('powercfg saiu ' + $LASTEXITCODE + ' ' + $r) }} }}
-Write-Output '--- Propriedades disponiveis ---'
-Get-NetAdapterAdvancedProperty -Name $n -ErrorAction SilentlyContinue |
-    Where-Object {{ $_.DisplayName -match 'Wake|WOL|Magic|Energy|Green|EEE' }} |
-    ForEach-Object {{ Write-Output ('  ' + $_.DisplayName + ' [' + $_.RegistryKeyword + '] = ' + $_.DisplayValue) }}
+TrySet 'Gerenciamento de energia (acordar por magic packet)' {{ Enable-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket -ErrorAction Stop }}
+TrySet 'Reiniciar placa (aplica o registro)' {{ Restart-NetAdapter -Name $n -ErrorAction Stop }}
+TrySet 'powercfg -deviceenablewake (armar)' {{ $r = powercfg -deviceenablewake $a.InterfaceDescription; if ($LASTEXITCODE -ne 0) {{ throw ('powercfg saiu ' + $LASTEXITCODE) }} }}
+Write-Output '--- Dispositivos armados (wake_armed) ---'
+powercfg /devicequery wake_armed
 ";
-            var (ok, output) = RunPowerShell(script, timeoutMs: 40_000);
+            var (ok, output) = RunPowerShell(script, timeoutMs: 45_000);
+            output = regResult + "\n" + output;
 
             // Fast Startup atrapalha o rearme do WoL após o desligamento — desativa.
             bool fastOff = FastStartupService.Disable();
