@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Win32;
 
 namespace PCOptimizer.Services
