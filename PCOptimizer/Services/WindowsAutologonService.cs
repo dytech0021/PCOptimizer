@@ -114,8 +114,12 @@ namespace PCOptimizer.Services
                 {
                     Length = Marshal.SizeOf<LSA_OBJECT_ATTRIBUTES>()
                 };
-                if (LsaOpenPolicy(IntPtr.Zero, ref attrs, POLICY_CREATE_SECRET, out policy) != 0)
+                uint open = LsaOpenPolicy(IntPtr.Zero, ref attrs, POLICY_CREATE_SECRET, out policy);
+                if (open != 0)
+                {
+                    Logger.Warn($"LsaOpenPolicy falhou (status 0x{open:X8}) — sem admin?");
                     return false;
+                }
 
                 keyName = MakeLsaString(AutologonPasswordSecret);
 
@@ -130,9 +134,11 @@ namespace PCOptimizer.Services
                     dataAllocated = true;
                     res = LsaStorePrivateData_Set(policy, ref keyName, ref data);
                 }
+                if (res != 0)
+                    Logger.Warn($"LsaStorePrivateData retornou status 0x{res:X8}");
                 return res == 0;
             }
-            catch { return false; }
+            catch (Exception ex) { Logger.Error(ex, "StorePasswordInLsa"); return false; }
             finally
             {
                 if (keyName.Buffer != IntPtr.Zero) Marshal.FreeHGlobal(keyName.Buffer);
@@ -218,8 +224,9 @@ namespace PCOptimizer.Services
             {
                 using var key = Registry.LocalMachine.CreateSubKey(PasswordLessPath, writable: true);
                 key?.SetValue("DevicePasswordLessBuildVersion", 0, RegistryValueKind.DWord);
+                Logger.Info("DevicePasswordLessBuildVersion=0 aplicado");
             }
-            catch { /* sem permissão: o Enable ainda tenta, mas pode não bastar no Win11 */ }
+            catch (Exception ex) { Logger.Error(ex, "EnablePasswordLogin (Win11 pode ignorar auto-login)"); }
         }
 
         /// <summary>
@@ -233,7 +240,11 @@ namespace PCOptimizer.Services
                 EnablePasswordLogin();
 
                 using var key = Registry.LocalMachine.OpenSubKey(WinlogonPath, writable: true);
-                if (key == null) return false;
+                if (key == null)
+                {
+                    Logger.Error("Enable: não abriu Winlogon p/ escrita — precisa de admin");
+                    return false;
+                }
 
                 key.SetValue("AutoAdminLogon",    "1",                     RegistryValueKind.String);
                 key.SetValue("DefaultUserName",   username,                RegistryValueKind.String);
@@ -241,6 +252,7 @@ namespace PCOptimizer.Services
 
                 // PASSO 2: senha no cofre LSA (funciona em conta Microsoft).
                 bool lsaOk = StorePasswordInLsa(password);
+                Logger.Info($"Enable: usuário='{username}', LSA={(lsaOk ? "ok" : "falhou→texto")}");
                 if (lsaOk)
                 {
                     // Sucesso no LSA: remove a senha em texto do registro (mais
@@ -262,7 +274,7 @@ namespace PCOptimizer.Services
 
                 return true;
             }
-            catch { return false; }
+            catch (Exception ex) { Logger.Error(ex, "Enable"); return false; }
         }
 
         /// <summary>Desativa o auto-login e remove a senha (registro e cofre LSA).</summary>
@@ -272,12 +284,17 @@ namespace PCOptimizer.Services
             {
                 StorePasswordInLsa(null); // apaga o segredo LSA
                 using var key = Registry.LocalMachine.OpenSubKey(WinlogonPath, writable: true);
-                if (key == null) return false;
+                if (key == null)
+                {
+                    Logger.Error("Disable: não abriu Winlogon p/ escrita — precisa de admin");
+                    return false;
+                }
                 key.SetValue("AutoAdminLogon", "0", RegistryValueKind.String);
                 try { key.DeleteValue("DefaultPassword", false); } catch { }
+                Logger.Info("Disable: auto-login desativado");
                 return true;
             }
-            catch { return false; }
+            catch (Exception ex) { Logger.Error(ex, "Disable"); return false; }
         }
     }
 }

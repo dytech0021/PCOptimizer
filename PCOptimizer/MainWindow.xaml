@@ -233,7 +233,9 @@
                             <TextBlock Text="PC Optimizer" FontSize="22" FontWeight="Bold"
                                        Foreground="{DynamicResource TextPrimary}"/>
                             <Border Background="{DynamicResource BadgeBg}" CornerRadius="20"
-                                    Padding="10,3" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    Padding="10,3" Margin="10,0,0,0" VerticalAlignment="Center"
+                                    Cursor="Hand" ToolTip="Clique para copiar o log de diagnóstico (cole no chat para o suporte)"
+                                    MouseLeftButtonUp="VersionBadge_Click">
                                 <TextBlock x:Name="TxtVersion" FontSize="10" FontWeight="SemiBold"
                                            Foreground="{DynamicResource BadgeFg}"/>
                             </Border>

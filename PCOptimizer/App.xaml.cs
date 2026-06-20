@@ -19,6 +19,12 @@ namespace PCOptimizer
             if (HandleUpdateInstall(e.Args)) return;
 
             base.OnStartup(e);
+
+            // Log de diagnóstico + captura global de exceções não tratadas.
+            // Precisa vir cedo para registrar qualquer falha na inicialização.
+            Logger.Init();
+            HookGlobalExceptions();
+
             SettingsService.Load();
             ThemeManager.Initialize();
             TrayService.Initialize();
@@ -30,6 +36,35 @@ namespace PCOptimizer
             // Exibe a janela flutuante de brilho automaticamente ao abrir
             if (MainWindow != null)
                 MainWindow.Loaded += (_, _) => ToggleBrightnessWindow();
+        }
+
+        /// <summary>
+        /// Captura exceções não tratadas das três fontes possíveis numa app WPF:
+        /// thread de UI (Dispatcher), threads de fundo (AppDomain) e Tasks sem
+        /// await observado. Tudo vai para o log. Na thread de UI marcamos como
+        /// tratado para o app não fechar de imediato sem registrar.
+        /// </summary>
+        private void HookGlobalExceptions()
+        {
+            DispatcherUnhandledException += (_, ex) =>
+            {
+                Logger.Error(ex.Exception, "DispatcherUnhandledException (UI)");
+            };
+
+            AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
+            {
+                if (ex.ExceptionObject is Exception e)
+                    Logger.Error(e, "AppDomain.UnhandledException (terminating="
+                        + ex.IsTerminating + ")");
+                else
+                    Logger.Error("Exceção não-CLR não tratada: " + ex.ExceptionObject);
+            };
+
+            System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, ex) =>
+            {
+                Logger.Error(ex.Exception, "UnobservedTaskException");
+                ex.SetObserved();
+            };
         }
 
         private bool HandleUpdateInstall(string[] args)

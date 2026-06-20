@@ -95,7 +95,7 @@ namespace PCOptimizer.Services
                     throw;
                 }
             }
-            catch { /* cai no fallback PowerShell abaixo */ }
+            catch (Exception ex) { Logger.Warn("Troca em-processo falhou, indo p/ fallback PowerShell: " + ex.Message); }
 
             // ── Etapa 2: PowerShell (fallback) ───────────────────────────────
             int pid = Environment.ProcessId;

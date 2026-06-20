@@ -219,7 +219,11 @@ namespace PCOptimizer.Services
             try
             {
                 string? path = FindNlKeyPath(settings: false);
-                if (path == null) return false;
+                if (path == null)
+                {
+                    Logger.Warn("SetWindowsNightLight: chave do registro (state) não encontrada");
+                    return false;
+                }
                 using var key = Registry.CurrentUser.OpenSubKey(path, writable: true);
                 if (key?.GetValue("Data") is not byte[] data || data.Length <= 18) return false;
 
@@ -245,7 +249,7 @@ namespace PCOptimizer.Services
                 SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, "ImmersiveColorSet");
                 return true;
             }
-            catch { return false; }
+            catch (Exception ex) { Logger.Error(ex, "SetWindowsNightLight"); return false; }
         }
 
         public static int GetWindowsNightLightIntensity()
@@ -276,7 +280,11 @@ namespace PCOptimizer.Services
             {
                 percent = Math.Clamp(percent, 0, 100);
                 string? path = FindNlKeyPath(settings: true);
-                if (path == null) return false;
+                if (path == null)
+                {
+                    Logger.Warn("SetWindowsNightLightIntensity: chave do registro (settings) não encontrada");
+                    return false;
+                }
                 using var key = Registry.CurrentUser.OpenSubKey(path, writable: true);
                 if (key?.GetValue("Data") is not byte[] data || data.Length <= 0x24) return false;
 
@@ -304,7 +312,7 @@ namespace PCOptimizer.Services
                 }
                 return true;
             }
-            catch { return false; }
+            catch (Exception ex) { Logger.Error(ex, "SetWindowsNightLightIntensity"); return false; }
         }
     }
 }

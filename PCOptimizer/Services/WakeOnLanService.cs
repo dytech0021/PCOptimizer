@@ -44,7 +44,7 @@ namespace PCOptimizer.Services
                     list.Add(new AdapterInfo(ni.Name, desc, mac, ni.Id));
                 }
             }
-            catch { }
+            catch (Exception ex) { Logger.Error(ex, "GetPhysicalAdapters"); }
             return list;
         }
 
@@ -76,7 +76,7 @@ namespace PCOptimizer.Services
                     return (key.GetValue("*WakeOnMagicPacket") as string) == "1";
                 }
             }
-            catch { }
+            catch (Exception ex) { Logger.Error(ex, "IsWoLEnabled"); }
             return false;
         }
 
@@ -95,7 +95,9 @@ $n = '{safeName}'
 Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1
 Enable-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket
 ";
-            return RunPowerShell(script, timeoutMs: 20_000);
+            bool ok = RunPowerShell(script, timeoutMs: 20_000);
+            Logger.Info($"EnableWoL '{adapter.Name}' ({adapter.MacFormatted}): {(ok ? "ok" : "PowerShell falhou")}");
+            return ok;
         }
 
         private static bool RunPowerShell(string script, int timeoutMs)
@@ -121,7 +123,7 @@ Enable-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket
                 if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return false; }
                 return p.ExitCode == 0;
             }
-            catch { return false; }
+            catch (Exception ex) { Logger.Error(ex, "RunPowerShell"); return false; }
         }
     }
 }

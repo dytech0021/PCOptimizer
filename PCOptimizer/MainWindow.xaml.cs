@@ -83,7 +83,7 @@ namespace PCOptimizer
                 }
             }
             }
-            catch { /* verificação de atualização nunca deve travar o app */ }
+            catch (Exception ex) { Logger.Error(ex, "CheckForUpdatesAsync"); }
         }
 
         private async Task DownloadAndApplyUpdateAsync(string downloadUrl)
@@ -141,6 +141,7 @@ namespace PCOptimizer
             }
             catch (Exception ex)
             {
+                Logger.Error(ex, "DownloadAndApplyUpdateAsync");
                 try { if (System.IO.File.Exists(newPath)) System.IO.File.Delete(newPath); } catch { }
 
                 Progress.Visibility = Visibility.Collapsed;
@@ -861,6 +862,28 @@ namespace PCOptimizer
                 TxtWoLStatus.Text = result.Value.enabled
                     ? $"✅ Ativo — {result.Value.mac}"
                     : $"Desativado — {result.Value.mac}";
+        }
+
+        // Clicar no selo de versão copia o log de diagnóstico para a área de
+        // transferência — atalho discreto para enviar o log ao suporte.
+        private void VersionBadge_Click(object sender, MouseButtonEventArgs e)
+        {
+            try
+            {
+                string log = Logger.GetRecentLog();
+                Clipboard.SetText(log);
+                MessageBox.Show(
+                    "Log de diagnóstico copiado para a área de transferência.\n\n" +
+                    "Cole (Ctrl+V) na conversa com o suporte para ajudar a identificar o problema.\n\n" +
+                    "Arquivos completos em:\n" + Logger.LogDirectory,
+                    "Log copiado", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "VersionBadge_Click");
+                MessageBox.Show("Não foi possível copiar o log: " + ex.Message,
+                    "Log", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
         private void Card_Brightness(object sender, MouseButtonEventArgs e)
