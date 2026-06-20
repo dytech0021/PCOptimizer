@@ -15,6 +15,9 @@ namespace PCOptimizer.Services
         private const string AdapterClassKey =
             @"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}";
 
+        /// <summary>Saída do último EnableWoL (o que o driver aceitou/recusou).</summary>
+        public static string LastEnableLog { get; private set; } = "";
+
         /// <summary>
         /// Retorna as placas Ethernet físicas detectadas (exclui virtuais/loopback).
         /// </summary>
@@ -137,42 +140,64 @@ namespace PCOptimizer.Services
         {
             string safeName = adapter.Name.Replace("'", "''");
             string safeDesc = adapter.Description.Replace("'", "''");
-            // Liga o WoL e o "acordar por magic packet"; desliga as economias de
-            // energia da placa que costumam quebrar o WoL. Cada keyword pode não
-            // existir em todo driver — SilentlyContinue ignora as ausentes.
+            // Muitos drivers (em especial Realtek "GbE Family Controller") NÃO expõem
+            // a keyword padrão '*WakeOnMagicPacket'. Eles usam propriedades por nome:
+            // "Wake on Magic Packet", "Shutdown Wake-On-Lan" (essencial para acordar de
+            // desligado/S5), "Wake on pattern match". Tentamos por keyword E por nome,
+            // registramos cada falha (sem SilentlyContinue) e reiniciamos a placa para
+            // aplicar. No fim, imprimimos as propriedades disponíveis para diagnóstico.
             string script = $@"
-$ErrorActionPreference = 'SilentlyContinue'
 $n = '{safeName}'
-Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1
-Enable-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket
+function TrySet($desc, $sb) {{
+    try {{ & $sb; Write-Output ('OK  -> ' + $desc) }}
+    catch {{ Write-Output ('FAIL-> ' + $desc + ' :: ' + $_.Exception.Message) }}
+}}
+TrySet '*WakeOnMagicPacket=1' {{ Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1 -NoRestart -ErrorAction Stop }}
+TrySet 'DisplayName Wake on Magic Packet=Enabled' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Wake on Magic Packet' -DisplayValue 'Enabled' -NoRestart -ErrorAction Stop }}
+TrySet 'DisplayName Shutdown Wake-On-Lan=Enabled' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Shutdown Wake-On-Lan' -DisplayValue 'Enabled' -NoRestart -ErrorAction Stop }}
+TrySet 'DisplayName Shutdown Wake On Lan=Enabled' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Shutdown Wake On Lan' -DisplayValue 'Enabled' -NoRestart -ErrorAction Stop }}
+TrySet 'DisplayName Wake on pattern match=Enabled' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Wake on pattern match' -DisplayValue 'Enabled' -NoRestart -ErrorAction Stop }}
+TrySet 'WOL & Shutdown Link Speed=10 Mbps First' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'WOL & Shutdown Link Speed' -DisplayValue '10 Mbps First' -NoRestart -ErrorAction Stop }}
+TrySet 'PowerManagement WakeOnMagicPacket' {{ Enable-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket -NoRestart -ErrorAction Stop }}
 # Desliga economias que botam a placa em sono profundo (matam o WoL):
-Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*EEE' -RegistryValue 0
-Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Energy Efficient Ethernet' -DisplayValue 'Disabled'
-Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Green Ethernet' -DisplayValue 'Disabled'
-Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword 'EnableGreenEthernet' -RegistryValue 0
-# Garante que a placa pode ligar o PC mesmo no modo de menor energia
-# (powercfg usa a DESCRIÇÃO do dispositivo, não o nome da conexão):
-powercfg -deviceenablewake '{safeDesc}'
+TrySet 'EEE off' {{ Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*EEE' -RegistryValue 0 -NoRestart -ErrorAction Stop }}
+TrySet 'Energy Efficient Ethernet off' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Energy Efficient Ethernet' -DisplayValue 'Disabled' -NoRestart -ErrorAction Stop }}
+TrySet 'Green Ethernet off' {{ Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Green Ethernet' -DisplayValue 'Disabled' -NoRestart -ErrorAction Stop }}
+# Reinicia a placa para aplicar (rede cai por alguns segundos):
+TrySet 'Restart-NetAdapter' {{ Restart-NetAdapter -Name $n -ErrorAction Stop }}
+# powercfg usa a DESCRIÇÃO do dispositivo, não o nome da conexão:
+TrySet 'powercfg deviceenablewake' {{ $r = powercfg -deviceenablewake '{safeDesc}'; if ($LASTEXITCODE -ne 0) {{ throw ('powercfg saiu ' + $LASTEXITCODE + ' ' + $r) }} }}
+Write-Output '--- Propriedades disponiveis ---'
+Get-NetAdapterAdvancedProperty -Name $n -ErrorAction SilentlyContinue |
+    Where-Object {{ $_.DisplayName -match 'Wake|WOL|Magic|Energy|Green|EEE' }} |
+    ForEach-Object {{ Write-Output ('  ' + $_.DisplayName + ' [' + $_.RegistryKeyword + '] = ' + $_.DisplayValue) }}
 ";
-            bool ok = RunPowerShell(script, timeoutMs: 25_000);
+            var (ok, output) = RunPowerShell(script, timeoutMs: 40_000);
 
             // Fast Startup atrapalha o rearme do WoL após o desligamento — desativa.
             bool fastOff = FastStartupService.Disable();
 
+            // Confirma lendo o registro de novo — é a verdade, não o exit code.
+            bool applied = IsWoLEnabled(adapter);
+
+            LastEnableLog = output;
             Logger.Info($"EnableWoL '{adapter.Name}' ({adapter.MacFormatted}): " +
-                        $"PowerShell={(ok ? "ok" : "falhou")}, FastStartupOff={fastOff}");
-            return ok;
+                        $"processo={(ok ? "ok" : "falhou")}, registroWoL={applied}, " +
+                        $"FastStartupOff={fastOff}\n{output}");
+            return applied || ok;
         }
 
-        private static bool RunPowerShell(string script, int timeoutMs)
+        private static (bool ok, string output) RunPowerShell(string script, int timeoutMs)
         {
             try
             {
                 var psi = new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName        = "powershell.exe",
-                    CreateNoWindow  = true,
-                    UseShellExecute = false
+                    FileName               = "powershell.exe",
+                    CreateNoWindow         = true,
+                    UseShellExecute        = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError  = true
                 };
                 psi.ArgumentList.Add("-NoProfile");
                 psi.ArgumentList.Add("-ExecutionPolicy");
@@ -183,11 +208,22 @@ powercfg -deviceenablewake '{safeDesc}'
                 psi.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
 
                 using var p = System.Diagnostics.Process.Start(psi);
-                if (p == null) return false;
-                if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return false; }
-                return p.ExitCode == 0;
+                if (p == null) return (false, "Não foi possível iniciar o powershell.exe");
+
+                // Lê stderr em paralelo para não travar se um buffer encher (deadlock clássico).
+                var errTask = p.StandardError.ReadToEndAsync();
+                string stdout = p.StandardOutput.ReadToEnd();
+                string stderr = errTask.GetAwaiter().GetResult();
+                if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return (false, "timeout\n" + stdout + stderr); }
+
+                string output = (stdout + stderr).Trim();
+                return (p.ExitCode == 0, output);
             }
-            catch (Exception ex) { Logger.Error(ex, "RunPowerShell"); return false; }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "RunPowerShell");
+                return (false, ex.Message);
+            }
         }
     }
 }

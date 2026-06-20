@@ -107,20 +107,25 @@ namespace PCOptimizer.Views
             BtnEnable.IsEnabled = false;
             ShowMsg("Ativando...", null);
 
-            bool ok = await Task.Run(() => WakeOnLanService.EnableWoL(_selected));
+            await Task.Run(() => WakeOnLanService.EnableWoL(_selected));
 
             BtnEnable.IsEnabled = true;
             RefreshStatus();
 
-            if (ok)
+            // A verdade é o registro, não o exit code: roda o diagnóstico de novo.
+            bool nowEnabled = WakeOnLanService.IsWoLEnabled(_selected);
+            if (nowEnabled)
+            {
                 ShowMsg("✅ WoL ativado! Também desliguei a Inicialização Rápida e as economias " +
-                        "de energia da placa (atrapalham o WoL). Para sobreviver a tirar da tomada, " +
-                        "DESATIVE 'ErP/EuP' no BIOS (veja o aviso acima). Depois instale o app no " +
-                        "celular com o MAC acima.", true);
+                        "de energia da placa. Para sobreviver a tirar da tomada, DESATIVE 'ErP/EuP' " +
+                        "no BIOS (veja o aviso acima). Depois desligue o PC normal e teste pelo celular.", true);
+            }
             else
-                ShowMsg("✅ Configuração aplicada. Caso não funcione, ative manualmente: " +
-                        "Gerenciador de Dispositivos → sua placa → Gerenciamento de Energia → " +
-                        "☑ Permitir que este dispositivo ative o computador.", true);
+            {
+                // Mostra o que o driver aceitou/recusou para identificar o motivo.
+                ShowMsg("⚠ Não consegui confirmar a ativação no driver. Veja o que a placa " +
+                        "respondeu (mande isto pra mim):\n\n" + WakeOnLanService.LastEnableLog, false);
+            }
         }
 
         private void BtnCopyMac_Click(object sender, RoutedEventArgs e)
