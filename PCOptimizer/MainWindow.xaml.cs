@@ -846,12 +846,13 @@ namespace PCOptimizer
         private async Task RefreshWoLStatusAsync()
         {
             if (TxtWoLStatus == null) return;
-            var result = await Task.Run(() =>
+            (bool enabled, string mac)? result = await Task.Run(() =>
             {
                 var adapters = Services.WakeOnLanService.GetPhysicalAdapters();
-                if (adapters.Count == 0) return null as (bool enabled, string mac)?;
+                if (adapters.Count == 0) return ((bool enabled, string mac)?)null;
                 var a = adapters[0];
-                return (Services.WakeOnLanService.IsWoLEnabled(a), a.MacFormatted) as (bool, string)?;
+                return (Services.WakeOnLanService.IsWoLEnabled(a), a.MacFormatted);
+                // tupla (bool, string) converte implicitamente p/ (bool enabled, string mac)?
             });
 
             if (result == null)
