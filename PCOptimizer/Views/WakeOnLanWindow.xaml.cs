@@ -110,8 +110,10 @@ namespace PCOptimizer.Views
             RefreshStatus();
 
             if (ok)
-                ShowMsg("✅ WoL ativado no Windows! Agora configure o BIOS (veja acima) e " +
-                        "instale o app no celular com o MAC acima.", true);
+                ShowMsg("✅ WoL ativado! Também desliguei a Inicialização Rápida e as economias " +
+                        "de energia da placa (atrapalham o WoL). Para sobreviver a tirar da tomada, " +
+                        "DESATIVE 'ErP/EuP' no BIOS (veja o aviso acima). Depois instale o app no " +
+                        "celular com o MAC acima.", true);
             else
                 ShowMsg("✅ Configuração aplicada. Caso não funcione, ative manualmente: " +
                         "Gerenciador de Dispositivos → sua placa → Gerenciamento de Energia → " +

@@ -82,21 +82,42 @@ namespace PCOptimizer.Services
 
         /// <summary>
         /// Habilita WoL na placa via PowerShell:
-        ///   1. Set-NetAdapterAdvancedProperty → *WakeOnMagicPacket = 1 (config do driver)
+        ///   1. *WakeOnMagicPacket = 1 (config do driver)
         ///   2. Enable-NetAdapterPowerManagement → "Permitir que este dispositivo ative o computador"
+        ///   3. Desliga Energy Efficient Ethernet / Green Ethernet (atrapalham o WoL
+        ///      ao colocar a placa em economia de energia profunda)
+        ///   4. Desativa a Inicialização Rápida (Fast Startup) — o "desligamento falso"
+        ///      do Windows impede o rearme do WoL após desligar.
         /// Requer admin. Retorna true se o PowerShell saiu com ExitCode 0.
         /// </summary>
         public static bool EnableWoL(AdapterInfo adapter)
         {
             string safeName = adapter.Name.Replace("'", "''");
+            string safeDesc = adapter.Description.Replace("'", "''");
+            // Liga o WoL e o "acordar por magic packet"; desliga as economias de
+            // energia da placa que costumam quebrar o WoL. Cada keyword pode não
+            // existir em todo driver — SilentlyContinue ignora as ausentes.
             string script = $@"
 $ErrorActionPreference = 'SilentlyContinue'
 $n = '{safeName}'
 Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1
 Enable-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket
+# Desliga economias que botam a placa em sono profundo (matam o WoL):
+Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword '*EEE' -RegistryValue 0
+Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Energy Efficient Ethernet' -DisplayValue 'Disabled'
+Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Green Ethernet' -DisplayValue 'Disabled'
+Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword 'EnableGreenEthernet' -RegistryValue 0
+# Garante que a placa pode ligar o PC mesmo no modo de menor energia
+# (powercfg usa a DESCRIÇÃO do dispositivo, não o nome da conexão):
+powercfg -deviceenablewake '{safeDesc}'
 ";
-            bool ok = RunPowerShell(script, timeoutMs: 20_000);
-            Logger.Info($"EnableWoL '{adapter.Name}' ({adapter.MacFormatted}): {(ok ? "ok" : "PowerShell falhou")}");
+            bool ok = RunPowerShell(script, timeoutMs: 25_000);
+
+            // Fast Startup atrapalha o rearme do WoL após o desligamento — desativa.
+            bool fastOff = FastStartupService.Disable();
+
+            Logger.Info($"EnableWoL '{adapter.Name}' ({adapter.MacFormatted}): " +
+                        $"PowerShell={(ok ? "ok" : "falhou")}, FastStartupOff={fastOff}");
             return ok;
         }
 
