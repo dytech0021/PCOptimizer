@@ -30,10 +30,11 @@ namespace PCOptimizer.Services
     public static class UpdaterService
     {
         /// <summary>
-        /// Baixa o arquivo da URL para destPath, reportando o progresso (0.0 a 1.0).
+        /// Baixa o arquivo da URL para destPath.
+        /// Reporta (bytesLidos, totalBytes) — totalBytes é -1 se o servidor não enviar Content-Length.
         /// </summary>
         public static async Task DownloadAsync(string url, string destPath,
-            IProgress<double>? progress, CancellationToken ct = default)
+            IProgress<(long bytesRead, long totalBytes)>? progress, CancellationToken ct = default)
         {
             using var http = HttpFactory.Create(TimeSpan.FromMinutes(5), "PCOptimizer-Updater");
 
@@ -43,16 +44,17 @@ namespace PCOptimizer.Services
             long total = resp.Content.Headers.ContentLength ?? -1L;
 
             using var src = await resp.Content.ReadAsStreamAsync(ct);
-            using var dst = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            using var dst = new FileStream(destPath, FileMode.Create, FileAccess.Write,
+                FileShare.None, 65536, useAsync: true);
 
-            var buffer = new byte[81920];
+            var buffer = new byte[524288]; // 512 KB — melhor throughput em conexões rápidas
             long readTotal = 0;
             int read;
             while ((read = await src.ReadAsync(buffer, ct)) > 0)
             {
                 await dst.WriteAsync(buffer.AsMemory(0, read), ct);
                 readTotal += read;
-                if (total > 0) progress?.Report((double)readTotal / total);
+                progress?.Report((readTotal, total));
             }
         }
 

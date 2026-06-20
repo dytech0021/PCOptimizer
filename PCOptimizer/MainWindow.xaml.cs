@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -101,15 +102,33 @@ namespace PCOptimizer
 
             BtnRun.IsEnabled = false;
             Progress.Visibility = Visibility.Visible;
-            Progress.IsIndeterminate = false;
+            Progress.IsIndeterminate = true; // indeterminado até o primeiro dado chegar
             Progress.Value = 0;
             TxtProgress.Visibility = Visibility.Visible;
-            TxtProgress.Text = "Baixando atualização... 0%";
+            TxtProgress.Text = "Conectando...";
 
-            var progress = new Progress<double>(p =>
+            var sw = Stopwatch.StartNew();
+            var progress = new Progress<(long bytesRead, long totalBytes)>(t =>
             {
-                Progress.Value = p * 100;
-                TxtProgress.Text = $"Baixando atualização... {p * 100:F0}%";
+                var (bytes, total) = t;
+                double elapsed = sw.Elapsed.TotalSeconds;
+                double speedBps = elapsed > 0.1 ? bytes / elapsed : 0;
+                string speedStr = speedBps >= 1_048_576
+                    ? $"{speedBps / 1_048_576:F1} MB/s"
+                    : $"{speedBps / 1024:F0} KB/s";
+
+                if (total > 0)
+                {
+                    double pct = (double)bytes / total * 100;
+                    Progress.IsIndeterminate = false;
+                    Progress.Value = pct;
+                    TxtProgress.Text = $"Baixando {speedStr} · {bytes / 1_048_576.0:F1}/{total / 1_048_576.0:F1} MB · {pct:F0}%";
+                }
+                else
+                {
+                    Progress.IsIndeterminate = true;
+                    TxtProgress.Text = $"Baixando {speedStr} · {bytes / 1_048_576.0:F1} MB...";
+                }
             });
 
             try
