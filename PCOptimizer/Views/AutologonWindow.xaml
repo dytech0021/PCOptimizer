@@ -44,8 +44,8 @@
             <Border Grid.Row="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,14"
                     Background="#181F2A" BorderBrush="#2A3F5A" BorderThickness="1">
                 <TextBlock FontSize="10" Foreground="#89B4FA" TextWrapping="Wrap">
-                    <Run FontWeight="SemiBold" Text="Aviso: "/>
-                    <Run Text="A senha é armazenada em texto simples no registro do Windows (HKLM), leitura exige privilégio de administrador. Recomendado apenas em PCs de uso pessoal e sem outros usuários com acesso físico."/>
+                    <Run FontWeight="SemiBold" Text="Como funciona: "/>
+                    <Run Text="a senha é guardada criptografada no cofre do Windows (LSA), o mesmo método do Sysinternals/netplwiz — o que faz o auto-login funcionar em contas Microsoft no Windows 11. Recomendado em PCs de uso pessoal."/>
                 </TextBlock>
             </Border>
 

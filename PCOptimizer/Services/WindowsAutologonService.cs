@@ -5,15 +5,20 @@ using Microsoft.Win32;
 namespace PCOptimizer.Services
 {
     /// <summary>
-    /// Configura o auto-login do Windows via as chaves de registro AutoAdminLogon
-    /// em HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon.
+    /// Configura o auto-login do Windows (entrar direto na área de trabalho sem
+    /// pedir senha) em todas as versões do Windows 10 e 11, incluindo 25H2.
     ///
-    /// Funciona em todas as versões do Windows 10 e 11 (incluindo 25H2) porque
-    /// usa o mecanismo de registro de baixo nível, não o netplwiz (cuja checkbox
-    /// foi removida da UI do Windows 11 para contas Microsoft, mas a chave
-    /// AutoAdminLogon continua sendo honrada pelo Winlogon).
+    /// Mecanismo:
+    ///   1. DevicePasswordLessBuildVersion = 0  → reabilita login por senha
+    ///      (o Win11 25H2 vem com a trava "somente Windows Hello" ligada, que
+    ///      faz o Winlogon ignorar o auto-login em contas Microsoft).
+    ///   2. AutoAdminLogon = 1, DefaultUserName, DefaultDomainName no registro.
+    ///   3. Senha gravada como SEGREDO LSA criptografado ("DefaultPassword") —
+    ///      é o método que o netplwiz e o Sysinternals Autologon usam e o ÚNICO
+    ///      que funciona de forma confiável em CONTAS MICROSOFT. Gravar a senha
+    ///      como texto simples no registro funciona só em contas locais.
     ///
-    /// Atenção: a senha fica em texto simples em HKLM (leitura exige admin).
+    /// Requer privilégios de administrador.
     /// </summary>
     public static class WindowsAutologonService
     {
@@ -27,6 +32,9 @@ namespace PCOptimizer.Services
         private const string PasswordLessPath =
             @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\PasswordLess\Device";
 
+        // Nome do segredo LSA onde o Winlogon procura a senha do auto-login.
+        private const string AutologonPasswordSecret = "DefaultPassword";
+
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern bool LogonUser(string username, string domain, string password,
             int logonType, int logonProvider, out IntPtr token);
@@ -36,6 +44,108 @@ namespace PCOptimizer.Services
 
         private const int Logon32LogonInteractive = 2;
         private const int Logon32ProviderDefault  = 0;
+
+        // ── LSA (Local Security Authority) — armazenamento seguro de segredos ──
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct LSA_OBJECT_ATTRIBUTES
+        {
+            public int Length;
+            public IntPtr RootDirectory;
+            public IntPtr ObjectName;
+            public uint Attributes;
+            public IntPtr SecurityDescriptor;
+            public IntPtr SecurityQualityOfService;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct LSA_UNICODE_STRING
+        {
+            public ushort Length;
+            public ushort MaximumLength;
+            public IntPtr Buffer;
+        }
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern uint LsaOpenPolicy(
+            IntPtr SystemName,
+            ref LSA_OBJECT_ATTRIBUTES ObjectAttributes,
+            uint DesiredAccess,
+            out IntPtr PolicyHandle);
+
+        [DllImport("advapi32.dll", SetLastError = true, EntryPoint = "LsaStorePrivateData")]
+        private static extern uint LsaStorePrivateData_Set(
+            IntPtr PolicyHandle, ref LSA_UNICODE_STRING KeyName, ref LSA_UNICODE_STRING PrivateData);
+
+        // Mesma função com PrivateData = NULL → apaga o segredo.
+        [DllImport("advapi32.dll", SetLastError = true, EntryPoint = "LsaStorePrivateData")]
+        private static extern uint LsaStorePrivateData_Delete(
+            IntPtr PolicyHandle, ref LSA_UNICODE_STRING KeyName, IntPtr PrivateData);
+
+        [DllImport("advapi32.dll")]
+        private static extern uint LsaClose(IntPtr PolicyHandle);
+
+        private const uint POLICY_CREATE_SECRET = 0x00000020;
+
+        private static LSA_UNICODE_STRING MakeLsaString(string s)
+        {
+            return new LSA_UNICODE_STRING
+            {
+                Buffer = Marshal.StringToHGlobalUni(s),
+                Length = (ushort)(s.Length * sizeof(char)),
+                MaximumLength = (ushort)((s.Length + 1) * sizeof(char))
+            };
+        }
+
+        /// <summary>
+        /// Grava (ou apaga, se password vazia) a senha do auto-login no cofre LSA,
+        /// criptografada. É o método confiável para contas Microsoft.
+        /// </summary>
+        private static bool StorePasswordInLsa(string? password)
+        {
+            IntPtr policy = IntPtr.Zero;
+            LSA_UNICODE_STRING keyName = default;
+            LSA_UNICODE_STRING data = default;
+            bool dataAllocated = false;
+            try
+            {
+                var attrs = new LSA_OBJECT_ATTRIBUTES
+                {
+                    Length = Marshal.SizeOf<LSA_OBJECT_ATTRIBUTES>()
+                };
+                if (LsaOpenPolicy(IntPtr.Zero, ref attrs, POLICY_CREATE_SECRET, out policy) != 0)
+                    return false;
+
+                keyName = MakeLsaString(AutologonPasswordSecret);
+
+                uint res;
+                if (string.IsNullOrEmpty(password))
+                {
+                    res = LsaStorePrivateData_Delete(policy, ref keyName, IntPtr.Zero);
+                }
+                else
+                {
+                    data = MakeLsaString(password);
+                    dataAllocated = true;
+                    res = LsaStorePrivateData_Set(policy, ref keyName, ref data);
+                }
+                return res == 0;
+            }
+            catch { return false; }
+            finally
+            {
+                if (keyName.Buffer != IntPtr.Zero) Marshal.FreeHGlobal(keyName.Buffer);
+                if (dataAllocated && data.Buffer != IntPtr.Zero)
+                {
+                    // Zera a senha na memória antes de liberar.
+                    for (int i = 0; i < data.Length; i++) Marshal.WriteByte(data.Buffer, i, 0);
+                    Marshal.FreeHGlobal(data.Buffer);
+                }
+                if (policy != IntPtr.Zero) LsaClose(policy);
+            }
+        }
+
+        // ── API pública ──────────────────────────────────────────────────────
 
         public static bool IsEnabled()
         {
@@ -60,6 +170,8 @@ namespace PCOptimizer.Services
         /// <summary>
         /// Tenta validar as credenciais via LogonUser, tentando domínio local
         /// (nome do PC), "." e "" para cobrir contas locais e Microsoft.
+        /// Contas Microsoft frequentemente não validam offline — nesse caso o
+        /// chamador deve permitir confirmar mesmo assim.
         /// </summary>
         public static bool ValidateCredentials(string username, string password)
         {
@@ -118,13 +230,24 @@ namespace PCOptimizer.Services
                 key.SetValue("DefaultUserName",   username,                RegistryValueKind.String);
                 key.SetValue("DefaultDomainName", Environment.MachineName, RegistryValueKind.String);
 
-                if (!string.IsNullOrEmpty(password))
-                    key.SetValue("DefaultPassword", password, RegistryValueKind.String);
-                else
+                // PASSO 2: senha no cofre LSA (funciona em conta Microsoft).
+                bool lsaOk = StorePasswordInLsa(password);
+                if (lsaOk)
+                {
+                    // Sucesso no LSA: remove a senha em texto do registro (mais
+                    // seguro e evita conflito). É como o netplwiz/Sysinternals fazem.
                     try { key.DeleteValue("DefaultPassword", false); } catch { }
+                }
+                else
+                {
+                    // Fallback p/ contas locais ou se o LSA recusar: senha em texto.
+                    if (!string.IsNullOrEmpty(password))
+                        key.SetValue("DefaultPassword", password, RegistryValueKind.String);
+                    else
+                        try { key.DeleteValue("DefaultPassword", false); } catch { }
+                }
 
-                // Remove travas que fariam o auto-login valer só algumas vezes ou
-                // exibir a tela de bloqueio antes da área de trabalho.
+                // Remove travas que fariam o auto-login valer só algumas vezes.
                 try { key.DeleteValue("AutoLogonCount", false); } catch { }
                 try { key.DeleteValue("ForceAutoLogon", false); } catch { }
 
@@ -133,11 +256,12 @@ namespace PCOptimizer.Services
             catch { return false; }
         }
 
-        /// <summary>Desativa o auto-login e remove a senha do registro.</summary>
+        /// <summary>Desativa o auto-login e remove a senha (registro e cofre LSA).</summary>
         public static bool Disable()
         {
             try
             {
+                StorePasswordInLsa(null); // apaga o segredo LSA
                 using var key = Registry.LocalMachine.OpenSubKey(WinlogonPath, writable: true);
                 if (key == null) return false;
                 key.SetValue("AutoAdminLogon", "0", RegistryValueKind.String);
