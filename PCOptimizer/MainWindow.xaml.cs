@@ -40,6 +40,7 @@ namespace PCOptimizer
                 _ = CheckForUpdatesAsync();
                 _ = InitExpertAsync();
                 RefreshAutologonStatus();
+                _ = RefreshWoLStatusAsync();
             };
         }
 
@@ -833,6 +834,32 @@ namespace PCOptimizer
             TxtAutologonStatus.Text = enabled
                 ? $"✅ Ativo — entrará como {Services.WindowsAutologonService.GetConfiguredUser()}"
                 : "🔒 Desativado — senha pedida ao iniciar";
+        }
+
+        private void BtnWoL_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new Views.WakeOnLanWindow { Owner = this };
+            win.ShowDialog();
+            _ = RefreshWoLStatusAsync();
+        }
+
+        private async Task RefreshWoLStatusAsync()
+        {
+            if (TxtWoLStatus == null) return;
+            var result = await Task.Run(() =>
+            {
+                var adapters = Services.WakeOnLanService.GetPhysicalAdapters();
+                if (adapters.Count == 0) return null as (bool enabled, string mac)?;
+                var a = adapters[0];
+                return (Services.WakeOnLanService.IsWoLEnabled(a), a.MacFormatted) as (bool, string)?;
+            });
+
+            if (result == null)
+                TxtWoLStatus.Text = "Nenhuma placa Ethernet encontrada";
+            else
+                TxtWoLStatus.Text = result.Value.enabled
+                    ? $"✅ Ativo — {result.Value.mac}"
+                    : $"Desativado — {result.Value.mac}";
         }
 
         private void Card_Brightness(object sender, MouseButtonEventArgs e)
