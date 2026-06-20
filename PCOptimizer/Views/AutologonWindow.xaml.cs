@@ -6,31 +6,17 @@ namespace PCOptimizer.Views
 {
     public partial class AutologonWindow : Window
     {
-        // Quando a validação falha mas pode ser conta Microsoft, aguardamos
-        // confirmação explícita do usuário antes de gravar mesmo assim.
-        private bool _awaitingConfirm;
-        // Rótulo normal do botão (varia entre ativar/atualizar), restaurado ao
-        // sair do estado de confirmação.
-        private string _enableLabel = "🔓 Ativar auto-login";
-
         public AutologonWindow()
         {
             InitializeComponent();
             TxtUsername.Text = WindowsAutologonService.GetConfiguredUser();
-            TxtPassword.PasswordChanged += (_, _) =>
-            {
-                if (!_awaitingConfirm) return;
-                // Mexeu na senha: sai do modo confirmação e volta o botão ao normal.
-                _awaitingConfirm = false;
-                BtnEnable.Content = _enableLabel;
-                TxtMsg.Text = "";
-            };
             RefreshStatus();
         }
 
+        // Atualiza apenas o selo/botão de estado. NÃO mexe na mensagem (TxtMsg),
+        // para não apagar um aviso de sucesso/erro recém-exibido.
         private void RefreshStatus()
         {
-            _awaitingConfirm = false;
             bool enabled = WindowsAutologonService.IsEnabled();
             if (enabled)
             {
@@ -38,7 +24,7 @@ namespace PCOptimizer.Views
                 TxtStatusBadge.Text = "✅ Ativo";
                 TxtStatusBadge.Foreground = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1));
                 BtnDisable.Visibility = Visibility.Visible;
-                _enableLabel = "🔓 Atualizar senha";
+                BtnEnable.Content = "🔓 Atualizar senha";
             }
             else
             {
@@ -46,10 +32,8 @@ namespace PCOptimizer.Views
                 TxtStatusBadge.Text = "🔒 Desativado";
                 TxtStatusBadge.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0xAA));
                 BtnDisable.Visibility = Visibility.Collapsed;
-                _enableLabel = "🔓 Ativar auto-login";
+                BtnEnable.Content = "🔓 Ativar auto-login";
             }
-            BtnEnable.Content = _enableLabel;
-            TxtMsg.Text = "";
         }
 
         private void ShowMsg(string text, bool? success)
@@ -63,79 +47,65 @@ namespace PCOptimizer.Views
             });
         }
 
-        private void BtnEnable_Click(object sender, RoutedEventArgs e)
+        private async void BtnEnable_Click(object sender, RoutedEventArgs e)
         {
             string username = TxtUsername.Text.Trim();
             string password = TxtPassword.Password;
 
             if (string.IsNullOrEmpty(username))
             {
-                ShowMsg("⚠ Preencha o nome de usuário.", false);
-                return;
-            }
-
-            // Segunda tentativa após aviso de validação: aplica direto sem revalidar.
-            if (_awaitingConfirm)
-            {
-                _awaitingConfirm = false;
-                Apply(username, password);
+                ShowMsg("⚠ Preencha o nome de usuário (e-mail da conta Microsoft).", false);
                 return;
             }
 
             BtnEnable.IsEnabled = false;
-            ShowMsg("Verificando credenciais...", null);
+            ShowMsg("Aplicando...", null);
 
-            bool valid = WindowsAutologonService.ValidateCredentials(username, password);
-
-            if (!valid)
+            // Validação é só informativa — NÃO bloqueia. Conta Microsoft
+            // normalmente não valida offline, então gravamos de qualquer forma.
+            // Roda fora da thread de UI (LogonUser pode demorar alguns instantes).
+            var (verified, ok) = await System.Threading.Tasks.Task.Run(() =>
             {
-                // Pode ser conta Microsoft (LogonUser não valida contas online).
-                // Deixa o passo de confirmação ÓBVIO: muda o botão e avisa.
-                _awaitingConfirm = true;
-                BtnEnable.IsEnabled = true;
-                BtnEnable.Content = "✓ Confirmar e salvar";
-                ShowMsg("A senha não pôde ser verificada offline — isso é NORMAL em conta " +
-                        "Microsoft, não significa que está errada. Se a senha está certa, clique " +
-                        "agora no botão \"✓ Confirmar e salvar\" para gravar de verdade.", null);
+                bool v = WindowsAutologonService.ValidateCredentials(username, password);
+                bool o = WindowsAutologonService.Enable(username, password);
+                return (v, o);
+            });
+
+            BtnEnable.IsEnabled = true;
+
+            if (!ok)
+            {
+                ShowMsg("⚠ Não foi possível gravar. Feche e abra o app como Administrador " +
+                        "(clique direito → Executar como administrador) e tente de novo.", false);
                 return;
             }
 
-            Apply(username, password);
-        }
+            TxtPassword.Clear();
+            RefreshStatus(); // atualiza o selo ANTES de mostrar a mensagem
 
-        private void Apply(string username, string password)
-        {
-            bool ok = WindowsAutologonService.Enable(username, password);
-            BtnEnable.IsEnabled = true;
-
-            if (ok)
+            if (verified)
             {
-                TxtPassword.Clear();
-                ShowMsg("✅ Auto-login ativado e a trava do Windows 11 (login só por Hello) foi " +
-                        "desligada. Reinicie o PC para testar: ele deve ir direto à área de trabalho. " +
-                        "Se ainda pedir senha, confira se o Usuário é o e-mail e a senha é a da conta " +
-                        "Microsoft (não o PIN).", true);
-                RefreshStatus();
+                ShowMsg("✅ Tudo pronto! Senha verificada e gravada no cofre do Windows. " +
+                        "Reinicie o PC: ele deve entrar direto na área de trabalho, sem pedir senha.", true);
             }
             else
             {
-                ShowMsg("⚠ Não foi possível aplicar. Certifique-se de que o app está sendo " +
-                        "executado como Administrador.", false);
+                ShowMsg("✅ Auto-login ativado e senha gravada no cofre do Windows (LSA). " +
+                        "Não deu para verificar a senha aqui — isso é normal em conta Microsoft e " +
+                        "não quer dizer que está errada. Reinicie para testar. Se pedir senha, " +
+                        "reabra aqui e confira: Usuário = e-mail completo, Senha = a da conta " +
+                        "Microsoft (NÃO o PIN).", true);
             }
         }
 
         private void BtnDisable_Click(object sender, RoutedEventArgs e)
         {
             bool ok = WindowsAutologonService.Disable();
+            RefreshStatus();
             if (ok)
-            {
                 ShowMsg("🔒 Auto-login desativado. A senha será pedida novamente ao iniciar o Windows.", true);
-                RefreshStatus();
-            }
             else
-            {
-                ShowMsg("⚠ Não foi possível desativar. O app precisa de privilégios de Administrador.", false);
-            }
+                ShowMsg("⚠ Não foi possível desativar. O app precisa ser executado como Administrador.", false);
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();

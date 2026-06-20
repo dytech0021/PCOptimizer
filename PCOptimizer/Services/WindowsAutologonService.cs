@@ -43,6 +43,7 @@ namespace PCOptimizer.Services
         private static extern bool CloseHandle(IntPtr handle);
 
         private const int Logon32LogonInteractive = 2;
+        private const int Logon32LogonNetwork     = 3;
         private const int Logon32ProviderDefault  = 0;
 
         // ── LSA (Local Security Authority) — armazenamento seguro de segredos ──
@@ -168,26 +169,34 @@ namespace PCOptimizer.Services
         }
 
         /// <summary>
-        /// Tenta validar as credenciais via LogonUser, tentando domínio local
-        /// (nome do PC), "." e "" para cobrir contas locais e Microsoft.
-        /// Contas Microsoft frequentemente não validam offline — nesse caso o
-        /// chamador deve permitir confirmar mesmo assim.
+        /// Tenta validar as credenciais via LogonUser. É APENAS INFORMATIVO:
+        /// retornar false não significa senha errada — contas Microsoft muitas
+        /// vezes não validam offline. O chamador grava de qualquer forma.
+        /// Tenta várias combinações de domínio/usuário/tipo para cobrir conta
+        /// local e conta Microsoft.
         /// </summary>
         public static bool ValidateCredentials(string username, string password)
         {
             if (string.IsNullOrEmpty(password)) return true; // sem senha: deixa passar
 
-            string[] domains = { Environment.MachineName, ".", "" };
-            foreach (var domain in domains)
+            // (usuário, domínio) — cobre conta local e conta Microsoft.
+            var attempts = new (string user, string domain)[]
+            {
+                (username, Environment.MachineName),
+                (username, "."),
+                (username, ""),
+                (username, "MicrosoftAccount"),         // contas Microsoft
+                ("MicrosoftAccount\\" + username, ""),  // formato alternativo
+            };
+
+            foreach (var (user, domain) in attempts)
+            foreach (int type in new[] { Logon32LogonInteractive, Logon32LogonNetwork })
             {
                 IntPtr token = IntPtr.Zero;
                 try
                 {
-                    if (LogonUser(username, domain, password,
-                        Logon32LogonInteractive, Logon32ProviderDefault, out token))
-                    {
+                    if (LogonUser(user, domain, password, type, Logon32ProviderDefault, out token))
                         return true;
-                    }
                 }
                 catch { }
                 finally
