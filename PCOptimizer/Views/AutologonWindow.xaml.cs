@@ -9,17 +9,28 @@ namespace PCOptimizer.Views
         // Quando a validação falha mas pode ser conta Microsoft, aguardamos
         // confirmação explícita do usuário antes de gravar mesmo assim.
         private bool _awaitingConfirm;
+        // Rótulo normal do botão (varia entre ativar/atualizar), restaurado ao
+        // sair do estado de confirmação.
+        private string _enableLabel = "🔓 Ativar auto-login";
 
         public AutologonWindow()
         {
             InitializeComponent();
             TxtUsername.Text = WindowsAutologonService.GetConfiguredUser();
-            TxtPassword.PasswordChanged += (_, _) => _awaitingConfirm = false;
+            TxtPassword.PasswordChanged += (_, _) =>
+            {
+                if (!_awaitingConfirm) return;
+                // Mexeu na senha: sai do modo confirmação e volta o botão ao normal.
+                _awaitingConfirm = false;
+                BtnEnable.Content = _enableLabel;
+                TxtMsg.Text = "";
+            };
             RefreshStatus();
         }
 
         private void RefreshStatus()
         {
+            _awaitingConfirm = false;
             bool enabled = WindowsAutologonService.IsEnabled();
             if (enabled)
             {
@@ -27,7 +38,7 @@ namespace PCOptimizer.Views
                 TxtStatusBadge.Text = "✅ Ativo";
                 TxtStatusBadge.Foreground = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1));
                 BtnDisable.Visibility = Visibility.Visible;
-                BtnEnable.Content = "🔓 Atualizar senha";
+                _enableLabel = "🔓 Atualizar senha";
             }
             else
             {
@@ -35,8 +46,9 @@ namespace PCOptimizer.Views
                 TxtStatusBadge.Text = "🔒 Desativado";
                 TxtStatusBadge.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0xAA));
                 BtnDisable.Visibility = Visibility.Collapsed;
-                BtnEnable.Content = "🔓 Ativar auto-login";
+                _enableLabel = "🔓 Ativar auto-login";
             }
+            BtnEnable.Content = _enableLabel;
             TxtMsg.Text = "";
         }
 
@@ -78,11 +90,13 @@ namespace PCOptimizer.Views
             if (!valid)
             {
                 // Pode ser conta Microsoft (LogonUser não valida contas online).
-                // Permite confirmar na segunda tentativa.
+                // Deixa o passo de confirmação ÓBVIO: muda o botão e avisa.
                 _awaitingConfirm = true;
                 BtnEnable.IsEnabled = true;
-                ShowMsg("Não foi possível verificar a senha — comum em contas Microsoft. " +
-                        "Se a senha estiver correta, clique em \"Ativar auto-login\" novamente para confirmar.", null);
+                BtnEnable.Content = "✓ Confirmar e salvar";
+                ShowMsg("A senha não pôde ser verificada offline — isso é NORMAL em conta " +
+                        "Microsoft, não significa que está errada. Se a senha está certa, clique " +
+                        "agora no botão \"✓ Confirmar e salvar\" para gravar de verdade.", null);
                 return;
             }
 
