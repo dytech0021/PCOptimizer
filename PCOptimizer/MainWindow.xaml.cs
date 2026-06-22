@@ -844,6 +844,12 @@ namespace PCOptimizer
             _ = RefreshWoLStatusAsync();
         }
 
+        private void BtnMalware_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new Views.MalwareScanWindow { Owner = this };
+            win.ShowDialog();
+        }
+
         private async Task RefreshWoLStatusAsync()
         {
             if (TxtWoLStatus == null) return;
