@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using PCOptimizer.Services;
 
@@ -180,6 +181,11 @@ namespace PCOptimizer.Views
 
             bool allGood = r.wol && !r.fastStartup && r.adapterArmed;
             ShowMsg(sb.ToString().TrimEnd(), allGood ? (bool?)true : false);
+        }
+
+        private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ButtonState == MouseButtonState.Pressed) DragMove();
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Win32;
 using PCOptimizer.Models;
 
@@ -261,9 +262,15 @@ namespace PCOptimizer.Services
             {
                 if (!Directory.Exists(root)) continue;
 
-                // Perfis: Default, Profile 1, Profile 2…
+                // Perfis: Default, Profile 1, Profile 2… — ignora diretórios auxiliares do User Data.
                 foreach (var profile in Directory.EnumerateDirectories(root))
                 {
+                    string profileName = Path.GetFileName(profile);
+                    if (profileName != "Default" &&
+                        !profileName.StartsWith("Profile ", StringComparison.OrdinalIgnoreCase) &&
+                        !profileName.StartsWith("Guest Profile", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     string extDir = Path.Combine(profile, "Extensions");
                     if (!Directory.Exists(extDir)) continue;
 
@@ -350,9 +357,12 @@ namespace PCOptimizer.Services
                 };
                 using var p = Process.Start(psi);
                 if (p == null) return "";
-                string outp = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(timeoutMs);
-                return outp;
+                // Lê stdout assíncrono para o timeout de WaitForExit funcionar corretamente.
+                // ReadToEnd() bloquearia a thread até o processo sair, tornando o timeout inútil.
+                var outputTask = p.StandardOutput.ReadToEndAsync();
+                bool exited = p.WaitForExit(timeoutMs);
+                if (!exited) { try { p.Kill(true); } catch { } p.WaitForExit(2000); }
+                return outputTask.GetAwaiter().GetResult();
             }
             catch (Exception ex) { Logger.Error(ex, "RunCapture " + file); return ""; }
         }

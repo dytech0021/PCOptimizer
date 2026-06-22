@@ -66,12 +66,15 @@ namespace PCOptimizer.Services
         /// <summary>Histórico de ameaças já detectadas pelo Defender (Get-MpThreatDetection).</summary>
         public static string GetThreatHistory()
         {
+            // Monta hashtable de ThreatID → ThreatName em O(n) antes do loop,
+            // evitando chamar Get-MpThreat dentro de cada iteração (bug O(n²) anterior).
             string script =
+                "$ErrorActionPreference='SilentlyContinue';" +
+                "$tmap = @{};" +
+                "Get-MpThreat | ForEach-Object { $tmap[$_.ThreatID] = $_.ThreatName };" +
                 "$d = Get-MpThreatDetection | Sort-Object InitialDetectionTime -Descending | Select-Object -First 15;" +
                 "if (-not $d) { Write-Output 'Nenhuma ameaça no histórico.' } else {" +
-                "$d | ForEach-Object {" +
-                "  $name = (Get-MpThreat | Where-Object ThreatID -eq $_.ThreatID | Select-Object -First 1).ThreatName;" +
-                "  Write-Output (($_.InitialDetectionTime) + '  ' + $name) } }";
+                "$d | ForEach-Object { Write-Output (($_.InitialDetectionTime) + '  ' + $tmap[$_.ThreatID]) } }";
 
             var (ok, output) = RunPowerShell(script, 20000);
             return ok ? output.Trim() : "Não foi possível ler o histórico.\n" + output;
