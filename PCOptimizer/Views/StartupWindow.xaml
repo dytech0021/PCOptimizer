@@ -16,8 +16,8 @@
         <StackPanel Grid.Row="0" Margin="0,0,0,15">
             <TextBlock Text="🚀 Programas na Inicialização" FontSize="20" FontWeight="Bold"
                        Foreground="{DynamicResource TextPrimary}"/>
-            <TextBlock Text="Desmarque os programas que você NÃO quer que iniciem com o Windows"
-                       FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,5,0,0"/>
+            <TextBlock Text="Os mesmos programas da aba Inicialização do Gerenciador de Tarefas — desmarque os que NÃO quer que iniciem com o Windows"
+                       FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,5,0,0" TextWrapping="Wrap"/>
         </StackPanel>
 
         <!-- Search -->
