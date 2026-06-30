@@ -213,6 +213,8 @@ namespace PCOptimizer
 
         protected override void OnExit(ExitEventArgs e)
         {
+            // Restaura a barra de tarefas ao padrão (o efeito só vale com o app aberto).
+            TaskbarTransparencyService.Stop();
             HotkeyService.Dispose();
             TrayService.Dispose();
             base.OnExit(e);

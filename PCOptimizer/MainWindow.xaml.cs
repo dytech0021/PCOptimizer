@@ -41,6 +41,8 @@ namespace PCOptimizer
                 _ = InitExpertAsync();
                 RefreshAutologonStatus();
                 _ = RefreshWoLStatusAsync();
+                TaskbarTransparencyService.RestoreFromSettings();
+                RefreshTaskbarStatus();
             };
         }
 
@@ -848,6 +850,21 @@ namespace PCOptimizer
         {
             var win = new Views.MalwareScanWindow { Owner = this };
             win.ShowDialog();
+        }
+
+        private void BtnTaskbar_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new Views.TaskbarWindow { Owner = this };
+            win.ShowDialog();
+            RefreshTaskbarStatus();
+        }
+
+        private void RefreshTaskbarStatus()
+        {
+            if (TxtTaskbarStatus == null) return;
+            TxtTaskbarStatus.Text = TaskbarTransparencyService.IsActive
+                ? "✅ Ativa — " + TaskbarTransparencyService.StatusText()
+                : "Desativada — clique para deixar a barra translúcida";
         }
 
         private async Task RefreshWoLStatusAsync()

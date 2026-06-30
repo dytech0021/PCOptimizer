@@ -27,6 +27,11 @@ namespace PCOptimizer.Services
         public bool NightLightEnabled { get; set; }
         public int NightLightIntensity { get; set; } = 40;
 
+        // Barra de tarefas transparente (estilo TranslucentTB)
+        public bool TaskbarTransparencyEnabled { get; set; }
+        public string TaskbarMode { get; set; } = "Transparent"; // Transparent | Blur | Acrylic | Off
+        public int TaskbarTintAlpha { get; set; }                // 0-255: escurecimento (tom preto)
+
         // user-assigned names for monitors, keyed by HardwareId
         public Dictionary<string, string> MonitorAliases { get; set; } = new();
     }
