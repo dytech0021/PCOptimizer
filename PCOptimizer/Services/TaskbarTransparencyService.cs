@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Threading;
+using Microsoft.Win32;
 
 namespace PCOptimizer.Services
 {
@@ -34,6 +36,15 @@ namespace PCOptimizer.Services
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string? className, string? windowName);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool SendNotifyMessage(IntPtr hWnd, uint msg, UIntPtr wParam, string? lParam);
+
+        private static readonly IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
+        private const uint WM_SETTINGCHANGE = 0x001A;
 
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -89,11 +100,34 @@ namespace PCOptimizer.Services
 
             if (mode == TaskbarMode.Off) { Stop(); return; }
 
+            // O blur/acrílico só renderiza com "Efeitos de transparência" ligado —
+            // garante isso ao ativar (principal motivo de "não mudou nada" no Win11/Win10).
+            EnsureSystemTransparency();
+
             IsActive = true;
             ApplyToAllTaskbars();
 
             EnsureTimer();
             _timer!.Start();
+        }
+
+        /// <summary>
+        /// Liga "Efeitos de transparência" do Windows (Personalização → Cores). Sem isso,
+        /// o accent de blur/acrílico não tem efeito visível na barra.
+        /// </summary>
+        private static void EnsureSystemTransparency()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.CreateSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                if (key != null && Convert.ToInt32(key.GetValue("EnableTransparency") ?? 0) != 1)
+                {
+                    key.SetValue("EnableTransparency", 1, RegistryValueKind.DWord);
+                    SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, UIntPtr.Zero, "ImmersiveColorSet");
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, "TaskbarTransparency.EnsureSystemTransparency"); }
         }
 
         /// <summary>Atualiza os parâmetros ao vivo (mesmo comportamento de Start).</summary>
@@ -204,10 +238,10 @@ namespace PCOptimizer.Services
 
         private static List<IntPtr> GetTaskbarWindows()
         {
-            var list = new List<IntPtr>();
+            var bars = new List<IntPtr>();
 
             IntPtr primary = FindWindow("Shell_TrayWnd", null);
-            if (primary != IntPtr.Zero) list.Add(primary);
+            if (primary != IntPtr.Zero) bars.Add(primary);
 
             // Barras secundárias (uma por monitor extra).
             EnumWindows((hwnd, _) =>
@@ -215,11 +249,81 @@ namespace PCOptimizer.Services
                 var sb = new StringBuilder(64);
                 if (GetClassName(hwnd, sb, sb.Capacity) > 0 &&
                     sb.ToString() == "Shell_SecondaryTrayWnd")
-                    list.Add(hwnd);
+                    bars.Add(hwnd);
                 return true;
             }, IntPtr.Zero);
 
-            return list;
+            // No Windows 11 o fundo da barra é desenhado por uma janela-filha
+            // (DesktopWindowContentBridge). Aplicar o accent também nela aumenta a
+            // chance de o efeito pegar. Não atrapalha no Win10 (a filha não existe).
+            var targets = new List<IntPtr>(bars);
+            foreach (var bar in bars)
+            {
+                IntPtr child = FindWindowEx(bar, IntPtr.Zero,
+                    "Windows.UI.Composition.DesktopWindowContentBridge", null);
+                if (child != IntPtr.Zero) targets.Add(child);
+            }
+
+            return targets;
+        }
+
+        /// <summary>Windows 11 = build 22000 ou superior.</summary>
+        public static bool IsWindows11 =>
+            Environment.OSVersion.Version.Major >= 10 && Environment.OSVersion.Version.Build >= 22000;
+
+        /// <summary>Texto de diagnóstico: o que o app conseguiu fazer com a barra.</summary>
+        public static string Diagnose()
+        {
+            var sb = new StringBuilder();
+            var v = Environment.OSVersion.Version;
+            sb.AppendLine($"Windows: {v.Major}.{v.Minor} build {v.Build} ({(IsWindows11 ? "Windows 11" : "Windows 10")})");
+
+            int transp = -1;
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                transp = Convert.ToInt32(key?.GetValue("EnableTransparency") ?? -1);
+            }
+            catch { }
+            sb.AppendLine(transp == 1
+                ? "✅ Efeitos de transparência: ligado"
+                : "❌ Efeitos de transparência: desligado (necessário p/ blur/acrílico)");
+
+            var bars = GetTaskbarWindows();
+            sb.AppendLine($"Barras/camadas encontradas: {bars.Count}");
+            sb.AppendLine($"Efeito atual: {StatusText()} (ativo: {(IsActive ? "sim" : "não")})");
+
+            if (IsWindows11)
+                sb.AppendLine("\n⚠ No Windows 11 a Microsoft bloqueia esse efeito na barra. " +
+                              "Se não mudar, use o TranslucentTB oficial (botão abaixo) — é o que " +
+                              "funciona de forma confiável no Win11.");
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
+        /// Abre a página de instalação do TranslucentTB oficial (Microsoft Store; se
+        /// falhar, a página do GitHub). É a solução confiável para o Windows 11.
+        /// </summary>
+        public static bool OpenTranslucentTB()
+        {
+            // Product ID do TranslucentTB na Microsoft Store.
+            const string storeUri = "ms-windows-store://pdp/?productid=9PF4KZ2VN4W9";
+            const string githubUri = "https://github.com/TranslucentTB/TranslucentTB/releases/latest";
+            try
+            {
+                Process.Start(new ProcessStartInfo(storeUri) { UseShellExecute = true });
+                return true;
+            }
+            catch
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo(githubUri) { UseShellExecute = true });
+                    return true;
+                }
+                catch (Exception ex) { Logger.Error(ex, "OpenTranslucentTB"); return false; }
+            }
         }
     }
 }

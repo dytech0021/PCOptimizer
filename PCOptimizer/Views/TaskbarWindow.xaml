@@ -1,7 +1,7 @@
 <Window x:Class="PCOptimizer.Views.TaskbarWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Barra de Tarefas Transparente" Width="440" Height="600"
+        Title="Barra de Tarefas Transparente" Width="440" Height="670"
         WindowStyle="None" AllowsTransparency="True" ResizeMode="NoResize"
         Background="Transparent" Topmost="True"
         WindowStartupLocation="CenterOwner"
@@ -111,13 +111,37 @@
                        VerticalAlignment="Bottom" Margin="0,12,0,0"
                        Foreground="{DynamicResource TextSecondary}"/>
 
-            <!-- Botões -->
-            <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button Content="Fechar" Padding="16,7"
-                        Background="{DynamicResource ButtonPrimaryBg}"
-                        Foreground="{DynamicResource ButtonPrimaryFg}"
-                        BorderThickness="0" FontSize="12" FontWeight="Bold"
-                        Cursor="Hand" Click="BtnClose_Click"/>
+            <!-- Aviso Windows 11 + plano B garantido -->
+            <StackPanel Grid.Row="5">
+                <Border x:Name="Win11Warn" CornerRadius="8" Padding="10,8" Margin="0,4,0,8"
+                        Visibility="Collapsed"
+                        Background="#2A1605" BorderBrush="#5A3410" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock FontSize="10" Foreground="#FCD34D" TextWrapping="Wrap">
+                            <Run FontWeight="SemiBold" Text="⚠ Windows 11: "/>
+                            <Run Text="a Microsoft bloqueia esse efeito na barra. Se não mudar nada, use o TranslucentTB oficial — ele é feito só pra isso e funciona de forma confiável no Win11."/>
+                        </TextBlock>
+                        <Button x:Name="BtnTtb" Content="⬇ Instalar TranslucentTB (oficial)"
+                                Margin="0,8,0,0" Padding="12,7" FontSize="11" FontWeight="Bold"
+                                Cursor="Hand" BorderThickness="0" HorizontalAlignment="Left"
+                                Background="#F59E0B" Foreground="#1A1206"
+                                Click="BtnTtb_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Botões -->
+                <Grid Margin="0,4,0,0">
+                    <Button x:Name="BtnDiag" Content="🔍 Diagnóstico" Padding="14,7"
+                            HorizontalAlignment="Left"
+                            Background="Transparent" Foreground="{DynamicResource TextSecondary}"
+                            BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
+                            FontSize="12" Cursor="Hand" Click="BtnDiag_Click"/>
+                    <Button Content="Fechar" Padding="16,7" HorizontalAlignment="Right"
+                            Background="{DynamicResource ButtonPrimaryBg}"
+                            Foreground="{DynamicResource ButtonPrimaryFg}"
+                            BorderThickness="0" FontSize="12" FontWeight="Bold"
+                            Cursor="Hand" Click="BtnClose_Click"/>
+                </Grid>
             </StackPanel>
         </Grid>
     </Border>

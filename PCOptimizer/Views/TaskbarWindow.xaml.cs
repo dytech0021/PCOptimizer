@@ -36,6 +36,12 @@ namespace PCOptimizer.Views
             }).IsChecked = true;
 
             _initializing = false;
+
+            // No Windows 11 o efeito costuma ser bloqueado — mostra o aviso e o
+            // atalho para o TranslucentTB oficial (solução confiável no Win11).
+            if (TaskbarTransparencyService.IsWindows11)
+                Win11Warn.Visibility = Visibility.Visible;
+
             UpdateMsg();
         }
 
@@ -93,6 +99,21 @@ namespace PCOptimizer.Views
                 ? "A barra está com a aparência padrão do Windows."
                 : "✅ Aplicado. Mantenha o PC Optimizer aberto (pode minimizar para a bandeja) " +
                   "para o efeito continuar.";
+        }
+
+        private void BtnDiag_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show(TaskbarTransparencyService.Diagnose(),
+                "Diagnóstico — Barra de Tarefas", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void BtnTtb_Click(object sender, RoutedEventArgs e)
+        {
+            bool ok = TaskbarTransparencyService.OpenTranslucentTB();
+            TxtTbMsg.Text = ok
+                ? "Abrindo a loja para instalar o TranslucentTB. Depois de instalar, abra-o — ele " +
+                  "deixa a barra transparente de forma confiável no Windows 11."
+                : "Não foi possível abrir a loja. Procure por \"TranslucentTB\" na Microsoft Store.";
         }
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
