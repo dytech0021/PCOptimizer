@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -59,6 +60,11 @@ namespace PCOptimizer
             {
             var info = await UpdateService.CheckForUpdateAsync();
             if (info == null || !info.UpdateAvailable) return;
+
+            // Se uma otimização começou enquanto a rede respondia, não interrompe:
+            // o diálogo sequestraria a barra de progresso e o update fecharia o app
+            // no meio de um SFC/defrag. A oferta volta na próxima abertura.
+            if (_isRunning) return;
 
             var result = MessageBox.Show(
                 $"Uma nova versão do PC Optimizer está disponível! 🎉\n\n" +
@@ -162,7 +168,10 @@ namespace PCOptimizer
 
         private void Log(string message)
         {
-            TxtLog.Text += $"\n[{DateTime.Now:HH:mm:ss}] {message}";
+            // Append incremental via Inlines: "Text +=" reconcatena o log inteiro a
+            // cada linha (custo O(n²)) e re-mede o TextBlock todo na thread de UI.
+            TxtLog.Inlines.Add(new System.Windows.Documents.Run(
+                $"\n[{DateTime.Now:HH:mm:ss}] {message}"));
             LogScroller.ScrollToEnd();
         }
 
@@ -334,15 +343,28 @@ namespace PCOptimizer
             // Nota: Hibernação, Inicialização Rápida, Reparo, Bloatware e as opções
             // de games com trade-off (Tela Cheia, Ponteiro, Isolamento de Núcleo)
             // ficam de fora do "selecionar tudo" — opt-in manual.
+            // Mas DESMARCAR tudo limpa também os opt-in: sem isso, itens perigosos
+            // marcados por um preset (Bloatware, Hibernação…) sobreviviam ao
+            // "desmarcar tudo" e executavam sem o usuário perceber.
+            if (!value)
+            {
+                ChkFastStartup.IsChecked = false;
+                ChkHibernation.IsChecked = false;
+                ChkSystemRepair.IsChecked = false;
+                ChkBloatware.IsChecked = false;
+                ChkFullscreenOpt.IsChecked = false;
+                ChkMousePrecision.IsChecked = false;
+                ChkCoreIsolation.IsChecked = false;
+                ChkExpertCpuMax.IsChecked = false;
+                ChkExpertTimer.IsChecked = false;
+                ChkExpertMsi.IsChecked = false;
+            }
             UpdateSelectedCount();
         }
 
         private async void BtnRun_Click(object sender, RoutedEventArgs e)
         {
             if (_isRunning) return;
-            _isRunning = true;
-            BtnRun.IsEnabled = false;
-            BtnRun.Content = "⏳ Executando...";
 
             var allChecks = new[] { ChkTemp, ChkDisk, ChkRecycleBin, ChkStartup, ChkServices,
                 ChkNetwork, ChkRegistry, ChkCortana, ChkDefrag, ChkPowerPlan, ChkVisualEffects,
@@ -352,10 +374,30 @@ namespace PCOptimizer
                 ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
                 ChkCoreIsolation, ChkBootProcessors, ChkExpertCpuMax, ChkExpertTimer,
                 ChkExpertMsi };
-            _totalSelectedSteps = 0;
+
+            // Congela a seleção no início: marcar/desmarcar caixas ou clicar num
+            // preset DURANTE a execução não altera mais o que roda nem estraga a
+            // contagem/previsão (antes, cada passo relia IsChecked ao vivo).
+            var sel = new HashSet<System.Windows.Controls.CheckBox>(
+                allChecks.Where(c => c.IsChecked == true));
+
+            if (sel.Count == 0)
+            {
+                MessageBox.Show("Selecione ao menos uma otimização antes de executar.",
+                    "PC Optimizer", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            _isRunning = true;
+            // O Content do XAML é um StackPanel estilizado — guarda para restaurar
+            // no final (uma string fixa descartaria o visual original para sempre).
+            object originalRunContent = BtnRun.Content;
+            BtnRun.IsEnabled = false;
+            BtnRun.Content = "⏳ Executando...";
+
+            _totalSelectedSteps = sel.Count;
             _totalWeight = 0;
-            foreach (var c in allChecks)
-                if (c.IsChecked == true) { _totalSelectedSteps++; _totalWeight += GetWeight(c); }
+            foreach (var c in sel) _totalWeight += GetWeight(c);
             _completedSteps = 0;
             _doneWeight = 0;
             _runStart = DateTime.Now;
@@ -372,7 +414,7 @@ namespace PCOptimizer
 
             try
             {
-            if (ChkTemp.IsChecked == true)
+            if (sel.Contains(ChkTemp))
             {
                 Log("Limpando arquivos temporários...");
                 StatusTemp.Text = "⏳";
@@ -383,7 +425,7 @@ namespace PCOptimizer
                 StepDone(ChkTemp);
             }
 
-            if (ChkDisk.IsChecked == true)
+            if (sel.Contains(ChkDisk))
             {
                 Log("Limpando disco...");
                 StatusDisk.Text = "⏳";
@@ -394,7 +436,7 @@ namespace PCOptimizer
                 StepDone(ChkDisk);
             }
 
-            if (ChkRecycleBin.IsChecked == true)
+            if (sel.Contains(ChkRecycleBin))
             {
                 Log("Esvaziando lixeira...");
                 StatusRecycleBin.Text = "⏳";
@@ -405,7 +447,7 @@ namespace PCOptimizer
                 StepDone(ChkRecycleBin);
             }
 
-            if (ChkStartup.IsChecked == true)
+            if (sel.Contains(ChkStartup))
             {
                 Log("Abrindo gerenciador de inicialização...");
                 StatusStartup.Text = "⏳";
@@ -424,7 +466,7 @@ namespace PCOptimizer
                 StepDone(ChkStartup);
             }
 
-            if (ChkServices.IsChecked == true)
+            if (sel.Contains(ChkServices))
             {
                 Log("Otimizando serviços...");
                 StatusServices.Text = "⏳";
@@ -435,7 +477,7 @@ namespace PCOptimizer
                 StepDone(ChkServices);
             }
 
-            if (ChkNetwork.IsChecked == true)
+            if (sel.Contains(ChkNetwork))
             {
                 Log("Otimizando rede...");
                 StatusNetwork.Text = "⏳";
@@ -446,7 +488,7 @@ namespace PCOptimizer
                 StepDone(ChkNetwork);
             }
 
-            if (ChkRegistry.IsChecked == true)
+            if (sel.Contains(ChkRegistry))
             {
                 Log("Aplicando tweaks no registro...");
                 StatusRegistry.Text = "⏳";
@@ -457,7 +499,7 @@ namespace PCOptimizer
                 StepDone(ChkRegistry);
             }
 
-            if (ChkCortana.IsChecked == true)
+            if (sel.Contains(ChkCortana))
             {
                 Log("Desativando Cortana...");
                 StatusCortana.Text = "⏳";
@@ -468,7 +510,7 @@ namespace PCOptimizer
                 StepDone(ChkCortana);
             }
 
-            if (ChkDefrag.IsChecked == true)
+            if (sel.Contains(ChkDefrag))
             {
                 Log("Desfragmentando disco C: (pode demorar)...");
                 StatusDefrag.Text = "⏳";
@@ -479,7 +521,7 @@ namespace PCOptimizer
                 StepDone(ChkDefrag);
             }
 
-            if (ChkPowerPlan.IsChecked == true)
+            if (sel.Contains(ChkPowerPlan))
             {
                 Log("Ativando plano de Desempenho Máximo...");
                 StatusPowerPlan.Text = "⏳";
@@ -490,7 +532,7 @@ namespace PCOptimizer
                 StepDone(ChkPowerPlan);
             }
 
-            if (ChkVisualEffects.IsChecked == true)
+            if (sel.Contains(ChkVisualEffects))
             {
                 Log("Otimizando efeitos visuais...");
                 StatusVisualEffects.Text = "⏳";
@@ -501,7 +543,7 @@ namespace PCOptimizer
                 StepDone(ChkVisualEffects);
             }
 
-            if (ChkBackgroundApps.IsChecked == true)
+            if (sel.Contains(ChkBackgroundApps))
             {
                 Log("Desativando apps em segundo plano...");
                 StatusBackgroundApps.Text = "⏳";
@@ -512,7 +554,7 @@ namespace PCOptimizer
                 StepDone(ChkBackgroundApps);
             }
 
-            if (ChkStandbyRam.IsChecked == true)
+            if (sel.Contains(ChkStandbyRam))
             {
                 Log("Liberando memória RAM...");
                 StatusStandbyRam.Text = "⏳";
@@ -523,7 +565,7 @@ namespace PCOptimizer
                 StepDone(ChkStandbyRam);
             }
 
-            if (ChkGpuScheduling.IsChecked == true)
+            if (sel.Contains(ChkGpuScheduling))
             {
                 Log("Ativando agendamento de GPU por hardware...");
                 StatusGpuScheduling.Text = "⏳";
@@ -534,7 +576,7 @@ namespace PCOptimizer
                 StepDone(ChkGpuScheduling);
             }
 
-            if (ChkTelemetry.IsChecked == true)
+            if (sel.Contains(ChkTelemetry))
             {
                 Log("Desativando telemetria...");
                 StatusTelemetry.Text = "⏳";
@@ -545,7 +587,7 @@ namespace PCOptimizer
                 StepDone(ChkTelemetry);
             }
 
-            if (ChkGameBar.IsChecked == true)
+            if (sel.Contains(ChkGameBar))
             {
                 Log("Desativando Xbox Game Bar...");
                 StatusGameBar.Text = "⏳";
@@ -556,7 +598,7 @@ namespace PCOptimizer
                 StepDone(ChkGameBar);
             }
 
-            if (ChkSsdTrim.IsChecked == true)
+            if (sel.Contains(ChkSsdTrim))
             {
                 Log("Otimizando SSD (TRIM)...");
                 StatusSsdTrim.Text = "⏳";
@@ -567,7 +609,7 @@ namespace PCOptimizer
                 StepDone(ChkSsdTrim);
             }
 
-            if (ChkWinUpdateCache.IsChecked == true)
+            if (sel.Contains(ChkWinUpdateCache))
             {
                 Log("Limpando cache do Windows Update...");
                 StatusWinUpdateCache.Text = "⏳";
@@ -578,7 +620,7 @@ namespace PCOptimizer
                 StepDone(ChkWinUpdateCache);
             }
 
-            if (ChkThumbnails.IsChecked == true)
+            if (sel.Contains(ChkThumbnails))
             {
                 Log("Limpando cache de miniaturas...");
                 StatusThumbnails.Text = "⏳";
@@ -589,7 +631,7 @@ namespace PCOptimizer
                 StepDone(ChkThumbnails);
             }
 
-            if (ChkFastStartup.IsChecked == true)
+            if (sel.Contains(ChkFastStartup))
             {
                 Log("Desativando Inicialização Rápida...");
                 StatusFastStartup.Text = "⏳";
@@ -600,7 +642,7 @@ namespace PCOptimizer
                 StepDone(ChkFastStartup);
             }
 
-            if (ChkHibernation.IsChecked == true)
+            if (sel.Contains(ChkHibernation))
             {
                 Log("Desativando hibernação...");
                 StatusHibernation.Text = "⏳";
@@ -611,7 +653,7 @@ namespace PCOptimizer
                 StepDone(ChkHibernation);
             }
 
-            if (ChkSystemRepair.IsChecked == true)
+            if (sel.Contains(ChkSystemRepair))
             {
                 Log("Reparando arquivos do sistema (pode demorar vários minutos)...");
                 StatusSystemRepair.Text = "⏳";
@@ -622,7 +664,7 @@ namespace PCOptimizer
                 StepDone(ChkSystemRepair);
             }
 
-            if (ChkFixDate.IsChecked == true)
+            if (sel.Contains(ChkFixDate))
             {
                 Log("Corrigindo data e hora (sincronizando com a internet)...");
                 StatusFixDate.Text = "⏳";
@@ -634,7 +676,7 @@ namespace PCOptimizer
                 StepDone(ChkFixDate);
             }
 
-            if (ChkBloatware.IsChecked == true)
+            if (sel.Contains(ChkBloatware))
             {
                 Log("Removendo bloatware...");
                 StatusBloatware.Text = "⏳";
@@ -645,7 +687,7 @@ namespace PCOptimizer
                 StepDone(ChkBloatware);
             }
 
-            if (ChkShaderCache.IsChecked == true)
+            if (sel.Contains(ChkShaderCache))
             {
                 Log("Limpando cache de shaders...");
                 StatusShaderCache.Text = "⏳";
@@ -656,7 +698,7 @@ namespace PCOptimizer
                 StepDone(ChkShaderCache);
             }
 
-            if (ChkGameMode.IsChecked == true)
+            if (sel.Contains(ChkGameMode))
             {
                 Log("Ativando Modo de Jogo do Windows...");
                 StatusGameMode.Text = "⏳";
@@ -667,7 +709,7 @@ namespace PCOptimizer
                 StepDone(ChkGameMode);
             }
 
-            if (ChkGamePriority.IsChecked == true)
+            if (sel.Contains(ChkGamePriority))
             {
                 Log("Aplicando prioridade máxima para jogos...");
                 StatusGamePriority.Text = "⏳";
@@ -678,7 +720,7 @@ namespace PCOptimizer
                 StepDone(ChkGamePriority);
             }
 
-            if (ChkGameNetwork.IsChecked == true)
+            if (sel.Contains(ChkGameNetwork))
             {
                 Log("Reduzindo latência de rede para jogos...");
                 StatusGameNetwork.Text = "⏳";
@@ -690,7 +732,7 @@ namespace PCOptimizer
                 StepDone(ChkGameNetwork);
             }
 
-            if (ChkPowerThrottling.IsChecked == true)
+            if (sel.Contains(ChkPowerThrottling))
             {
                 Log("Desativando Power Throttling...");
                 StatusPowerThrottling.Text = "⏳";
@@ -701,7 +743,7 @@ namespace PCOptimizer
                 StepDone(ChkPowerThrottling);
             }
 
-            if (ChkFullscreenOpt.IsChecked == true)
+            if (sel.Contains(ChkFullscreenOpt))
             {
                 Log("Desativando Otimizações de Tela Cheia...");
                 StatusFullscreenOpt.Text = "⏳";
@@ -712,7 +754,7 @@ namespace PCOptimizer
                 StepDone(ChkFullscreenOpt);
             }
 
-            if (ChkMousePrecision.IsChecked == true)
+            if (sel.Contains(ChkMousePrecision))
             {
                 Log("Desativando precisão aprimorada do ponteiro...");
                 StatusMousePrecision.Text = "⏳";
@@ -723,7 +765,7 @@ namespace PCOptimizer
                 StepDone(ChkMousePrecision);
             }
 
-            if (ChkCoreIsolation.IsChecked == true)
+            if (sel.Contains(ChkCoreIsolation))
             {
                 Log("Desativando Isolamento de Núcleo (HVCI)...");
                 StatusCoreIsolation.Text = "⏳";
@@ -735,7 +777,7 @@ namespace PCOptimizer
                 StepDone(ChkCoreIsolation);
             }
 
-            if (ChkBootProcessors.IsChecked == true)
+            if (sel.Contains(ChkBootProcessors))
             {
                 Log($"Maximizando núcleos de CPU no boot ({Environment.ProcessorCount} núcleos)...");
                 StatusBootProcessors.Text = "⏳";
@@ -747,7 +789,7 @@ namespace PCOptimizer
                 StepDone(ChkBootProcessors);
             }
 
-            if (ChkExpertCpuMax.IsChecked == true)
+            if (sel.Contains(ChkExpertCpuMax))
             {
                 Log("⚠️ Expert: travando CPU no clock máximo (C-States off)...");
                 StatusExpertCpuMax.Text = "⏳";
@@ -759,7 +801,7 @@ namespace PCOptimizer
                 StepDone(ChkExpertCpuMax);
             }
 
-            if (ChkExpertTimer.IsChecked == true)
+            if (sel.Contains(ChkExpertTimer))
             {
                 Log("⚠️ Expert: aplicando Timer Resolution 0.5ms...");
                 StatusExpertTimer.Text = "⏳";
@@ -771,7 +813,7 @@ namespace PCOptimizer
                 StepDone(ChkExpertTimer);
             }
 
-            if (ChkExpertMsi.IsChecked == true)
+            if (sel.Contains(ChkExpertMsi))
             {
                 Log("⚠️ Expert: ativando MSI Mode na GPU/rede...");
                 StatusExpertMsi.Text = "⏳";
@@ -802,9 +844,11 @@ namespace PCOptimizer
             }
             finally
             {
-                Progress.Value = 100;
+                // Recolhe a barra (deixá-la visível em 100% sugeria conclusão total
+                // mesmo quando a run parou no meio por erro).
+                Progress.Visibility = Visibility.Collapsed;
                 TxtProgress.Visibility = Visibility.Collapsed;
-                BtnRun.Content = "⚡ Executar Otimizações";
+                BtnRun.Content = originalRunContent;
                 BtnRun.IsEnabled = true;
                 _isRunning = false;
             }
@@ -909,11 +953,6 @@ namespace PCOptimizer
             }
         }
 
-        private void Card_Brightness(object sender, MouseButtonEventArgs e)
-        {
-            ((App)Application.Current).ToggleBrightnessWindow();
-        }
-
         private void BtnBrightnessHeader_Click(object sender, RoutedEventArgs e)
         {
             ((App)Application.Current).ToggleBrightnessWindow();
@@ -1005,7 +1044,7 @@ namespace PCOptimizer
         {
             var result = MessageBox.Show(
                 "⚠️ ATENÇÃO — Otimização Full\n\n" +
-                "Esta opção marcará TODAS as 32 otimizações sem exceção, incluindo:\n\n" +
+                "Esta opção marcará TODAS as 33 otimizações sem exceção, incluindo:\n\n" +
                 "• Desfragmentação de disco (pode demorar horas em HDDs)\n" +
                 "• Reparo do sistema SFC + DISM (~5-10 minutos)\n" +
                 "• Remoção de bloatware (apps Microsoft serão desinstalados)\n" +
@@ -1180,7 +1219,8 @@ namespace PCOptimizer
 
         private async void BtnCpuUvTool_Click(object sender, RoutedEventArgs e)
         {
-            if (_cpuUvTool == null || !ConfirmExpertOnce()) return;
+            // Compartilha a barra de progresso com a run — não misturar os dois.
+            if (_isRunning || _cpuUvTool == null || !ConfirmExpertOnce()) return;
 
             // Re-detecta na hora do clique: se o usuário instalou a ferramenta
             // com o app já aberto (ex.: acabou de instalar o Ryzen Master), a

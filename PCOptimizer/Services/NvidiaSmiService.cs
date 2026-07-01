@@ -46,9 +46,19 @@ namespace PCOptimizer.Services
                 };
                 using var p = Process.Start(psi);
                 if (p == null) return (-1, "");
-                string output = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(15000);
-                return (p.HasExited ? p.ExitCode : -1, output.Trim());
+                // Lê os DOIS streams em paralelo: stderr redirecionado e nunca lido
+                // pode encher o buffer do pipe e travar o processo (deadlock), e o
+                // ReadToEnd síncrono anulava o timeout do WaitForExit.
+                var outTask = p.StandardOutput.ReadToEndAsync();
+                var errTask = p.StandardError.ReadToEndAsync();
+                if (!p.WaitForExit(15000))
+                {
+                    try { p.Kill(true); } catch { }
+                    return (-1, "");
+                }
+                p.WaitForExit(); // drena os streams redirecionados após a saída
+                _ = errTask.GetAwaiter().GetResult();
+                return (p.ExitCode, outTask.GetAwaiter().GetResult().Trim());
             }
             catch
             {

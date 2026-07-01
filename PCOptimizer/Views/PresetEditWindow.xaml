@@ -5,7 +5,8 @@
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" Topmost="True"
         ResizeMode="NoResize"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
 
     <Border Margin="10" CornerRadius="12"
             Background="{DynamicResource WindowBg}"

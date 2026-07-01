@@ -305,8 +305,9 @@ namespace PCOptimizer.Services
             try
             {
                 using var s = new ManagementObjectSearcher("root\\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
-                foreach (ManagementObject obj in s.Get())
-                    return Convert.ToInt32(obj["CurrentBrightness"]);
+                using var results = s.Get();
+                foreach (ManagementObject obj in results)
+                    using (obj) return Convert.ToInt32(obj["CurrentBrightness"]);
             }
             catch { }
             return 50;
@@ -317,11 +318,13 @@ namespace PCOptimizer.Services
             try
             {
                 using var s = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
-                foreach (ManagementObject obj in s.Get())
-                {
-                    obj.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)percent });
-                    return true;
-                }
+                using var results = s.Get();
+                foreach (ManagementObject obj in results)
+                    using (obj)
+                    {
+                        obj.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)percent });
+                        return true;
+                    }
             }
             catch { }
             return false;
@@ -345,9 +348,11 @@ namespace PCOptimizer.Services
             {
                 using var s = new ManagementObjectSearcher("root\\WMI",
                     "SELECT ManufacturerName, UserFriendlyName, InstanceName FROM WmiMonitorID");
+                using var results = s.Get();
                 int idx = 0;
-                foreach (ManagementObject obj in s.Get())
+                foreach (ManagementObject obj in results)
                 {
+                    using var _ = obj; // libera o handle COM já nesta iteração
                     // InstanceName: "DISPLAY\DEL4079\4&path&0&UID256_0"
                     string instance = obj["InstanceName"]?.ToString() ?? "";
                     string[] parts  = instance.Split('\\');
@@ -382,8 +387,10 @@ namespace PCOptimizer.Services
             {
                 using var s = new ManagementObjectSearcher("root\\WMI",
                     "SELECT ManufacturerName, UserFriendlyName FROM WmiMonitorID");
-                foreach (ManagementObject obj in s.Get())
+                using var results = s.Get();
+                foreach (ManagementObject obj in results)
                 {
+                    using var _ = obj; // libera o handle COM já nesta iteração
                     string mfr      = WmiBytesToString(obj["ManufacturerName"]);
                     string friendly = WmiBytesToString(obj["UserFriendlyName"]);
                     return new EdidInfo
@@ -568,7 +575,9 @@ namespace PCOptimizer.Services
                     ScreenTop          = srcY,
                     ScreenWidth        = scrW,
                     ScreenHeight       = scrH,
-                    SupportsHdr        = hdr != null,
+                    // hdr != null só significa "path ativo" — o botão de HDR aparecia
+                    // até em monitor SDR comum. O que vale é o bit de suporte.
+                    SupportsHdr        = hdr?.IsSupported ?? false,
                     HdrEnabled         = hdr?.IsEnabled ?? false,
                     HdrAdapterIdLow    = hdr?.AdapterIdLow ?? 0,
                     HdrAdapterIdHigh   = hdr?.AdapterIdHigh ?? 0,

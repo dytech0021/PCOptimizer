@@ -127,12 +127,19 @@ namespace PCOptimizer.Services
                 using var p = Process.Start(psi);
                 if (p == null) return (false, "Não foi possível iniciar o powershell.exe");
 
+                // Lê os DOIS streams em paralelo e espera com timeout — ReadToEnd
+                // síncrono bloquearia até o processo sair, anulando o timeout.
+                var outTask = p.StandardOutput.ReadToEndAsync();
                 var errTask = p.StandardError.ReadToEndAsync();
-                string stdout = p.StandardOutput.ReadToEnd();
-                string stderr = errTask.GetAwaiter().GetResult();
-                if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return (false, "timeout"); }
+                if (!p.WaitForExit(timeoutMs))
+                {
+                    try { p.Kill(true); } catch { }
+                    return (false, "timeout");
+                }
+                p.WaitForExit(); // drena os streams redirecionados após a saída
 
-                return (p.ExitCode == 0, (stdout + stderr).Trim());
+                return (p.ExitCode == 0,
+                    (outTask.GetAwaiter().GetResult() + errTask.GetAwaiter().GetResult()).Trim());
             }
             catch (Exception ex)
             {

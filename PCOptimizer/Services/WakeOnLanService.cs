@@ -91,8 +91,16 @@ namespace PCOptimizer.Services
                 };
                 using var p = System.Diagnostics.Process.Start(psi);
                 if (p == null) return Array.Empty<string>();
-                string output = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(5000);
+                // Leitura assíncrona: ReadToEnd síncrono bloquearia até o processo
+                // sair, anulando o timeout (e prendendo o botão Diagnóstico).
+                var outTask = p.StandardOutput.ReadToEndAsync();
+                if (!p.WaitForExit(5000))
+                {
+                    try { p.Kill(true); } catch { }
+                    return Array.Empty<string>();
+                }
+                p.WaitForExit(); // drena o stream redirecionado após a saída
+                string output = outTask.GetAwaiter().GetResult();
                 return output.Split(new[] { '\r', '\n' },
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             }
@@ -132,7 +140,9 @@ namespace PCOptimizer.Services
                 string? sub = FindAdapterRegistrySubKey(adapter);
                 if (sub == null) return false;
                 using var key = Registry.LocalMachine.OpenSubKey($@"{AdapterClassKey}\{sub}");
-                return (key?.GetValue("*WakeOnMagicPacket") as string) == "1";
+                // Convert.ToString tolera REG_SZ e REG_DWORD — alguns drivers gravam
+                // o valor como número, e "as string" retornava null nesses casos.
+                return Convert.ToString(key?.GetValue("*WakeOnMagicPacket"))?.Trim() == "1";
             }
             catch (Exception ex) { Logger.Error(ex, "IsWoLEnabled"); }
             return false;
@@ -193,7 +203,13 @@ namespace PCOptimizer.Services
         /// </summary>
         public static bool EnableWoL(AdapterInfo adapter)
         {
-            string safeDesc = adapter.Description.Replace("'", "''");
+            // O PowerShell também encerra strings single-quoted nas aspas tipográficas
+            // (U+2018–U+201B) — normaliza antes de duplicar, senão uma descrição de
+            // driver localizada quebra o parse do script inteiro e nada roda.
+            string safeDesc = adapter.Description
+                .Replace('‘', '\'').Replace('’', '\'')
+                .Replace('‚', '\'').Replace('‛', '\'')
+                .Replace("'", "''");
             string mac      = adapter.MacFormatted; // "E0:E0:4C:F3:06:C1"
 
             // 1) Escreve as chaves de WoL DIRETO no registro. Funciona mesmo quando o
@@ -261,13 +277,23 @@ powercfg /devicequery wake_armed
                 using var p = System.Diagnostics.Process.Start(psi);
                 if (p == null) return (false, "Não foi possível iniciar o powershell.exe");
 
-                // Lê stderr em paralelo para não travar se um buffer encher (deadlock clássico).
+                // Lê os DOIS streams em paralelo e espera com timeout — ReadToEnd
+                // síncrono bloquearia até o processo sair, anulando o timeout (e
+                // travando a janela se o driver pendurar o PowerShell).
+                var outTask = p.StandardOutput.ReadToEndAsync();
                 var errTask = p.StandardError.ReadToEndAsync();
-                string stdout = p.StandardOutput.ReadToEnd();
-                string stderr = errTask.GetAwaiter().GetResult();
-                if (!p.WaitForExit(timeoutMs)) { try { p.Kill(true); } catch { } return (false, "timeout\n" + stdout + stderr); }
+                if (!p.WaitForExit(timeoutMs))
+                {
+                    try { p.Kill(true); } catch { }
+                    p.WaitForExit(3000);
+                    string partial = (outTask.IsCompleted ? outTask.Result : "") +
+                                     (errTask.IsCompleted ? errTask.Result : "");
+                    return (false, ("timeout\n" + partial).Trim());
+                }
+                p.WaitForExit(); // drena os streams redirecionados após a saída
 
-                string output = (stdout + stderr).Trim();
+                string output = (outTask.GetAwaiter().GetResult() +
+                                 errTask.GetAwaiter().GetResult()).Trim();
                 return (p.ExitCode == 0, output);
             }
             catch (Exception ex)

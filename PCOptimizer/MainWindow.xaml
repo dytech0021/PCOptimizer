@@ -831,7 +831,7 @@
                             <StackPanel VerticalAlignment="Center" Margin="16,0,0,0">
                                 <TextBlock Text="Sistema e Desempenho" FontSize="17" FontWeight="Bold"
                                            Foreground="{DynamicResource TextPrimary}"/>
-                                <TextBlock Text="14 otimizações de velocidade e privacidade" FontSize="11"
+                                <TextBlock Text="15 otimizações de velocidade e privacidade" FontSize="11"
                                            Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
                             </StackPanel>
                         </StackPanel>
@@ -1761,7 +1761,7 @@
                                     Background="{DynamicResource Card4Bg}" Foreground="White"
                                     BorderThickness="0" Padding="0,14" Cursor="Hand"
                                     Click="BtnPresetBasica_Click"
-                                    ToolTip="8 otimizações rápidas e seguras (~40s)">
+                                    ToolTip="9 otimizações rápidas e seguras (~40s)">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="🚀" FontSize="22" HorizontalAlignment="Center"/>
                                     <TextBlock Text="Básica" FontSize="12" FontWeight="Bold"
@@ -1775,7 +1775,7 @@
                                     Background="{DynamicResource Card2Bg}" Foreground="White"
                                     BorderThickness="0" Padding="0,14" Cursor="Hand"
                                     Click="BtnPresetIntermediaria_Click"
-                                    ToolTip="17 otimizações completas (~1min)">
+                                    ToolTip="18 otimizações completas (~1min)">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="⚙️" FontSize="22" HorizontalAlignment="Center"/>
                                     <TextBlock Text="Intermediária" FontSize="10" FontWeight="Bold"
@@ -1789,7 +1789,7 @@
                                     Background="{DynamicResource Card3Bg}" Foreground="White"
                                     BorderThickness="0" Padding="0,14" Cursor="Hand"
                                     Click="BtnPresetAvancada_Click"
-                                    ToolTip="24 otimizações — quase tudo (~2min)">
+                                    ToolTip="25 otimizações — quase tudo (~2min)">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="🔥" FontSize="22" HorizontalAlignment="Center"/>
                                     <TextBlock Text="Avançada" FontSize="12" FontWeight="Bold"
@@ -1803,7 +1803,7 @@
                                     Background="{DynamicResource Card1Bg}" Foreground="White"
                                     BorderThickness="0" Padding="0,14" Cursor="Hand"
                                     Click="BtnPresetFull_Click"
-                                    ToolTip="TODAS as 32 otimizações — inclui aviso (~15min)">
+                                    ToolTip="TODAS as 33 otimizações — inclui aviso (~15min)">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="💥" FontSize="22" HorizontalAlignment="Center"/>
                                     <TextBlock Text="Full" FontSize="12" FontWeight="Bold"

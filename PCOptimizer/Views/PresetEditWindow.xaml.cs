@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using PCOptimizer.Services;
 
 namespace PCOptimizer.Views
@@ -33,15 +34,24 @@ namespace PCOptimizer.Views
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
+            // Nome vazio deixaria o botão do preset sem rótulo — mantém o anterior.
+            string name = TxtName.Text.Trim();
+            if (name.Length == 0) name = Result.Name;
+
             Result = new PresetData
             {
-                Name = TxtName.Text.Trim(),
+                Name = name,
                 Icon = Result.Icon,
                 Brightness = (int)SliderBrightness.Value,
                 Contrast = (int)SliderContrast.Value
             };
             DialogResult = true;
             Close();
+        }
+
+        private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ButtonState == MouseButtonState.Pressed) DragMove();
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)

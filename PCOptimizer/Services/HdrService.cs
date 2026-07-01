@@ -93,6 +93,11 @@ namespace PCOptimizer.Services
         {
             public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
             public uint value; // bit0=supported, bit1=enabled, bit2=wideColor, bit3=forceDisabled
+            // O Windows valida o tamanho EXATO do pacote (32 bytes) — sem estes dois
+            // campos o struct tinha 24 bytes e a chamada falhava sempre com
+            // ERROR_INVALID_PARAMETER, fazendo todo monitor parecer "sem HDR".
+            public uint colorEncoding;       // DISPLAYCONFIG_COLOR_ENCODING
+            public uint bitsPerColorChannel;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -139,8 +144,12 @@ namespace PCOptimizer.Services
                         ref numPaths, paths, ref numModes, modes, IntPtr.Zero) != 0)
                     return result;
 
-                foreach (var path in paths)
+                // Itera só os numPaths ATUALIZADOS pelo QueryDisplayConfig — se um
+                // monitor foi desconectado entre as duas chamadas, o final do array
+                // contém entradas zeradas que gerariam monitores "fantasma".
+                for (int pi = 0; pi < numPaths; pi++)
                 {
+                    var path = paths[pi];
                     int srcX = 0, srcY = 0;
                     uint modeIdx = path.sourceInfo.modeInfoIdx;
                     if (modeIdx < numModes && modes[modeIdx].infoType == 1) // source mode

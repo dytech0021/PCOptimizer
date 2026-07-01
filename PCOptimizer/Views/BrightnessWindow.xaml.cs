@@ -65,6 +65,11 @@ namespace PCOptimizer.Views
                     { EasingFunction = new System.Windows.Media.Animation.CubicEase() };
                     tt.BeginAnimation(TranslateTransform.YProperty, slide);
                 }
+
+                // A janela é reutilizada com Hide/Show: reenumera os monitores a
+                // cada reabertura para refletir telas plugadas/removidas nesse meio
+                // tempo (na primeira exibição, _initialized=false e o Loaded cuida).
+                if (_initialized) _ = ReloadMonitorsAsync();
             };
             TxtHotkey.Text = SettingsService.Current.HotkeyDisplay;
             RefreshPresetButtons();
@@ -106,6 +111,15 @@ namespace PCOptimizer.Views
                 StartCountdown();
             }
 
+            await ReloadMonitorsAsync();
+        }
+
+        private bool _reloadingMonitors;
+
+        private async Task ReloadMonitorsAsync()
+        {
+            if (_reloadingMonitors) return;
+            _reloadingMonitors = true;
             TxtStatus.Text = "Lendo monitores...";
 
             try
@@ -116,7 +130,6 @@ namespace PCOptimizer.Views
                 {
                     TxtMonitorCount.Text = "Nenhum monitor compatível";
                     TxtStatus.Text = "Monitor não suporta DDC/CI nem WMI";
-                    _initialized = true;
                     return;
                 }
 
@@ -134,8 +147,11 @@ namespace PCOptimizer.Views
             {
                 TxtStatus.Text = $"Erro: {ex.Message}";
             }
-
-            _initialized = true;
+            finally
+            {
+                _initialized = true;
+                _reloadingMonitors = false;
+            }
         }
 
         private void BuildMonitorPanels(List<MonitorEntry> entries)
@@ -392,10 +408,14 @@ namespace PCOptimizer.Views
             return grid;
         }
 
-        private async void ApplyPreset(PresetData preset)
+        private void ApplyPreset(PresetData preset)
         {
             if (!_initialized) return;
 
+            // Basta mover os sliders: os ValueChanged já aplicam em TODOS os tipos
+            // de monitor (DDC por índice, WMI e brilho por software) com throttle.
+            // Chamar SetBrightnessAll/SetContrastAll em paralelo causava escrita
+            // dupla e CONCORRENTE no mesmo handle DDC/CI (I2C não é thread-safe).
             foreach (var mc in _monitorControls)
             {
                 mc.SliderBrightness.Value = preset.Brightness;
@@ -403,16 +423,7 @@ namespace PCOptimizer.Views
                     mc.SliderContrast.Value = preset.Contrast;
             }
 
-            try
-            {
-                await Task.Run(() =>
-                {
-                    MonitorService.SetBrightnessAll(preset.Brightness);
-                    MonitorService.SetContrastAll(preset.Contrast);
-                });
-                TxtStatus.Text = $"Preset \"{preset.Name}\" aplicado";
-            }
-            catch (Exception ex) { TxtStatus.Text = $"Erro ao aplicar preset: {ex.Message}"; }
+            TxtStatus.Text = $"Preset \"{preset.Name}\" aplicado";
         }
 
         private void EditPreset(PresetData preset, System.Action<PresetData> save)
@@ -458,16 +469,23 @@ namespace PCOptimizer.Views
             SettingsService.Save();
         }
 
-        private void SliderNightLight_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private int _nlSaveSerial;
+
+        private async void SliderNightLight_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (TxtNightLightValue == null || ChkNightLight == null) return;
             int value = (int)e.NewValue;
             TxtNightLightValue.Text = $"{value}%";
             if (ChkNightLight.IsChecked == true)
             {
-                NightLightService.SetIntensity(value);
+                NightLightService.SetIntensity(value); // overlay: instantâneo
                 SettingsService.Current.NightLightIntensity = value;
-                SettingsService.Save();
+
+                // Debounce do Save: gravar o JSON no disco a cada tick do arraste
+                // (I/O síncrono na thread de UI) fazia o slider engasgar.
+                int serial = ++_nlSaveSerial;
+                await Task.Delay(250);
+                if (serial == _nlSaveSerial) SettingsService.Save();
             }
         }
 
@@ -565,10 +583,14 @@ namespace PCOptimizer.Views
 
         private void TimerCustom_Click(object sender, RoutedEventArgs e)
         {
-            if (int.TryParse(TxtTimerCustom.Text.Trim(), out int minutes) && minutes > 0)
+            // Limite de 30 dias: acima disso minutes*60 estoura o int no
+            // ShutdownService e o shutdown.exe rejeita o /t, mas a UI mostraria
+            // uma contagem regressiva de um desligamento que nunca foi agendado.
+            if (int.TryParse(TxtTimerCustom.Text.Trim(), out int minutes)
+                && minutes > 0 && minutes <= 43_200)
                 ScheduleShutdown(minutes);
             else
-                TxtStatus.Text = "Digite um número de minutos válido";
+                TxtStatus.Text = "Digite minutos entre 1 e 43200 (30 dias)";
         }
 
         private void TimerCancel_Click(object sender, RoutedEventArgs e)

@@ -25,8 +25,23 @@ namespace PCOptimizer.Services
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern bool SendNotifyMessage(IntPtr hWnd, uint msg, UIntPtr wParam, string? lParam);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+            int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+
         private static readonly IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
         private const uint WM_SETTINGCHANGE = 0x001A;
+
+        private static readonly IntPtr HWND_TOPMOST = new(-1);
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_SHOWWINDOW = 0x0040;
+        private const int SM_XVIRTUALSCREEN  = 76;
+        private const int SM_YVIRTUALSCREEN  = 77;
+        private const int SM_CXVIRTUALSCREEN = 78;
+        private const int SM_CYVIRTUALSCREEN = 79;
 
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TRANSPARENT = 0x20;
@@ -82,6 +97,9 @@ namespace PCOptimizer.Services
                 IsHitTestVisible = false,
                 Focusable = false,
                 ShowActivated = false,
+                // Tamanho mínimo até o SetWindowPos posicionar em pixels físicos
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = 0, Top = 0, Width = 1, Height = 1,
                 Title = "NightLightOverlay"
             };
 
@@ -100,11 +118,16 @@ namespace PCOptimizer.Services
         private static void RepositionToVirtualScreen()
         {
             if (_overlay == null) return;
-            // Cobre TODOS os monitores (área virtual completa)
-            _overlay.Left = SystemParameters.VirtualScreenLeft;
-            _overlay.Top = SystemParameters.VirtualScreenTop;
-            _overlay.Width = SystemParameters.VirtualScreenWidth;
-            _overlay.Height = SystemParameters.VirtualScreenHeight;
+            // Cobre TODOS os monitores em PIXELS FÍSICOS (mesma técnica do
+            // SoftwareBrightnessService): o app é PerMonitorV2, e posicionar em
+            // DIPs (SystemParameters.VirtualScreen*) deixava monitores com escala
+            // diferente do primário parcialmente sem o filtro.
+            var hwnd = new WindowInteropHelper(_overlay).Handle;
+            if (hwnd == IntPtr.Zero) return; // antes do Show — reposicionado depois
+            SetWindowPos(hwnd, HWND_TOPMOST,
+                GetSystemMetrics(SM_XVIRTUALSCREEN),  GetSystemMetrics(SM_YVIRTUALSCREEN),
+                GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN),
+                SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
 
         /// <summary>

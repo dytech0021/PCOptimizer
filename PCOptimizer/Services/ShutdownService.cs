@@ -11,10 +11,12 @@ namespace PCOptimizer.Services
         /// <summary>Horário em que o desligamento foi agendado (null se nenhum agendado).</summary>
         public static DateTime? ScheduledAt { get; private set; }
 
-        /// <summary>Agenda o desligamento para daqui a <paramref name="minutes"/> minutos.</summary>
+        /// <summary>Agenda o desligamento para daqui a <paramref name="minutes"/> minutos (máx. 30 dias).</summary>
         public static bool Schedule(int minutes)
         {
-            if (minutes <= 0) return false;
+            // 43200 min = 30 dias. Acima disso minutes*60 estouraria o int e o
+            // shutdown.exe rejeitaria o /t — mas retornaríamos true mesmo assim.
+            if (minutes <= 0 || minutes > 43_200) return false;
             int seconds = minutes * 60;
             try
             {
