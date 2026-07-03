@@ -34,6 +34,7 @@ namespace PCOptimizer.Views
                 TaskbarMode.Transparent => RbTransparent,
                 TaskbarMode.Blur        => RbBlur,
                 TaskbarMode.Acrylic     => RbAcrylic,
+                TaskbarMode.WholeBar    => RbWholeBar,
                 _                       => RbOff
             }).IsChecked = true;
 
@@ -79,6 +80,7 @@ namespace PCOptimizer.Views
             RbTransparent.IsChecked == true ? TaskbarMode.Transparent :
             RbBlur.IsChecked        == true ? TaskbarMode.Blur :
             RbAcrylic.IsChecked     == true ? TaskbarMode.Acrylic :
+            RbWholeBar.IsChecked    == true ? TaskbarMode.WholeBar :
                                               TaskbarMode.Off;
 
         private int SelectedAlpha => (int)Math.Round(SldTint.Value);
@@ -100,6 +102,10 @@ namespace PCOptimizer.Views
         {
             var mode  = SelectedMode;
             int alpha = SelectedAlpha;
+
+            // Ao ligar o modo barra-inteira com o slider quase em zero, sobe para
+            // um valor com efeito bem visível — senão parece que "não fez nada".
+            if (mode == TaskbarMode.WholeBar && alpha < 40) alpha = 100;
 
             TaskbarTransparencyService.Update(mode, alpha); // Off → reverte para o padrão
 

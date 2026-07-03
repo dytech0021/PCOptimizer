@@ -9,7 +9,14 @@ using Microsoft.Win32;
 namespace PCOptimizer.Services
 {
     /// <summary>Modo de aparência da barra de tarefas.</summary>
-    public enum TaskbarMode { Off, Transparent, Blur, Acrylic }
+    /// <remarks>
+    /// Transparent/Blur/Acrylic usam ACCENT_POLICY — funciona no Windows 10, mas o
+    /// Windows 11 IGNORA (o TranslucentTB só consegue no Win11 injetando uma DLL no
+    /// Explorer via InitializeXamlDiagnosticsEx — fora do alcance de um app C#).
+    /// WholeBar torna a JANELA INTEIRA da barra translúcida (ícones incluídos) via
+    /// WS_EX_LAYERED — visual diferente, mas aceito nativamente pelo Win11.
+    /// </remarks>
+    public enum TaskbarMode { Off, Transparent, Blur, Acrylic, WholeBar }
 
     /// <summary>
     /// Deixa a barra de tarefas do Windows translúcida — inspirado no TranslucentTB.
@@ -43,8 +50,21 @@ namespace PCOptimizer.Services
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern bool SendNotifyMessage(IntPtr hWnd, uint msg, UIntPtr wParam, string? lParam);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint crKey, byte bAlpha, uint dwFlags);
+
         private static readonly IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
         private const uint WM_SETTINGCHANGE = 0x001A;
+
+        private const int  GWL_EXSTYLE   = -20;
+        private const int  WS_EX_LAYERED = 0x80000;
+        private const uint LWA_ALPHA     = 0x2;
 
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -89,6 +109,10 @@ namespace PCOptimizer.Services
         /// </summary>
         public static void Start(TaskbarMode mode, int tintAlpha)
         {
+            // Ao SAIR do modo WholeBar, remove a camada da barra antes de trocar.
+            if (CurrentMode == TaskbarMode.WholeBar && mode != TaskbarMode.WholeBar)
+                ClearWholeBar();
+
             CurrentMode = mode;
 
             int a = Math.Clamp(tintAlpha, 0, 255);
@@ -96,6 +120,10 @@ namespace PCOptimizer.Services
             // aplica o piso no valor CANÔNICO (não só no render) para que UI,
             // persistência e efeito real fiquem sempre sincronizados.
             if (mode == TaskbarMode.Acrylic) a = Math.Max(a, 0x10);
+            // WholeBar: TintAlpha é a INTENSIDADE da transparência (0 = opaco);
+            // piso de 40 para ativar já ter efeito visível, teto de 200 para a
+            // barra nunca sumir de vez.
+            if (mode == TaskbarMode.WholeBar) a = Math.Clamp(a, 40, 200);
             TintAlpha = a;
 
             if (mode == TaskbarMode.Off) { Stop(); return; }
@@ -140,6 +168,7 @@ namespace PCOptimizer.Services
             IsActive    = false;
             CurrentMode = TaskbarMode.Off;
             SetAccentOnAll(ACCENT_DISABLED, 0, 0);
+            ClearWholeBar();
         }
 
         /// <summary>Reaplica a partir das configurações salvas (chamar no startup).</summary>
@@ -161,6 +190,7 @@ namespace PCOptimizer.Services
             "Transparent" => TaskbarMode.Transparent,
             "Blur"        => TaskbarMode.Blur,
             "Acrylic"     => TaskbarMode.Acrylic,
+            "WholeBar"    => TaskbarMode.WholeBar,
             _             => TaskbarMode.Off
         };
 
@@ -169,6 +199,7 @@ namespace PCOptimizer.Services
             TaskbarMode.Transparent => "Transparente",
             TaskbarMode.Blur        => "Desfocada (blur)",
             TaskbarMode.Acrylic     => "Acrílico",
+            TaskbarMode.WholeBar    => "Translúcida (barra inteira)",
             _                       => "Desativada"
         };
 
@@ -202,6 +233,12 @@ namespace PCOptimizer.Services
 
         private static void ApplyToAllTaskbars()
         {
+            if (CurrentMode == TaskbarMode.WholeBar)
+            {
+                ApplyWholeBar();
+                return;
+            }
+
             int state = CurrentMode switch
             {
                 TaskbarMode.Transparent => ACCENT_ENABLE_TRANSPARENTGRADIENT,
@@ -215,6 +252,46 @@ namespace PCOptimizer.Services
             var (flags, minAlpha) = CurrentVariation();
             int alpha = Math.Max(TintAlpha, minAlpha);
             SetAccentOnAll(state, flags, alpha << 24);
+        }
+
+        /// <summary>
+        /// Modo "barra inteira": aplica WS_EX_LAYERED + alpha na própria janela da
+        /// barra (ícones inclusos). É o único efeito de transparência que o Windows
+        /// 11 aceita SEM injetar código no Explorer. TintAlpha = intensidade
+        /// (40–200); opacidade resultante = 255 - TintAlpha.
+        /// </summary>
+        private static void ApplyWholeBar()
+        {
+            try
+            {
+                byte opacity = (byte)Math.Clamp(255 - TintAlpha, 55, 255);
+                foreach (var hwnd in GetTaskbarWindows(includeChildren: false))
+                {
+                    int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+                    if ((ex & WS_EX_LAYERED) == 0)
+                        SetWindowLong(hwnd, GWL_EXSTYLE, ex | WS_EX_LAYERED);
+                    SetLayeredWindowAttributes(hwnd, 0, opacity, LWA_ALPHA);
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, "TaskbarTransparency.ApplyWholeBar"); }
+        }
+
+        /// <summary>Remove a camada: opacidade 255 e tira o WS_EX_LAYERED da barra.</summary>
+        private static void ClearWholeBar()
+        {
+            try
+            {
+                foreach (var hwnd in GetTaskbarWindows(includeChildren: false))
+                {
+                    int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+                    if ((ex & WS_EX_LAYERED) != 0)
+                    {
+                        SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+                        SetWindowLong(hwnd, GWL_EXSTYLE, ex & ~WS_EX_LAYERED);
+                    }
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, "TaskbarTransparency.ClearWholeBar"); }
         }
 
         private static void SetAccentOnAll(int accentState, int accentFlags, int gradientColor)
@@ -255,7 +332,7 @@ namespace PCOptimizer.Services
             finally { Marshal.FreeHGlobal(ptr); }
         }
 
-        private static List<IntPtr> GetTaskbarWindows()
+        private static List<IntPtr> GetTaskbarWindows(bool includeChildren = true)
         {
             var bars = new List<IntPtr>();
 
@@ -271,6 +348,9 @@ namespace PCOptimizer.Services
                     bars.Add(hwnd);
                 return true;
             }, IntPtr.Zero);
+
+            // Modo WholeBar usa só as janelas top-level (a camada vale p/ a árvore toda).
+            if (!includeChildren) return bars;
 
             // No Windows 11 o fundo da barra é desenhado por uma janela-filha
             // (DesktopWindowContentBridge). Aplicar o accent também nela aumenta a
@@ -319,9 +399,11 @@ namespace PCOptimizer.Services
             sb.AppendLine($"Política enviada: flags={flags}, cor=0x{Math.Max(TintAlpha, minAlpha) << 24:X8}");
 
             if (IsWindows11)
-                sb.AppendLine("\n⚠ No Windows 11 a Microsoft bloqueia esse efeito na barra. " +
-                              "Se não mudar, use o TranslucentTB oficial (botão abaixo) — é o que " +
-                              "funciona de forma confiável no Win11.");
+                sb.AppendLine("\n⚠ Windows 11: a barra nova IGNORA o efeito clássico de fundo " +
+                              "(Transparente/Blur/Acrílico) — o TranslucentTB só consegue " +
+                              "injetando código no Explorer. Alternativas: o modo " +
+                              "\"Translúcido total\" (nativo, funciona no Win11) ou o " +
+                              "TranslucentTB oficial (botão abaixo).");
             return sb.ToString().TrimEnd();
         }
 
