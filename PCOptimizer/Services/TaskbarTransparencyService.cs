@@ -139,7 +139,7 @@ namespace PCOptimizer.Services
             _timer?.Stop();
             IsActive    = false;
             CurrentMode = TaskbarMode.Off;
-            SetAccentOnAll(ACCENT_DISABLED, 0);
+            SetAccentOnAll(ACCENT_DISABLED, 0, 0);
         }
 
         /// <summary>Reaplica a partir das configurações salvas (chamar no startup).</summary>
@@ -182,6 +182,24 @@ namespace PCOptimizer.Services
             _timer.Tick += (_, _) => { if (IsActive) ApplyToAllTaskbars(); };
         }
 
+        // Variações de renderização: a MESMA chamada é interpretada diferente
+        // conforme a build do Windows 11. Em especial, alpha 0 é tratado como
+        // PRETO OPACO em várias builds (barra preta em vez de transparente) —
+        // a variação 2 usa piso de alpha 1 (invisível a olho) para contornar.
+        // A variação 3 remove os AccentFlags, para builds que os rejeitam.
+        public static readonly (int Flags, int MinAlpha, string Label)[] Variations =
+        {
+            (2, 0, "1 — clássica (TranslucentTB)"),
+            (2, 1, "2 — anti-barra-preta (alpha mínimo 1)"),
+            (0, 1, "3 — sem flags (builds que rejeitam flags)"),
+        };
+
+        private static (int Flags, int MinAlpha) CurrentVariation()
+        {
+            int i = Math.Clamp(SettingsService.Current.TaskbarVariation, 0, Variations.Length - 1);
+            return (Variations[i].Flags, Variations[i].MinAlpha);
+        }
+
         private static void ApplyToAllTaskbars()
         {
             int state = CurrentMode switch
@@ -193,29 +211,30 @@ namespace PCOptimizer.Services
             };
 
             // TintAlpha já é o valor canônico (o piso do acrílico é aplicado em Start).
-            // Tom preto: ABGR = alpha<<24 (R=G=B=0).
-            int gradientColor = TintAlpha << 24;
-            SetAccentOnAll(state, gradientColor);
+            // Tom preto: ABGR = alpha<<24 (R=G=B=0), com o piso da variação ativa.
+            var (flags, minAlpha) = CurrentVariation();
+            int alpha = Math.Max(TintAlpha, minAlpha);
+            SetAccentOnAll(state, flags, alpha << 24);
         }
 
-        private static void SetAccentOnAll(int accentState, int gradientColor)
+        private static void SetAccentOnAll(int accentState, int accentFlags, int gradientColor)
         {
             try
             {
                 foreach (var hwnd in GetTaskbarWindows())
-                    SetAccent(hwnd, accentState, gradientColor);
+                    SetAccent(hwnd, accentState, accentFlags, gradientColor);
             }
             catch (Exception ex) { Logger.Error(ex, "TaskbarTransparency.SetAccentOnAll"); }
         }
 
-        private static void SetAccent(IntPtr hwnd, int accentState, int gradientColor)
+        private static void SetAccent(IntPtr hwnd, int accentState, int accentFlags, int gradientColor)
         {
             if (hwnd == IntPtr.Zero) return;
 
             var accent = new AccentPolicy
             {
                 AccentState   = accentState,
-                AccentFlags   = 2, // aplica a cor na barra inteira (não só na borda)
+                AccentFlags   = accentFlags,
                 GradientColor = gradientColor,
                 AnimationId   = 0
             };
@@ -293,6 +312,11 @@ namespace PCOptimizer.Services
             var bars = GetTaskbarWindows();
             sb.AppendLine($"Barras/camadas encontradas: {bars.Count}");
             sb.AppendLine($"Efeito atual: {StatusText()} (ativo: {(IsActive ? "sim" : "não")})");
+
+            int vi = Math.Clamp(SettingsService.Current.TaskbarVariation, 0, Variations.Length - 1);
+            var (flags, minAlpha) = CurrentVariation();
+            sb.AppendLine($"Variação: {Variations[vi].Label}");
+            sb.AppendLine($"Política enviada: flags={flags}, cor=0x{Math.Max(TintAlpha, minAlpha) << 24:X8}");
 
             if (IsWindows11)
                 sb.AppendLine("\n⚠ No Windows 11 a Microsoft bloqueia esse efeito na barra. " +

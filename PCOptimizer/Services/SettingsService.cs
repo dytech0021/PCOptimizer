@@ -31,6 +31,10 @@ namespace PCOptimizer.Services
         public bool TaskbarTransparencyEnabled { get; set; }
         public string TaskbarMode { get; set; } = "Transparent"; // Transparent | Blur | Acrylic | Off
         public int TaskbarTintAlpha { get; set; }                // 0-255: escurecimento (tom preto)
+        // 0-2: variação de renderização. Padrão = 1 (anti-barra-preta): várias
+        // builds do Win11 tratam alpha 0 como preto opaco; o piso de alpha 1 é
+        // imperceptível e não afeta o Win10.
+        public int TaskbarVariation { get; set; } = 1;
 
         // Cor avançada (gamma ramp da GPU): gama, temperatura e ganho por canal
         public double GammaValue { get; set; } = 1.0;  // 0.5–2.5 (1.0 = neutro)

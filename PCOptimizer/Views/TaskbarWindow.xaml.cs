@@ -39,12 +39,40 @@ namespace PCOptimizer.Views
 
             _initializing = false;
 
-            // No Windows 11 o efeito costuma ser bloqueado — mostra o aviso e o
-            // atalho para o TranslucentTB oficial (solução confiável no Win11).
+            // No Windows 11 o efeito pode não pegar de primeira — mostra o aviso e
+            // o atalho para o TranslucentTB oficial como plano B.
             if (TaskbarTransparencyService.IsWindows11)
                 Win11Warn.Visibility = Visibility.Visible;
 
+            UpdateVariationLabel();
             UpdateMsg();
+        }
+
+        private void UpdateVariationLabel()
+        {
+            var vars = TaskbarTransparencyService.Variations;
+            int i = Math.Clamp(SettingsService.Current.TaskbarVariation, 0, vars.Length - 1);
+            TxtVariation.Text = $"Variação {vars[i].Label}";
+        }
+
+        private void BtnVariation_Click(object sender, RoutedEventArgs e)
+        {
+            var s = SettingsService.Current;
+            s.TaskbarVariation = (s.TaskbarVariation + 1) % TaskbarTransparencyService.Variations.Length;
+            SettingsService.Save();
+            UpdateVariationLabel();
+
+            // Reaplica na hora com a nova variação (se algum estilo estiver ativo).
+            var mode = SelectedMode;
+            if (mode != TaskbarMode.Off)
+            {
+                TaskbarTransparencyService.Update(mode, SelectedAlpha);
+                TxtTbMsg.Text = "Variação aplicada — olhe a barra agora. Se não mudou/ficou preta, teste a próxima.";
+            }
+            else
+            {
+                TxtTbMsg.Text = "Variação salva. Escolha um estilo acima para ver o efeito.";
+            }
         }
 
         private TaskbarMode SelectedMode =>
