@@ -32,6 +32,13 @@ namespace PCOptimizer.Services
         public string TaskbarMode { get; set; } = "Transparent"; // Transparent | Blur | Acrylic | Off
         public int TaskbarTintAlpha { get; set; }                // 0-255: escurecimento (tom preto)
 
+        // Cor avançada (gamma ramp da GPU): gama, temperatura e ganho por canal
+        public double GammaValue { get; set; } = 1.0;  // 0.5–2.5 (1.0 = neutro)
+        public int ColorTempK { get; set; } = 6500;    // 2000–10000 K (6500 = neutro)
+        public int GainR { get; set; } = 100;          // 25–100%
+        public int GainG { get; set; } = 100;
+        public int GainB { get; set; } = 100;
+
         // user-assigned names for monitors, keyed by HardwareId
         public Dictionary<string, string> MonitorAliases { get; set; } = new();
     }

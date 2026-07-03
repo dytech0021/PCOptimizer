@@ -88,6 +88,93 @@ namespace PCOptimizer.Views
                 TxtWinNightLightValue.Text = $"{winNlIntensity}%";
             }
             _winNlInitializing = false;
+
+            InitAdvColor();
+        }
+
+        // ── Cor avançada (gama / temperatura / RGB via gamma ramp) ───────────
+
+        private bool _advInit;
+        private int _advSaveSerial;
+
+        private void InitAdvColor()
+        {
+            _advInit = true;
+            var s = SettingsService.Current;
+            SliderGamma.Value     = Math.Clamp(s.GammaValue, 0.5, 2.5);
+            SliderColorTemp.Value = Math.Clamp(s.ColorTempK, 2000, 10000);
+            SliderGainR.Value     = Math.Clamp(s.GainR, 25, 100);
+            SliderGainG.Value     = Math.Clamp(s.GainG, 25, 100);
+            SliderGainB.Value     = Math.Clamp(s.GainB, 25, 100);
+            _advInit = false;
+            UpdateAdvColorLabels();
+
+            // Ajuste ativo salvo: abre a seção para o usuário ver o que está valendo.
+            if (!GammaRampService.IsDefault(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB))
+            {
+                AdvColorPanel.Visibility = Visibility.Visible;
+                TxtAdvColorArrow.Text = "▾";
+            }
+        }
+
+        private void UpdateAdvColorLabels()
+        {
+            TxtGammaValue.Text     = SliderGamma.Value.ToString("F2",
+                System.Globalization.CultureInfo.InvariantCulture);
+            TxtColorTempValue.Text = $"{(int)SliderColorTemp.Value}K";
+            TxtGainRValue.Text     = $"{(int)SliderGainR.Value}%";
+            TxtGainGValue.Text     = $"{(int)SliderGainG.Value}%";
+            TxtGainBValue.Text     = $"{(int)SliderGainB.Value}%";
+        }
+
+        private void AdvColor_Toggle(object sender, MouseButtonEventArgs e)
+        {
+            bool show = AdvColorPanel.Visibility != Visibility.Visible;
+            AdvColorPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            TxtAdvColorArrow.Text = show ? "▾" : "▸";
+        }
+
+        private async void AdvColor_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_advInit || TxtGammaValue == null) return;
+            UpdateAdvColorLabels();
+
+            var s = SettingsService.Current;
+            s.GammaValue = Math.Round(SliderGamma.Value, 2);
+            s.ColorTempK = (int)SliderColorTemp.Value;
+            s.GainR      = (int)SliderGainR.Value;
+            s.GainG      = (int)SliderGainG.Value;
+            s.GainB      = (int)SliderGainB.Value;
+
+            bool ok = GammaRampService.Apply(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB);
+            if (!ok) TxtStatus.Text = "⚠ A placa de vídeo recusou o ajuste de cor";
+
+            // Debounce do Save: grava no disco só quando o usuário para de arrastar.
+            int serial = ++_advSaveSerial;
+            await Task.Delay(250);
+            if (serial == _advSaveSerial) SettingsService.Save();
+        }
+
+        private void BtnAdvColorReset_Click(object sender, RoutedEventArgs e)
+        {
+            _advInit = true;
+            SliderGamma.Value     = GammaRampService.DefaultGamma;
+            SliderColorTemp.Value = GammaRampService.DefaultKelvin;
+            SliderGainR.Value     = GammaRampService.DefaultGain;
+            SliderGainG.Value     = GammaRampService.DefaultGain;
+            SliderGainB.Value     = GammaRampService.DefaultGain;
+            _advInit = false;
+            UpdateAdvColorLabels();
+
+            GammaRampService.Reset();
+
+            var s = SettingsService.Current;
+            s.GammaValue = GammaRampService.DefaultGamma;
+            s.ColorTempK = GammaRampService.DefaultKelvin;
+            s.GainR = s.GainG = s.GainB = GammaRampService.DefaultGain;
+            SettingsService.Save();
+
+            TxtStatus.Text = "Cores restauradas ao padrão";
         }
 
         private void RefreshPresetButtons()

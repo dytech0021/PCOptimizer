@@ -29,6 +29,9 @@ namespace PCOptimizer
             ThemeManager.Initialize();
             TrayService.Initialize();
 
+            // Reaplica gama/temperatura/RGB salvos (a gamma ramp se perde no reboot).
+            GammaRampService.RestoreFromSettings();
+
             TrayService.ShowBrightnessRequested += ToggleBrightnessWindow;
             TrayService.ExitRequested += Shutdown;
             HotkeyService.HotkeyPressed += ToggleBrightnessWindow;
