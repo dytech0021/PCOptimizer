@@ -52,6 +52,18 @@ namespace PCOptimizer
             DispatcherUnhandledException += (_, ex) =>
             {
                 Logger.Error(ex.Exception, "DispatcherUnhandledException (UI)");
+                // Segura o erro: sem isso o app FECHA em silêncio. Melhor mostrar
+                // o problema e seguir vivo (o log completo fica no selo de versão).
+                ex.Handled = true;
+                try
+                {
+                    MessageBox.Show(
+                        "Ocorreu um erro inesperado:\n\n" + ex.Exception.Message +
+                        "\n\nO erro foi registrado no log (clique no selo de versão " +
+                        "para copiá-lo e mandar pro suporte).",
+                        "PC Optimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                catch { /* UI indisponível — só o log */ }
             };
 
             AppDomain.CurrentDomain.UnhandledException += (_, ex) =>

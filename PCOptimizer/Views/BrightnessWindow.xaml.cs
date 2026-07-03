@@ -94,7 +94,10 @@ namespace PCOptimizer.Views
 
         // ── Cor avançada (gama / temperatura / RGB via gamma ramp) ───────────
 
-        private bool _advInit;
+        // Começa TRUE: no XAML compilado o ValueChanged dispara DURANTE o
+        // InitializeComponent (coerção de Minimum/Value), quando os rótulos ainda
+        // são null — o campo só vira false no fim do InitAdvColor.
+        private bool _advInit = true;
         private int _advSaveSerial;
 
         private void InitAdvColor()
@@ -136,7 +139,9 @@ namespace PCOptimizer.Views
 
         private async void AdvColor_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (_advInit || TxtGammaValue == null) return;
+            // TxtGainBValue é o ÚLTIMO elemento da seção a ser criado pelo XAML —
+            // guardar nele cobre qualquer disparo durante o InitializeComponent.
+            if (_advInit || TxtGainBValue == null) return;
             UpdateAdvColorLabels();
 
             var s = SettingsService.Current;

@@ -8,7 +8,9 @@ namespace PCOptimizer.Views
     public partial class TaskbarWindow : Window
     {
         // Evita disparar as ações enquanto a janela ainda está sendo montada.
-        private bool _initializing;
+        // Começa TRUE: no XAML compilado os eventos podem disparar durante o
+        // próprio InitializeComponent, antes do construtor setar a flag.
+        private bool _initializing = true;
 
         public TaskbarWindow()
         {
