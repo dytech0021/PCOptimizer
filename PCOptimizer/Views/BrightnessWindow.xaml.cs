@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -153,6 +154,8 @@ namespace PCOptimizer.Views
 
             bool ok = GammaRampService.Apply(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB);
             if (!ok) TxtStatus.Text = "⚠ A placa de vídeo recusou o ajuste de cor";
+            else if (_monitorControls.Any(m => m.HdrEnabled))
+                TxtStatus.Text = "Nota: monitores com HDR ativo ignoram gama/RGB — use o brilho SDR";
 
             // Debounce do Save: grava no disco só quando o usuário para de arrastar.
             int serial = ++_advSaveSerial;
@@ -336,22 +339,43 @@ namespace PCOptimizer.Views
             nameRow.Children.Add(nameEdit);
             container.Children.Add(nameRow);
 
+            // Com HDR ativo, o monitor ignora brilho DDC/CI e gamma ramp — o controle
+            // real é o "brilho do conteúdo SDR" do Windows. Lê o valor atual para o
+            // slider partir do ponto certo.
+            int hdrSdrPct = entry.HdrEnabled
+                ? HdrService.GetSdrBrightness(entry.HdrAdapterIdLow, entry.HdrAdapterIdHigh, entry.HdrTargetId)
+                : -1;
+
             // Brightness slider
             var sliderB = new Slider
             {
-                Minimum = 0, Maximum = 100, Value = entry.Brightness,
+                Minimum = 0, Maximum = 100,
+                Value = hdrSdrPct >= 0 ? hdrSdrPct : entry.Brightness,
                 VerticalAlignment = VerticalAlignment.Center,
-                IsEnabled = entry.SupportsBrightness
+                IsEnabled = entry.SupportsBrightness || hdrSdrPct >= 0
             };
             var txtB = new TextBlock
             {
-                Text = $"{entry.Brightness}%",
+                Text = $"{(hdrSdrPct >= 0 ? hdrSdrPct : entry.Brightness)}%",
                 FontSize = 12, FontWeight = FontWeights.Bold, Width = 38,
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right
             };
             txtB.SetResourceReference(TextBlock.ForegroundProperty, "ButtonPrimaryBg");
             container.Children.Add(MakeSliderRow("☀️", sliderB, txtB, new Thickness(0, 0, 0, 6)));
+
+            if (entry.HdrEnabled)
+            {
+                var hdrNote = new TextBlock
+                {
+                    Text = "HDR ativo — o brilho ajusta o conteúdo SDR (o mesmo controle " +
+                           "das Configurações do Windows; o monitor ignora o brilho comum em HDR)",
+                    FontSize = 9, Opacity = 0.85, Margin = new Thickness(0, 0, 0, 4),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA))
+                };
+                container.Children.Add(hdrNote);
+            }
 
             // Contrast slider (DDC/CI only) — não existe em WMI nem no modo software
             Slider? sliderC = null;
@@ -439,6 +463,12 @@ namespace PCOptimizer.Views
                     {
                         int v = mc.PendingBrightness;
                         mc.PendingBrightness = -1;
+                        // HDR ativo: ajusta o brilho do conteúdo SDR (DDC/gamma são
+                        // ignorados pelo monitor em HDR). Se a chamada falhar
+                        // (Windows antigo), cai nos caminhos normais abaixo.
+                        if (mc.HdrEnabled && HdrService.SetSdrBrightness(
+                                mc.HdrAdapterIdLow, mc.HdrAdapterIdHigh, mc.HdrTargetId, v))
+                            continue;
                         if (mc.IsWmi)
                             await Task.Run(() => MonitorService.SetWmiBrightness(v));
                         else if (mc.IsSoftware)
@@ -773,6 +803,12 @@ namespace PCOptimizer.Views
                     mc.HdrEnabled = newState;
                     ApplyHdrButtonStyle(btn, newState);
                     TxtStatus.Text = newState ? "HDR ativado" : "HDR desativado";
+
+                    // O modo de controle de brilho muda junto com o HDR (SDR white
+                    // level vs DDC) — espera a troca de modo assentar e reconstrói
+                    // as linhas para o slider partir do valor certo.
+                    await Task.Delay(1500);
+                    _ = ReloadMonitorsAsync();
                 }
                 else
                 {

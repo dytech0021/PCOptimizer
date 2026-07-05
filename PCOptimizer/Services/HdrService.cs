@@ -107,6 +107,22 @@ namespace PCOptimizer.Services
             public uint value; // bit0=enableAdvancedColor
         }
 
+        // "Brilho do conteúdo SDR" com HDR ativo — o mesmo slider das Configurações.
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DISPLAYCONFIG_SDR_WHITE_LEVEL
+        {
+            public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+            public uint SDRWhiteLevel; // 1000 = 80 nits; escala do slider: 1000 + pct*50
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DISPLAYCONFIG_SET_SDR_WHITE_LEVEL
+        {
+            public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+            public uint SDRWhiteLevel;
+            public byte finalValue; // 1 = aplica de fato (0 = prévia durante arraste)
+        }
+
         [DllImport("user32.dll")]
         private static extern int GetDisplayConfigBufferSizes(uint flags,
             ref uint numPathArrayElements, ref uint numModeInfoArrayElements);
@@ -125,9 +141,21 @@ namespace PCOptimizer.Services
         private static extern int DisplayConfigSetDeviceInfo(
             ref DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE setPacket);
 
+        [DllImport("user32.dll")]
+        private static extern int DisplayConfigGetDeviceInfo(
+            ref DISPLAYCONFIG_SDR_WHITE_LEVEL requestPacket);
+
+        [DllImport("user32.dll")]
+        private static extern int DisplayConfigSetDeviceInfo(
+            ref DISPLAYCONFIG_SET_SDR_WHITE_LEVEL setPacket);
+
         private const uint QDC_ONLY_ACTIVE_PATHS = 2;
         private const int  GET_ADVANCED_COLOR_INFO  = 9;
         private const int  SET_ADVANCED_COLOR_STATE = 10;
+        private const int  GET_SDR_WHITE_LEVEL      = 11;
+        // Tipo NÃO documentado usado pelo slider "Brilho do conteúdo SDR" das
+        // Configurações do Windows (confirmado em implementações open-source).
+        private const int  SET_SDR_WHITE_LEVEL      = unchecked((int)0xFFFFFFEE);
 
         public static List<HdrInfo> GetAllHdrInfo()
         {
@@ -192,6 +220,56 @@ namespace PCOptimizer.Services
             }
             catch { }
             return result;
+        }
+
+        /// <summary>
+        /// Percentual atual do "brilho do conteúdo SDR" (0–100, o slider do Windows
+        /// quando o HDR está ativo). Retorna -1 se indisponível.
+        /// </summary>
+        public static int GetSdrBrightness(uint adapterIdLow, int adapterIdHigh, uint targetId)
+        {
+            try
+            {
+                var req = new DISPLAYCONFIG_SDR_WHITE_LEVEL
+                {
+                    header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                    {
+                        type      = GET_SDR_WHITE_LEVEL,
+                        size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_SDR_WHITE_LEVEL>(),
+                        adapterId = new LUID { LowPart = adapterIdLow, HighPart = adapterIdHigh },
+                        id        = targetId
+                    }
+                };
+                if (DisplayConfigGetDeviceInfo(ref req) != 0) return -1;
+                return Math.Clamp(((int)req.SDRWhiteLevel - 1000) / 50, 0, 100);
+            }
+            catch { return -1; }
+        }
+
+        /// <summary>
+        /// Define o "brilho do conteúdo SDR" (0–100) de um monitor com HDR ativo —
+        /// com HDR ligado o monitor ignora brilho DDC/CI e gamma ramp, então este
+        /// é o caminho que realmente funciona (o mesmo das Configurações do Windows).
+        /// </summary>
+        public static bool SetSdrBrightness(uint adapterIdLow, int adapterIdHigh, uint targetId, int percent)
+        {
+            try
+            {
+                var pkt = new DISPLAYCONFIG_SET_SDR_WHITE_LEVEL
+                {
+                    header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                    {
+                        type      = SET_SDR_WHITE_LEVEL,
+                        size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_SET_SDR_WHITE_LEVEL>(),
+                        adapterId = new LUID { LowPart = adapterIdLow, HighPart = adapterIdHigh },
+                        id        = targetId
+                    },
+                    SDRWhiteLevel = (uint)(1000 + Math.Clamp(percent, 0, 100) * 50),
+                    finalValue    = 1
+                };
+                return DisplayConfigSetDeviceInfo(ref pkt) == 0;
+            }
+            catch (Exception ex) { Logger.Error(ex, "SetSdrBrightness"); return false; }
         }
 
         public static bool SetHdrEnabled(uint adapterIdLow, int adapterIdHigh, uint targetId, bool enabled)
