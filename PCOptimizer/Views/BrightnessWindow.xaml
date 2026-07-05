@@ -72,6 +72,12 @@
                     </StackPanel>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Content="🌑" Click="BtnMonitorsOff_Click" Cursor="Hand"
+                            Style="{StaticResource ScreenshotBtnStyle}"
+                            Background="{DynamicResource Card2Bg}"
+                            Width="32" Height="32" FontSize="15" Padding="0"
+                            BorderThickness="0" Margin="0,0,6,0"
+                            ToolTip="Desligar todos os monitores — religam ao mexer o mouse ou teclar"/>
                     <Button Content="📸" Click="BtnScreenshot_Click" Cursor="Hand"
                             Style="{StaticResource ScreenshotBtnStyle}"
                             Background="{DynamicResource Card6Bg}"

@@ -647,6 +647,14 @@ namespace PCOptimizer.Views
             await Task.Run(() => NightLightService.SetWindowsNightLightIntensity(value));
         }
 
+        private async void BtnMonitorsOff_Click(object sender, RoutedEventArgs e)
+        {
+            TxtStatus.Text = "Desligando monitores...";
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            await MonitorPowerService.TurnOffAsync(hwnd);
+            TxtStatus.Text = "Monitores desligados — mexa o mouse ou tecle para religar";
+        }
+
         private async void BtnScreenshot_Click(object sender, RoutedEventArgs e)
         {
             try
