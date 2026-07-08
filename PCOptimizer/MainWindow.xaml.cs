@@ -523,12 +523,13 @@ namespace PCOptimizer
 
             if (sel.Contains(ChkPowerPlan))
             {
-                Log("Ativando plano de Desempenho Máximo...");
+                Log("Ativando plano de energia de desempenho...");
                 StatusPowerPlan.Text = "⏳";
                 bool ok = await Task.Run(() => PowerPlanService.Apply());
                 totalSteps++;
                 SetStatus(StatusPowerPlan, ok ? "✅" : "⚠️", ok);
-                Log(ok ? "✅ Plano de energia: Desempenho Máximo ativado" : "⚠️ Plano de energia: requer admin");
+                Log(ok ? $"✅ Plano de energia: {PowerPlanService.LastAppliedPlan} ativado"
+                       : "⚠️ Plano de energia: requer admin");
                 StepDone(ChkPowerPlan);
             }
 
