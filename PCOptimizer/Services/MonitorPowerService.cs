@@ -20,12 +20,13 @@ namespace PCOptimizer.Services
         private const int  MONITOR_OFF      = 2; // 2=desligado, 1=economia, -1=ligado
 
         /// <summary>
-        /// Desliga os monitores após um pequeno atraso. Sem o atraso, o soltar do
-        /// clique / movimento residual do mouse religava a tela imediatamente.
+        /// Desliga os monitores após um atraso. Sem o atraso, o soltar do clique /
+        /// movimento residual do mouse religava a tela imediatamente — 3 s dão tempo
+        /// de o usuário tirar a mão do mouse antes de a tela apagar.
         /// Envia para a PRÓPRIA janela (qualquer janela pode emitir o comando) —
         /// broadcast com SendMessage poderia travar esperando janelas penduradas.
         /// </summary>
-        public static async Task TurnOffAsync(IntPtr hwnd, int delayMs = 400)
+        public static async Task TurnOffAsync(IntPtr hwnd, int delayMs = 3000)
         {
             if (hwnd == IntPtr.Zero) return;
             await Task.Delay(delayMs);

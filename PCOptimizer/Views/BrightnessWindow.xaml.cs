@@ -679,7 +679,7 @@ namespace PCOptimizer.Views
 
         private async void BtnMonitorsOff_Click(object sender, RoutedEventArgs e)
         {
-            TxtStatus.Text = "Desligando monitores...";
+            TxtStatus.Text = "Desligando em 3s — pare de mexer o mouse...";
             var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
             await MonitorPowerService.TurnOffAsync(hwnd);
             TxtStatus.Text = "Monitores desligados — mexa o mouse ou tecle para religar";

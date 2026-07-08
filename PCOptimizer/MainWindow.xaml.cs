@@ -896,6 +896,76 @@ namespace PCOptimizer
             win.ShowDialog();
         }
 
+        private async void BtnDeepRepair_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isRunning) return;
+
+            var confirm = MessageBox.Show(
+                "🔧 Reparo Profundo do Sistema\n\n" +
+                "Vai executar, em sequência:\n" +
+                "• DISM /RestoreHealth — repara a imagem do Windows\n" +
+                "• SFC /scannow — verifica os arquivos do sistema\n" +
+                "• CHKDSK /r — verifica o disco (AGENDADO para o próximo reinício)\n\n" +
+                "DISM + SFC podem levar de 15 minutos a mais de 1 hora. Não desligue o PC. " +
+                "A verificação do disco (CHKDSK) roda na próxima vez que você reiniciar.\n\n" +
+                "Deseja continuar?",
+                "PC Optimizer — Reparo Profundo",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            _isRunning = true;
+            OptList.IsEnabled = false;
+            ChkSelectAll.IsEnabled = false;
+            BtnDeepRepair.IsEnabled = false;
+            BtnRun.IsEnabled = false;
+            Progress.Visibility = Visibility.Visible;
+            Progress.IsIndeterminate = true;
+            TxtProgress.Visibility = Visibility.Visible;
+            TxtProgress.Text = "Reparo profundo em andamento — pode demorar bastante...";
+            TxtLog.Text = "Iniciando reparo profundo do sistema...";
+
+            try
+            {
+                var progress = new Progress<string>(step => Log("⏳ " + step));
+                var r = await Task.Run(() => DeepRepairService.Run(
+                    s => ((IProgress<string>)progress).Report(s)));
+
+                Log(r.Dism ? "✅ DISM: imagem do Windows verificada/reparada"
+                           : "⚠️ DISM: falhou ou requer admin");
+                Log(r.Sfc ? "✅ SFC: arquivos do sistema verificados"
+                          : "⚠️ SFC: falhou ou requer admin");
+                Log(r.ChkdskScheduled
+                    ? "✅ CHKDSK: agendado para o próximo reinício"
+                    : "⚠️ CHKDSK: não foi possível agendar");
+
+                MessageBox.Show(
+                    $"Reparo profundo concluído.\n\n" +
+                    $"{(r.Dism ? "✅" : "⚠️")} DISM (imagem do Windows)\n" +
+                    $"{(r.Sfc ? "✅" : "⚠️")} SFC (arquivos do sistema)\n" +
+                    $"{(r.ChkdskScheduled ? "✅" : "⚠️")} CHKDSK (verificação do disco)\n\n" +
+                    (r.ChkdskScheduled
+                        ? "A verificação do disco vai rodar na PRÓXIMA vez que você reiniciar o PC."
+                        : "A verificação do disco não pôde ser agendada."),
+                    "PC Optimizer", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ Erro no reparo profundo: {ex.Message}");
+                MessageBox.Show("Ocorreu um erro durante o reparo:\n\n" + ex.Message,
+                    "PC Optimizer", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                Progress.Visibility = Visibility.Collapsed;
+                TxtProgress.Visibility = Visibility.Collapsed;
+                OptList.IsEnabled = true;
+                ChkSelectAll.IsEnabled = true;
+                BtnDeepRepair.IsEnabled = true;
+                BtnRun.IsEnabled = true;
+                _isRunning = false;
+            }
+        }
+
         private void BtnTaskbar_Click(object sender, RoutedEventArgs e)
         {
             var win = new Views.TaskbarWindow { Owner = this };
