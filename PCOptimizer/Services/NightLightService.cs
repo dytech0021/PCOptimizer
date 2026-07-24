@@ -79,6 +79,32 @@ namespace PCOptimizer.Services
                 _overlay.Show();
 
             RepositionToVirtualScreen();
+            EnsureWatchdog();
+        }
+
+        // ── Watchdog do topmost ───────────────────────────────────────────────
+        // O overlay é "sempre no topo", mas quando outras janelas topmost do app
+        // (janela de brilho, principal…) são fechadas/minimizadas o Windows
+        // embaralha a z-order e o overlay pode CAIR da banda topmost — janelas
+        // comuns passam a cobri-lo e o filtro "some" aleatoriamente. O watchdog
+        // reafirma posição+topmost a cada 2 s enquanto o filtro estiver ativo
+        // (mesma técnica do timer da barra de tarefas transparente).
+        private static System.Windows.Threading.DispatcherTimer? _watchdog;
+
+        private static void EnsureWatchdog()
+        {
+            if (_watchdog == null)
+            {
+                _watchdog = new System.Windows.Threading.DispatcherTimer(
+                    System.Windows.Threading.DispatcherPriority.Background)
+                { Interval = TimeSpan.FromSeconds(2) };
+                _watchdog.Tick += (_, _) =>
+                {
+                    if (_overlay is { IsVisible: true }) RepositionToVirtualScreen();
+                    else _watchdog!.Stop(); // filtro desligado — não gasta ciclos
+                };
+            }
+            _watchdog.Start();
         }
 
         private static void EnsureOverlay()

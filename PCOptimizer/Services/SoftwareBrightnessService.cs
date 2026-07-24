@@ -41,6 +41,8 @@ namespace PCOptimizer.Services
         private static readonly IntPtr HWND_TOPMOST = new(-1);
         private const uint SWP_NOACTIVATE = 0x0010;
         private const uint SWP_SHOWWINDOW = 0x0040;
+        private const uint SWP_NOMOVE     = 0x0002;
+        private const uint SWP_NOSIZE     = 0x0001;
 
         // Opacidade máxima do escurecimento (a 0% de brilho) — nunca preto total,
         // para o usuário sempre conseguir ver e voltar a subir o brilho.
@@ -104,7 +106,44 @@ namespace PCOptimizer.Services
             var hwnd = new WindowInteropHelper(ov.Window).Handle;
             SetWindowPos(hwnd, HWND_TOPMOST, left, top, width, height,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            EnsureWatchdog();
             return true;
+        }
+
+        // ── Watchdog do topmost ───────────────────────────────────────────────
+        // Quando outras janelas topmost do app (janela de brilho, principal…) são
+        // fechadas/minimizadas, o Windows embaralha a z-order e o overlay pode
+        // CAIR da banda topmost — as janelas do usuário passam a cobri-lo e o
+        // escurecimento "some", parecendo que o brilho subiu sozinho. O watchdog
+        // reafirma o topmost a cada 2 s enquanto houver escurecimento ativo.
+        private static System.Windows.Threading.DispatcherTimer? _watchdog;
+
+        private static void EnsureWatchdog()
+        {
+            if (_watchdog == null)
+            {
+                _watchdog = new System.Windows.Threading.DispatcherTimer(
+                    System.Windows.Threading.DispatcherPriority.Background)
+                { Interval = TimeSpan.FromSeconds(2) };
+                _watchdog.Tick += (_, _) =>
+                {
+                    bool anyActive = false;
+                    lock (_lock)
+                    {
+                        foreach (var o in _overlays.Values)
+                        {
+                            if (o.Percent >= 100 || !o.Window.IsVisible) continue;
+                            anyActive = true;
+                            var h = new WindowInteropHelper(o.Window).Handle;
+                            if (h != IntPtr.Zero)
+                                SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0,
+                                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        }
+                    }
+                    if (!anyActive) _watchdog!.Stop(); // nada ativo — não gasta ciclos
+                };
+            }
+            _watchdog.Start();
         }
 
         private static Window CreateOverlay()
