@@ -200,9 +200,9 @@ namespace PCOptimizer.Services
 
         public static async Task<bool> SetSingleScreenAsync(bool single)
         {
-            bool ok = await Task.Run(single
-                ? MonitorTopologyService.UsePrimaryOnly
-                : MonitorTopologyService.ExtendAll);
+            bool ok = await Task.Run(() => single
+                ? MonitorTopologyService.UsePrimaryOnly()
+                : MonitorTopologyService.ExtendAll());
             if (ok)
             {
                 SettingsService.Current.MultiMonitorDisabled = single;
@@ -212,9 +212,9 @@ namespace PCOptimizer.Services
         }
 
         public static async Task<bool> Set1080Async(bool on) =>
-            await Task.Run(on
-                ? DisplayResolutionService.ApplyRemote1080
-                : DisplayResolutionService.RestoreNative);
+            await Task.Run(() => on
+                ? DisplayResolutionService.ApplyRemote1080()
+                : DisplayResolutionService.RestoreNative());
 
         public static Task<bool> SetHdrAllAsync(bool enable) =>
             SetHdrVerifiedAsync(enable, h => true);
