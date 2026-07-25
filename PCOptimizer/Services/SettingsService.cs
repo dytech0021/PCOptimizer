@@ -36,6 +36,10 @@ namespace PCOptimizer.Services
         // imperceptível e não afeta o Win10.
         public int TaskbarVariation { get; set; } = 1;
 
+        // Modo acesso remoto: true = topologia "somente tela principal" ativada
+        // pelo app (mantém o botão de reativar visível mesmo após reiniciar)
+        public bool MultiMonitorDisabled { get; set; }
+
         // Cor avançada (gamma ramp da GPU): gama, temperatura e ganho por canal
         public double GammaValue { get; set; } = 1.0;  // 0.5–2.5 (1.0 = neutro)
         public int ColorTempK { get; set; } = 6500;    // 2000–10000 K (6500 = neutro)

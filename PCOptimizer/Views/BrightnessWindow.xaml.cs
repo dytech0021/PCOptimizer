@@ -246,6 +246,80 @@ namespace PCOptimizer.Views
             {
                 _initialized = true;
                 _reloadingMonitors = false;
+                UpdateMonitorModeButton();
+            }
+        }
+
+        // ── Modo acesso remoto: só a tela principal ↔ todas as telas ─────────
+
+        private void UpdateMonitorModeButton()
+        {
+            bool single = SettingsService.Current.MultiMonitorDisabled;
+            int active  = MonitorTopologyService.ActiveScreenCount();
+
+            // Aparece quando há mais de uma tela ativa (dá pra reduzir) OU quando
+            // fomos nós que reduzimos (o botão de reativar PRECISA continuar
+            // visível — inclusive após reiniciar o PC no modo de 1 tela).
+            if (!single && active <= 1)
+            {
+                BtnMonitorMode.Visibility = Visibility.Collapsed;
+                return;
+            }
+            BtnMonitorMode.Visibility = Visibility.Visible;
+            BtnMonitorMode.Content = single
+                ? "🖥🖥 Reativar todas as telas"
+                : "🖥 Usar só a tela principal (acesso remoto)";
+        }
+
+        private async void BtnMonitorMode_Click(object sender, RoutedEventArgs e)
+        {
+            BtnMonitorMode.IsEnabled = false;
+            try
+            {
+                if (!SettingsService.Current.MultiMonitorDisabled)
+                {
+                    var c = MessageBox.Show(
+                        "Desativar as outras telas, deixando somente a PRINCIPAL?\n\n" +
+                        "Ideal para acesso remoto (AnyDesk etc.). O layout das telas fica " +
+                        "guardado pelo Windows — para voltar, use este mesmo botão " +
+                        "(\"Reativar todas as telas\") ou o atalho Win+P.",
+                        "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                    if (c != MessageBoxResult.Yes) return;
+
+                    TxtStatus.Text = "Mudando para somente a tela principal...";
+                    bool ok = await Task.Run(MonitorTopologyService.UsePrimaryOnly);
+                    if (ok)
+                    {
+                        SettingsService.Current.MultiMonitorDisabled = true;
+                        SettingsService.Save();
+                    }
+                    TxtStatus.Text = ok
+                        ? "Somente a tela principal ativa"
+                        : "⚠ Não foi possível mudar o modo de vídeo";
+                }
+                else
+                {
+                    TxtStatus.Text = "Reativando todas as telas...";
+                    bool ok = await Task.Run(MonitorTopologyService.ExtendAll);
+                    if (ok)
+                    {
+                        SettingsService.Current.MultiMonitorDisabled = false;
+                        SettingsService.Save();
+                    }
+                    TxtStatus.Text = ok
+                        ? "Todas as telas reativadas (layout restaurado)"
+                        : "⚠ Não foi possível reativar — tente Win+P → Estender";
+                }
+
+                // A troca de topologia demora um instante para assentar; depois
+                // re-enumera para o painel refletir as telas realmente ativas.
+                await Task.Delay(2500);
+                await ReloadMonitorsAsync();
+            }
+            finally
+            {
+                BtnMonitorMode.IsEnabled = true;
+                UpdateMonitorModeButton();
             }
         }
 
