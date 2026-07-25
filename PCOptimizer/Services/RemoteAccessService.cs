@@ -34,6 +34,20 @@ namespace PCOptimizer.Services
             var s = SettingsService.Current;
             var steps = new List<string>();
 
+            // 0) Neutraliza os FILTROS DE COR. Com HDR ligado o Windows os ignora;
+            //    ao desligar o HDR eles passam a valer e, em muitos sistemas, são
+            //    aplicados NA COMPOSIÇÃO da imagem — o AnyDesk captura junto e o
+            //    acesso remoto fica saturado/escuro. As configurações do usuário
+            //    ficam intactas; só o efeito é suspenso até sair do modo.
+            bool winNl = NightLightService.GetWindowsNightLightEnabled();
+            s.RemotePrevWinNightLight = winNl;
+            if (winNl) NightLightService.SetWindowsNightLight(false);
+            NightLightService.Reset();  // overlay do app (se ativo) — volta na saída
+            GammaRampService.Reset();   // gama/temperatura/RGB neutros
+            bool hadFilters = winNl || s.NightLightEnabled ||
+                !GammaRampService.IsDefault(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB);
+            if (hadFilters) { steps.Add("✅ filtros de cor suspensos"); await Task.Delay(500); }
+
             // 1) HDR off PRIMEIRO, com o vídeo ainda estável — e guarda EM QUAIS
             //    telas estava ligado (posição no desktop virtual) para religar
             //    exatamente nelas na saída.
@@ -103,6 +117,26 @@ namespace PCOptimizer.Services
                 s.RemotePrevHdr = false;
                 s.RemoteHdrPositions = "";
             }
+
+            // 4) Filtros de cor de volta, exatamente como estavam
+            bool restored = false;
+            if (s.RemotePrevWinNightLight)
+            {
+                NightLightService.SetWindowsNightLight(true);
+                s.RemotePrevWinNightLight = false;
+                restored = true;
+            }
+            if (s.NightLightEnabled)
+            {
+                NightLightService.SetIntensity(s.NightLightIntensity);
+                restored = true;
+            }
+            if (!GammaRampService.IsDefault(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB))
+            {
+                GammaRampService.RestoreFromSettings();
+                restored = true;
+            }
+            if (restored) steps.Add("✅ filtros restaurados");
 
             s.RemoteModeActive = false;
             SettingsService.Save();
