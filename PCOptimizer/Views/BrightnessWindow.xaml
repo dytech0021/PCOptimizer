@@ -102,13 +102,26 @@
                 <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="PnlMonitors"/>
                 </ScrollViewer>
-                <Button x:Name="BtnRemoteMode" Visibility="Collapsed"
-                        Margin="0,8,0,0" Padding="0,8" FontSize="11" FontWeight="SemiBold"
-                        Cursor="Hand" BorderThickness="1"
-                        Background="{DynamicResource Preset2Bg}"
-                        Foreground="{DynamicResource Preset2Fg}"
-                        BorderBrush="{DynamicResource Preset2Border}"
-                        Click="BtnRemoteMode_Click"/>
+                <Grid x:Name="RemoteRow" Visibility="Collapsed" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="BtnRemoteMode" Padding="0,8" FontSize="11" FontWeight="SemiBold"
+                            Cursor="Hand" BorderThickness="1"
+                            Background="{DynamicResource Preset2Bg}"
+                            Foreground="{DynamicResource Preset2Fg}"
+                            BorderBrush="{DynamicResource Preset2Border}"
+                            Click="BtnRemoteMode_Click"/>
+                    <Button x:Name="BtnRemoteTune" Grid.Column="1" Content="🔬"
+                            Margin="6,0,0,0" Padding="9,8" FontSize="12"
+                            Cursor="Hand" BorderThickness="1"
+                            Background="Transparent"
+                            Foreground="{DynamicResource TextSecondary}"
+                            BorderBrush="{DynamicResource BorderColor}"
+                            ToolTip="Ajustes finos — ligar cada etapa separadamente"
+                            Click="BtnRemoteTune_Click"/>
+                </Grid>
             </StackPanel>
 
             <!-- Row 2: Presets -->

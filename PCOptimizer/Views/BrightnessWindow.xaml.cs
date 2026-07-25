@@ -258,7 +258,7 @@ namespace PCOptimizer.Views
             {
                 // Enquanto ativo, o botão de sair NUNCA some — inclusive após
                 // reiniciar o PC no modo remoto.
-                BtnRemoteMode.Visibility = Visibility.Visible;
+                RemoteRow.Visibility = Visibility.Visible;
                 BtnRemoteMode.Content = "↩ Sair do Modo Acesso Remoto";
                 return;
             }
@@ -268,9 +268,16 @@ namespace PCOptimizer.Views
             var cur = DisplayResolutionService.GetCurrent();
             bool hasWork = MonitorTopologyService.ActiveScreenCount() > 1
                         || (cur != null && (cur.Value.W != 1920 || cur.Value.H != 1080));
-            BtnRemoteMode.Visibility = hasWork ? Visibility.Visible : Visibility.Collapsed;
+            RemoteRow.Visibility = hasWork ? Visibility.Visible : Visibility.Collapsed;
             if (hasWork)
                 BtnRemoteMode.Content = "🖥 Modo Acesso Remoto (1 tela · 1080p · sem HDR)";
+        }
+
+        private void BtnRemoteTune_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new RemoteTuneWindow { Owner = this };
+            win.ShowDialog();
+            UpdateRemoteModeButton();
         }
 
         private async void BtnRemoteMode_Click(object sender, RoutedEventArgs e)

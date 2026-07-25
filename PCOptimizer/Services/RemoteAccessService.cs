@@ -173,6 +173,67 @@ namespace PCOptimizer.Services
             return string.Join(" · ", steps);
         }
 
+        // ── Controles individuais (janela de ajustes finos) ──────────────────
+        // Servem para ISOLAR qual etapa afeta a imagem no acesso remoto: o
+        // usuário liga uma de cada vez e observa o resultado ao vivo.
+
+        /// <summary>Estado atual de cada etapa: (1 tela, 1080p, HDR ligado, ACM ligado).</summary>
+        public static (bool Single, bool Res1080, bool HdrOn, bool AcmOn) ReadState()
+        {
+            bool single = MonitorTopologyService.ActiveScreenCount() <= 1;
+
+            var cur = DisplayResolutionService.GetCurrent();
+            bool res = cur != null && cur.Value.W == 1920 && cur.Value.H == 1080;
+
+            bool hdr = false, acm = false;
+            try
+            {
+                foreach (var h in HdrService.GetAllHdrInfo())
+                {
+                    if (h.IsEnabled) hdr = true;
+                    if (h.WcgEnabled) acm = true;
+                }
+            }
+            catch { }
+            return (single, res, hdr, acm);
+        }
+
+        public static async Task<bool> SetSingleScreenAsync(bool single)
+        {
+            bool ok = await Task.Run(single
+                ? MonitorTopologyService.UsePrimaryOnly
+                : MonitorTopologyService.ExtendAll);
+            if (ok)
+            {
+                SettingsService.Current.MultiMonitorDisabled = single;
+                SettingsService.Save();
+            }
+            return ok;
+        }
+
+        public static async Task<bool> Set1080Async(bool on) =>
+            await Task.Run(on
+                ? DisplayResolutionService.ApplyRemote1080
+                : DisplayResolutionService.RestoreNative);
+
+        public static Task<bool> SetHdrAllAsync(bool enable) =>
+            SetHdrVerifiedAsync(enable, h => true);
+
+        /// <summary>Liga/desliga o ACM em todas as telas que suportam.</summary>
+        public static bool SetAcmAll(bool enable)
+        {
+            bool any = false;
+            try
+            {
+                foreach (var h in HdrService.GetAllHdrInfo())
+                    if (h.WcgSupported && h.WcgEnabled != enable)
+                        any |= HdrService.SetWcgEnabled(
+                            h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, enable);
+            }
+            catch (Exception ex) { Logger.Error(ex, "SetAcmAll"); }
+            return any;
+        }
+
         /// <summary>
         /// Liga/desliga o HDR nas telas selecionadas por <paramref name="match"/> e
         /// CONFERE relendo o estado; repete até 4 vezes com pausa — logo após uma
