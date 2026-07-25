@@ -7,14 +7,21 @@ namespace PCOptimizer.Services
 {
     /// <summary>
     /// Modo Acesso Remoto: um clique prepara o PC para ser acessado de uma tela
-    /// 1080p 16:9 comum (AnyDesk etc.) — desliga o HDR, desativa as outras telas
-    /// (fica só a principal) e muda a resolução para 1920×1080. O mesmo botão
-    /// reverte TUDO, restaurando o estado guardado. Sobrevive a reinício.
+    /// 1080p 16:9 comum (AnyDesk etc.) — neutraliza o que distorce a imagem
+    /// capturada, desativa as outras telas (fica só a principal) e muda a
+    /// resolução para 1920×1080. O mesmo botão reverte TUDO.
     ///
-    /// Ordem importa: o HDR é alternado LONGE das trocas de topologia/resolução
-    /// (logo após uma troca o vídeo ainda está se reconfigurando e o comando de
-    /// HDR falha ou é ignorado pelo driver), e toda alternância de HDR é
-    /// VERIFICADA e repetida até pegar.
+    /// Sobre COR: o que aparece no AnyDesk é o framebuffer da área de trabalho.
+    /// Só entra na captura o que o Windows aplica na COMPOSIÇÃO — ou seja, o
+    /// ACM/WCG ("gerenciar cores automaticamente") e o modo HDR. A gamma ramp
+    /// (Cor avançada) NÃO entra: é aplicada pela GPU depois do framebuffer.
+    /// Por isso o ACM é o principal responsável por imagem saturada no remoto:
+    /// com HDR desligado e ACM ligado, a área de trabalho é convertida para o
+    /// gamut LARGO do monitor — numa tela sRGB comum isso vira supersaturação.
+    ///
+    /// Ordem importa: HDR/ACM são alternados LONGE das trocas de topologia e
+    /// resolução (logo após uma troca o vídeo ainda se reconfigura e o comando
+    /// é ignorado), e cada alternância é VERIFICADA e repetida até pegar.
     /// </summary>
     public static class RemoteAccessService
     {
@@ -28,50 +35,69 @@ namespace PCOptimizer.Services
             }
         }
 
-        /// <summary>Ativa o modo. Retorna um resumo curto do que foi feito.</summary>
-        public static async Task<string> EnterAsync()
+        /// <summary>
+        /// Ativa o modo. Se <paramref name="keepHdr"/> for true, o HDR é mantido
+        /// ligado (em alguns PCs a imagem remota fica melhor assim).
+        /// </summary>
+        public static async Task<string> EnterAsync(bool keepHdr)
         {
             var s = SettingsService.Current;
             var steps = new List<string>();
 
-            // 0) Neutraliza os FILTROS DE COR. Com HDR ligado o Windows os ignora;
-            //    ao desligar o HDR eles passam a valer e, em muitos sistemas, são
-            //    aplicados NA COMPOSIÇÃO da imagem — o AnyDesk captura junto e o
-            //    acesso remoto fica saturado/escuro. As configurações do usuário
-            //    ficam intactas; só o efeito é suspenso até sair do modo.
+            // 0) ACM/WCG off — principal causa de imagem saturada no acesso remoto.
+            //    Guarda em quais telas estava ligado para restaurar na saída.
+            List<HdrInfo> wcgOn;
+            try { wcgOn = HdrService.GetAllHdrInfo().Where(h => h.WcgEnabled).ToList(); }
+            catch { wcgOn = new List<HdrInfo>(); }
+
+            s.RemoteWcgPositions = string.Join(";", wcgOn.Select(h => $"{h.SourceX},{h.SourceY}"));
+            if (wcgOn.Count > 0)
+            {
+                foreach (var h in wcgOn)
+                    HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
+                steps.Add("✅ cores automáticas off");
+                await Task.Delay(1000);
+            }
+
+            // 1) Filtros do app/Windows que podem entrar na composição — suspensos
+            //    (as configurações do usuário ficam intactas, voltam na saída).
             bool winNl = NightLightService.GetWindowsNightLightEnabled();
             s.RemotePrevWinNightLight = winNl;
             if (winNl) NightLightService.SetWindowsNightLight(false);
-            NightLightService.Reset();  // overlay do app (se ativo) — volta na saída
-            GammaRampService.Reset();   // gama/temperatura/RGB neutros
-            bool hadFilters = winNl || s.NightLightEnabled ||
-                !GammaRampService.IsDefault(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB);
-            if (hadFilters) { steps.Add("✅ filtros de cor suspensos"); await Task.Delay(500); }
+            NightLightService.Reset();
+            GammaRampService.Reset();
 
-            // 1) HDR off PRIMEIRO, com o vídeo ainda estável — e guarda EM QUAIS
-            //    telas estava ligado (posição no desktop virtual) para religar
-            //    exatamente nelas na saída.
+            // 2) HDR off (opcional), com o vídeo ainda estável — e guarda EM QUAIS
+            //    telas estava ligado para religar exatamente nelas na saída.
             List<HdrInfo> hdrOn;
             try { hdrOn = HdrService.GetAllHdrInfo().Where(h => h.IsEnabled).ToList(); }
             catch { hdrOn = new List<HdrInfo>(); }
 
-            s.RemotePrevHdr = hdrOn.Count > 0;
-            s.RemoteHdrPositions = string.Join(";", hdrOn.Select(h => $"{h.SourceX},{h.SourceY}"));
-
-            if (hdrOn.Count > 0)
+            if (keepHdr)
             {
-                bool off = await SetHdrVerifiedAsync(enable: false, h => true);
-                steps.Add(off ? "✅ HDR off" : "⚠ HDR não desligou");
-                await Task.Delay(1000);
+                s.RemotePrevHdr = false;
+                s.RemoteHdrPositions = "";
+                if (hdrOn.Count > 0) steps.Add("• HDR mantido");
+            }
+            else
+            {
+                s.RemotePrevHdr = hdrOn.Count > 0;
+                s.RemoteHdrPositions = string.Join(";", hdrOn.Select(h => $"{h.SourceX},{h.SourceY}"));
+                if (hdrOn.Count > 0)
+                {
+                    bool off = await SetHdrVerifiedAsync(enable: false, h => true);
+                    steps.Add(off ? "✅ HDR off" : "⚠ HDR não desligou");
+                    await Task.Delay(1000);
+                }
             }
 
-            // 2) Só a tela principal (topologia do Win+P — layout fica memorizado)
+            // 3) Só a tela principal (topologia do Win+P — layout fica memorizado)
             bool topo = await Task.Run(MonitorTopologyService.UsePrimaryOnly);
             if (topo) s.MultiMonitorDisabled = true;
             steps.Add(topo ? "✅ 1 tela" : "⚠ telas");
             await Task.Delay(2000); // a troca de topologia precisa assentar
 
-            // 3) 1080p 16:9 (guarda a nativa nas configurações para reversão)
+            // 4) 1080p 16:9 (guarda a nativa nas configurações para reversão)
             bool res = await Task.Run(DisplayResolutionService.ApplyRemote1080);
             steps.Add(res ? "✅ 1080p" : "⚠ resolução");
 
@@ -80,7 +106,7 @@ namespace PCOptimizer.Services
             return string.Join(" · ", steps);
         }
 
-        /// <summary>Reverte tudo: resolução → telas → HDR (verificado).</summary>
+        /// <summary>Reverte tudo: resolução → telas → HDR → ACM → filtros.</summary>
         public static async Task<string> ExitAsync()
         {
             var s = SettingsService.Current;
@@ -94,17 +120,14 @@ namespace PCOptimizer.Services
                 await Task.Delay(1500);
             }
 
-            // 2) Todas as telas de volta (layout restaurado pelo Windows) —
-            //    ANTES do HDR: as posições das telas secundárias só existem
-            //    com a topologia estendida.
+            // 2) Todas as telas de volta — ANTES do HDR/ACM: as posições das
+            //    secundárias só existem com a topologia estendida.
             bool topo = await Task.Run(MonitorTopologyService.ExtendAll);
             if (topo) s.MultiMonitorDisabled = false;
             steps.Add(topo ? "✅ todas as telas" : "⚠ telas: Win+P → Estender");
             await Task.Delay(2500);
 
-            // 3) HDR de volta nas telas onde estava ligado. O verificador repete
-            //    a ordem até o driver aceitar (após a troca de topologia o vídeo
-            //    leva alguns segundos para voltar a responder).
+            // 3) HDR de volta nas telas onde estava ligado
             if (s.RemotePrevHdr)
             {
                 var wanted = ParsePositions(s.RemoteHdrPositions);
@@ -116,27 +139,34 @@ namespace PCOptimizer.Services
                 steps.Add(on ? "✅ HDR on" : "⚠ HDR: religue manualmente");
                 s.RemotePrevHdr = false;
                 s.RemoteHdrPositions = "";
+                await Task.Delay(1200);
             }
 
-            // 4) Filtros de cor de volta, exatamente como estavam
-            bool restored = false;
+            // 4) ACM/WCG de volta nas telas onde estava ligado
+            var wantWcg = ParsePositions(s.RemoteWcgPositions);
+            if (wantWcg.Count > 0)
+            {
+                try
+                {
+                    foreach (var h in HdrService.GetAllHdrInfo())
+                        if (h.WcgSupported && !h.WcgEnabled &&
+                            wantWcg.Contains((h.SourceX, h.SourceY)))
+                            HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, true);
+                }
+                catch (Exception ex) { Logger.Error(ex, "RemoteAccess.WcgOn"); }
+                s.RemoteWcgPositions = "";
+                steps.Add("✅ cores automáticas on");
+            }
+
+            // 5) Filtros de cor de volta, exatamente como estavam
             if (s.RemotePrevWinNightLight)
             {
                 NightLightService.SetWindowsNightLight(true);
                 s.RemotePrevWinNightLight = false;
-                restored = true;
             }
-            if (s.NightLightEnabled)
-            {
-                NightLightService.SetIntensity(s.NightLightIntensity);
-                restored = true;
-            }
+            if (s.NightLightEnabled) NightLightService.SetIntensity(s.NightLightIntensity);
             if (!GammaRampService.IsDefault(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB))
-            {
                 GammaRampService.RestoreFromSettings();
-                restored = true;
-            }
-            if (restored) steps.Add("✅ filtros restaurados");
 
             s.RemoteModeActive = false;
             SettingsService.Save();
@@ -168,7 +198,6 @@ namespace PCOptimizer.Services
                 await Task.Delay(1500);    // deixa o vídeo assentar e re-verifica
             }
 
-            // Última leitura: pegou ou não?
             try
             {
                 foreach (var h in HdrService.GetAllHdrInfo())

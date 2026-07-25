@@ -282,16 +282,20 @@ namespace PCOptimizer.Views
                 {
                     var c = MessageBox.Show(
                         "Ativar o Modo Acesso Remoto?\n\n" +
-                        "• Desativa as outras telas (fica só a principal)\n" +
-                        "• Desliga o HDR (religa na saída, se estava ligado)\n" +
-                        "• Muda a resolução para 1920×1080 (16:9)\n\n" +
-                        "Tudo é revertido por este mesmo botão (\"Sair do Modo " +
-                        "Acesso Remoto\"). Emergência: Win+P restaura as telas.",
-                        "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                    if (c != MessageBoxResult.Yes) return;
+                        "Em todos os casos: fica só a tela principal, resolução " +
+                        "1920×1080 (16:9) e as cores automáticas do Windows são " +
+                        "desligadas (é o que deixa a imagem remota saturada).\n\n" +
+                        "SIM = também desliga o HDR (religa na saída)\n" +
+                        "NÃO = mantém o HDR ligado — escolha esta se a imagem no " +
+                        "AnyDesk ficar saturada ou escura com o HDR desligado\n" +
+                        "CANCELAR = não fazer nada\n\n" +
+                        "Tudo é revertido por este mesmo botão. Emergência: Win+P.",
+                        "PC Optimizer", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                    if (c == MessageBoxResult.Cancel) return;
 
                     TxtStatus.Text = "Ativando modo acesso remoto...";
-                    TxtStatus.Text = await RemoteAccessService.EnterAsync();
+                    TxtStatus.Text = await RemoteAccessService.EnterAsync(
+                        keepHdr: c == MessageBoxResult.No);
                 }
                 else
                 {

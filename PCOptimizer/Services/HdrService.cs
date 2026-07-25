@@ -15,6 +15,9 @@ namespace PCOptimizer.Services
         public uint TargetId { get; set; }
         // Painel interno do notebook (eDP/LVDS/INTERNAL) — WMI só controla este
         public bool IsInternal { get; set; }
+        // ACM/WCG (Win11 24H2): "Gerenciar cores automaticamente para apps"
+        public bool WcgSupported { get; set; }
+        public bool WcgEnabled { get; set; }
     }
 
     public static class HdrService
@@ -123,6 +126,26 @@ namespace PCOptimizer.Services
             public byte finalValue; // 1 = aplica de fato (0 = prévia durante arraste)
         }
 
+        // Win11 24H2: estado de cor avançado detalhado (HDR e WCG separados)
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2
+        {
+            public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+            // bit0 advancedColorSupported, bit1 advancedColorActive,
+            // bit3 limitedByPolicy, bit4 hdrSupported, bit5 hdrUserEnabled,
+            // bit6 wideColorSupported, bit7 wideColorUserEnabled
+            public uint value;
+            public uint activeColorMode;
+        }
+
+        // Win11 24H2: liga/desliga o ACM ("gerenciar cores automaticamente")
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DISPLAYCONFIG_SET_WCG_STATE
+        {
+            public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+            public uint value; // bit0 = enableWcg
+        }
+
         [DllImport("user32.dll")]
         private static extern int GetDisplayConfigBufferSizes(uint flags,
             ref uint numPathArrayElements, ref uint numModeInfoArrayElements);
@@ -149,6 +172,14 @@ namespace PCOptimizer.Services
         private static extern int DisplayConfigSetDeviceInfo(
             ref DISPLAYCONFIG_SET_SDR_WHITE_LEVEL setPacket);
 
+        [DllImport("user32.dll")]
+        private static extern int DisplayConfigGetDeviceInfo(
+            ref DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2 requestPacket);
+
+        [DllImport("user32.dll")]
+        private static extern int DisplayConfigSetDeviceInfo(
+            ref DISPLAYCONFIG_SET_WCG_STATE setPacket);
+
         private const uint QDC_ONLY_ACTIVE_PATHS = 2;
         private const int  GET_ADVANCED_COLOR_INFO  = 9;
         private const int  SET_ADVANCED_COLOR_STATE = 10;
@@ -156,6 +187,9 @@ namespace PCOptimizer.Services
         // Tipo NÃO documentado usado pelo slider "Brilho do conteúdo SDR" das
         // Configurações do Windows (confirmado em implementações open-source).
         private const int  SET_SDR_WHITE_LEVEL      = unchecked((int)0xFFFFFFEE);
+        // Win11 24H2 (valores sequenciais no enum oficial após o 11)
+        private const int  GET_ADVANCED_COLOR_INFO_2 = 15;
+        private const int  SET_WCG_STATE             = 17;
 
         public static List<HdrInfo> GetAllHdrInfo()
         {
@@ -205,6 +239,24 @@ namespace PCOptimizer.Services
                     bool isInternal = tech == unchecked((int)0x80000000)
                                    || tech == 6 || tech == 11 || tech == 13;
 
+                    // ACM/WCG (só existe no Win11 24H2+; falha silenciosa antes disso)
+                    bool wcgSup = false, wcgOn = false;
+                    var req2 = new DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2
+                    {
+                        header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                        {
+                            type      = GET_ADVANCED_COLOR_INFO_2,
+                            size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2>(),
+                            adapterId = path.targetInfo.adapterId,
+                            id        = path.targetInfo.id
+                        }
+                    };
+                    if (DisplayConfigGetDeviceInfo(ref req2) == 0)
+                    {
+                        wcgSup = (req2.value & (1u << 6)) != 0; // wideColorSupported
+                        wcgOn  = (req2.value & (1u << 7)) != 0; // wideColorUserEnabled
+                    }
+
                     result.Add(new HdrInfo
                     {
                         SourceX       = srcX,
@@ -214,7 +266,9 @@ namespace PCOptimizer.Services
                         AdapterIdLow  = path.targetInfo.adapterId.LowPart,
                         AdapterIdHigh = path.targetInfo.adapterId.HighPart,
                         TargetId      = path.targetInfo.id,
-                        IsInternal    = isInternal
+                        IsInternal    = isInternal,
+                        WcgSupported  = wcgSup,
+                        WcgEnabled    = wcgOn
                     });
                 }
             }
@@ -270,6 +324,32 @@ namespace PCOptimizer.Services
                 return DisplayConfigSetDeviceInfo(ref pkt) == 0;
             }
             catch (Exception ex) { Logger.Error(ex, "SetSdrBrightness"); return false; }
+        }
+
+        /// <summary>
+        /// Liga/desliga o ACM — "Gerenciar cores automaticamente para apps"
+        /// (Win11 24H2+). Com ACM ligado e HDR desligado, o Windows converte a
+        /// área de trabalho para o gamut LARGO do monitor: quem captura a tela
+        /// (AnyDesk, prints) recebe cores super-saturadas numa tela sRGB comum.
+        /// </summary>
+        public static bool SetWcgEnabled(uint adapterIdLow, int adapterIdHigh, uint targetId, bool enabled)
+        {
+            try
+            {
+                var pkt = new DISPLAYCONFIG_SET_WCG_STATE
+                {
+                    header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                    {
+                        type      = SET_WCG_STATE,
+                        size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_SET_WCG_STATE>(),
+                        adapterId = new LUID { LowPart = adapterIdLow, HighPart = adapterIdHigh },
+                        id        = targetId
+                    },
+                    value = enabled ? 1u : 0u
+                };
+                return DisplayConfigSetDeviceInfo(ref pkt) == 0;
+            }
+            catch (Exception ex) { Logger.Error(ex, "SetWcgEnabled"); return false; }
         }
 
         public static bool SetHdrEnabled(uint adapterIdLow, int adapterIdHigh, uint targetId, bool enabled)

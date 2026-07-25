@@ -47,6 +47,8 @@ namespace PCOptimizer.Services
         public string RemoteHdrPositions { get; set; } = "";
         // Luz noturna NATIVA do Windows estava ligada ao entrar no modo remoto
         public bool RemotePrevWinNightLight { get; set; }
+        // Telas que estavam com ACM/WCG ("cores automáticas") ligado
+        public string RemoteWcgPositions { get; set; } = "";
 
         // Resolução 1080p para acesso remoto: guarda a nativa para reversão
         public bool RemoteResActive { get; set; }
