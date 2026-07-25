@@ -32,6 +32,14 @@ namespace PCOptimizer.Services
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
             int X, int Y, int cx, int cy, uint uFlags);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint affinity);
+
+        // Win10 2004+: janela fica FORA de qualquer captura de tela (AnyDesk,
+        // prints, OBS) mas continua visível localmente. Em versões antigas a
+        // chamada só falha, sem efeito colateral.
+        private const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
+
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TRANSPARENT = 0x20;
         private const int WS_EX_TOOLWINDOW = 0x80;
@@ -171,6 +179,10 @@ namespace PCOptimizer.Services
                 // Click-through + não ativa + fora do Alt+Tab
                 SetWindowLong(hwnd, GWL_EXSTYLE,
                     ex | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+                // Fora das capturas: acesso remoto (AnyDesk) e prints veem a
+                // imagem LIMPA — o escurecimento vale só para quem está na frente
+                // do monitor (senão o remoto recebia a tela escura/tingida).
+                SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
             };
 
             return w;

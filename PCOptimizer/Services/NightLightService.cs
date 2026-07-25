@@ -32,6 +32,13 @@ namespace PCOptimizer.Services
         [DllImport("user32.dll")]
         private static extern int GetSystemMetrics(int nIndex);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint affinity);
+
+        // Win10 2004+: janela fica FORA de qualquer captura de tela (AnyDesk,
+        // prints, OBS) mas continua visível localmente.
+        private const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
+
         private static readonly IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
         private const uint WM_SETTINGCHANGE = 0x001A;
 
@@ -136,6 +143,10 @@ namespace PCOptimizer.Services
                 // Click-through + sem ativar + não aparece no Alt+Tab
                 SetWindowLong(hwnd, GWL_EXSTYLE,
                     ex | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+                // Fora das capturas: o AnyDesk/prints veem a imagem SEM o filtro
+                // alaranjado — a luz noturna vale só para quem está no monitor
+                // (capturado junto, o filtro deixava o acesso remoto "saturado").
+                SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
             };
 
             RepositionToVirtualScreen();
