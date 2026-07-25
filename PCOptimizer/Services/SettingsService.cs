@@ -40,6 +40,12 @@ namespace PCOptimizer.Services
         // pelo app (mantém o botão de reativar visível mesmo após reiniciar)
         public bool MultiMonitorDisabled { get; set; }
 
+        // Resolução 1080p para acesso remoto: guarda a nativa para reversão
+        public bool RemoteResActive { get; set; }
+        public int RemotePrevWidth { get; set; }
+        public int RemotePrevHeight { get; set; }
+        public int RemotePrevHz { get; set; }
+
         // Cor avançada (gamma ramp da GPU): gama, temperatura e ganho por canal
         public double GammaValue { get; set; } = 1.0;  // 0.5–2.5 (1.0 = neutro)
         public int ColorTempK { get; set; } = 6500;    // 2000–10000 K (6500 = neutro)

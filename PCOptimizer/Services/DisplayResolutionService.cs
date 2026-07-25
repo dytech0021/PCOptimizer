@@ -1,0 +1,161 @@
+using System;
+using System.Runtime.InteropServices;
+
+namespace PCOptimizer.Services
+{
+    /// <summary>
+    /// Troca a resolução da tela PRINCIPAL — pensado para acesso remoto: um PC
+    /// com tela 21:9 (ex.: 2560×1080) acessado de uma tela 16:9 aparece com
+    /// barras/espremido; mudar o remoto para 1920×1080 faz a imagem casar 1:1.
+    /// A resolução anterior fica salva nas configurações, então a reversão
+    /// funciona mesmo depois de reiniciar o PC ou o app.
+    /// </summary>
+    public static class DisplayResolutionService
+    {
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool EnumDisplaySettings(string? deviceName, int modeNum, ref DEVMODE devMode);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int ChangeDisplaySettingsEx(string? deviceName, ref DEVMODE devMode,
+            IntPtr hwnd, uint flags, IntPtr lParam);
+
+        private const int  ENUM_CURRENT_SETTINGS = -1;
+        private const uint CDS_UPDATEREGISTRY    = 0x00000001;
+        private const int  DISP_CHANGE_SUCCESSFUL = 0;
+
+        private const int DM_PELSWIDTH        = 0x00080000;
+        private const int DM_PELSHEIGHT       = 0x00100000;
+        private const int DM_DISPLAYFREQUENCY = 0x00400000;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct DEVMODE
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+            public short dmSpecVersion;
+            public short dmDriverVersion;
+            public short dmSize;
+            public short dmDriverExtra;
+            public int   dmFields;
+            public int   dmPositionX;
+            public int   dmPositionY;
+            public int   dmDisplayOrientation;
+            public int   dmDisplayFixedOutput;
+            public short dmColor;
+            public short dmDuplex;
+            public short dmYResolution;
+            public short dmTTOption;
+            public short dmCollate;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+            public short dmLogPixels;
+            public int   dmBitsPerPel;
+            public int   dmPelsWidth;
+            public int   dmPelsHeight;
+            public int   dmDisplayFlags;
+            public int   dmDisplayFrequency;
+            public int   dmICMMethod;
+            public int   dmICMIntent;
+            public int   dmMediaType;
+            public int   dmDitherType;
+            public int   dmReserved1;
+            public int   dmReserved2;
+            public int   dmPanningWidth;
+            public int   dmPanningHeight;
+        }
+
+        private static string PrimaryDevice()
+        {
+            try { return System.Windows.Forms.Screen.PrimaryScreen?.DeviceName ?? ""; }
+            catch { return ""; }
+        }
+
+        private static DEVMODE NewDevMode() =>
+            new() { dmSize = (short)Marshal.SizeOf<DEVMODE>() };
+
+        /// <summary>Resolução atual da tela principal (largura, altura, Hz) — null se falhar.</summary>
+        public static (int W, int H, int Hz)? GetCurrent()
+        {
+            try
+            {
+                string dev = PrimaryDevice();
+                if (dev.Length == 0) return null;
+                var dm = NewDevMode();
+                if (!EnumDisplaySettings(dev, ENUM_CURRENT_SETTINGS, ref dm)) return null;
+                return (dm.dmPelsWidth, dm.dmPelsHeight, dm.dmDisplayFrequency);
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Muda a tela principal para 1920×1080, guardando a resolução atual nas
+        /// configurações para reversão. Usa o maior refresh que o monitor aceitar.
+        /// </summary>
+        public static bool ApplyRemote1080()
+        {
+            try
+            {
+                var cur = GetCurrent();
+                if (cur == null) return false;
+                if (cur.Value.W == 1920 && cur.Value.H == 1080) return true; // já está
+
+                if (!SetPrimary(1920, 1080)) return false;
+
+                var s = SettingsService.Current;
+                s.RemotePrevWidth  = cur.Value.W;
+                s.RemotePrevHeight = cur.Value.H;
+                s.RemotePrevHz     = cur.Value.Hz;
+                s.RemoteResActive  = true;
+                SettingsService.Save();
+                return true;
+            }
+            catch (Exception ex) { Logger.Error(ex, "ApplyRemote1080"); return false; }
+        }
+
+        /// <summary>Restaura a resolução nativa guardada nas configurações.</summary>
+        public static bool RestoreNative()
+        {
+            try
+            {
+                var s = SettingsService.Current;
+                if (s.RemotePrevWidth < 640 || s.RemotePrevHeight < 480) return false;
+                if (!SetPrimary(s.RemotePrevWidth, s.RemotePrevHeight, s.RemotePrevHz))
+                    return false;
+                s.RemoteResActive = false;
+                SettingsService.Save();
+                return true;
+            }
+            catch (Exception ex) { Logger.Error(ex, "RestoreNative"); return false; }
+        }
+
+        /// <summary>
+        /// Aplica width×height na tela principal. Se preferHz > 0 tenta esse
+        /// refresh exato; senão (ou se não existir) usa o MAIOR disponível.
+        /// </summary>
+        private static bool SetPrimary(int width, int height, int preferHz = 0)
+        {
+            string dev = PrimaryDevice();
+            if (dev.Length == 0) return false;
+
+            // Enumera os modos suportados e escolhe o refresh certo — aplicar um
+            // modo que o monitor não suporta faria a tela apagar até o timeout.
+            int bestHz = 0;
+            var probe = NewDevMode();
+            for (int i = 0; EnumDisplaySettings(dev, i, ref probe); i++)
+            {
+                if (probe.dmPelsWidth != width || probe.dmPelsHeight != height) continue;
+                if (probe.dmDisplayFrequency == preferHz) { bestHz = preferHz; break; }
+                if (probe.dmDisplayFrequency > bestHz) bestHz = probe.dmDisplayFrequency;
+            }
+            if (bestHz == 0) return false; // monitor não suporta essa resolução
+
+            var dm = NewDevMode();
+            dm.dmPelsWidth        = width;
+            dm.dmPelsHeight       = height;
+            dm.dmDisplayFrequency = bestHz;
+            dm.dmFields           = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
+
+            int rc = ChangeDisplaySettingsEx(dev, ref dm, IntPtr.Zero, CDS_UPDATEREGISTRY, IntPtr.Zero);
+            Logger.Info($"Resolução {width}×{height}@{bestHz}: rc={rc}");
+            return rc == DISP_CHANGE_SUCCESSFUL;
+        }
+    }
+}
