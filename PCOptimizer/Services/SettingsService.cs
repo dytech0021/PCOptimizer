@@ -43,6 +43,8 @@ namespace PCOptimizer.Services
         // Modo Acesso Remoto (botão único): estado geral + HDR anterior
         public bool RemoteModeActive { get; set; }
         public bool RemotePrevHdr { get; set; }
+        // Posições (x,y;x,y) das telas que estavam com HDR ligado — religa só nelas
+        public string RemoteHdrPositions { get; set; } = "";
 
         // Resolução 1080p para acesso remoto: guarda a nativa para reversão
         public bool RemoteResActive { get; set; }

@@ -1,15 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace PCOptimizer.Services
 {
     /// <summary>
     /// Modo Acesso Remoto: um clique prepara o PC para ser acessado de uma tela
-    /// 1080p 16:9 comum (AnyDesk etc.) — desativa as outras telas (fica só a
-    /// principal), desliga o HDR e muda a resolução para 1920×1080. O mesmo
-    /// botão reverte TUDO na ordem inversa, restaurando o estado guardado
-    /// (inclusive se o HDR estava ligado). Sobrevive a reinício do PC/app.
+    /// 1080p 16:9 comum (AnyDesk etc.) — desliga o HDR, desativa as outras telas
+    /// (fica só a principal) e muda a resolução para 1920×1080. O mesmo botão
+    /// reverte TUDO, restaurando o estado guardado. Sobrevive a reinício.
+    ///
+    /// Ordem importa: o HDR é alternado LONGE das trocas de topologia/resolução
+    /// (logo após uma troca o vídeo ainda está se reconfigurando e o comando de
+    /// HDR falha ou é ignorado pelo driver), e toda alternância de HDR é
+    /// VERIFICADA e repetida até pegar.
     /// </summary>
     public static class RemoteAccessService
     {
@@ -29,27 +34,28 @@ namespace PCOptimizer.Services
             var s = SettingsService.Current;
             var steps = new List<string>();
 
-            // 1) Só a tela principal (topologia do Win+P — layout fica memorizado)
+            // 1) HDR off PRIMEIRO, com o vídeo ainda estável — e guarda EM QUAIS
+            //    telas estava ligado (posição no desktop virtual) para religar
+            //    exatamente nelas na saída.
+            List<HdrInfo> hdrOn;
+            try { hdrOn = HdrService.GetAllHdrInfo().Where(h => h.IsEnabled).ToList(); }
+            catch { hdrOn = new List<HdrInfo>(); }
+
+            s.RemotePrevHdr = hdrOn.Count > 0;
+            s.RemoteHdrPositions = string.Join(";", hdrOn.Select(h => $"{h.SourceX},{h.SourceY}"));
+
+            if (hdrOn.Count > 0)
+            {
+                bool off = await SetHdrVerifiedAsync(enable: false, h => true);
+                steps.Add(off ? "✅ HDR off" : "⚠ HDR não desligou");
+                await Task.Delay(1000);
+            }
+
+            // 2) Só a tela principal (topologia do Win+P — layout fica memorizado)
             bool topo = await Task.Run(MonitorTopologyService.UsePrimaryOnly);
             if (topo) s.MultiMonitorDisabled = true;
             steps.Add(topo ? "✅ 1 tela" : "⚠ telas");
             await Task.Delay(2000); // a troca de topologia precisa assentar
-
-            // 2) HDR off na tela que sobrou (em HDR o acesso remoto fica lavado/
-            //    escuro). Guarda se estava ligado para religar na saída.
-            bool hadHdr = false;
-            try
-            {
-                foreach (var h in HdrService.GetAllHdrInfo())
-                    if (h.IsEnabled)
-                    {
-                        hadHdr = true;
-                        HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
-                    }
-            }
-            catch (Exception ex) { Logger.Error(ex, "RemoteAccess.HdrOff"); }
-            s.RemotePrevHdr = hadHdr;
-            if (hadHdr) { steps.Add("✅ HDR off"); await Task.Delay(1200); }
 
             // 3) 1080p 16:9 (guarda a nativa nas configurações para reversão)
             bool res = await Task.Run(DisplayResolutionService.ApplyRemote1080);
@@ -60,7 +66,7 @@ namespace PCOptimizer.Services
             return string.Join(" · ", steps);
         }
 
-        /// <summary>Reverte tudo, na ordem inversa da ativação.</summary>
+        /// <summary>Reverte tudo: resolução → telas → HDR (verificado).</summary>
         public static async Task<string> ExitAsync()
         {
             var s = SettingsService.Current;
@@ -71,35 +77,83 @@ namespace PCOptimizer.Services
             {
                 bool res = await Task.Run(DisplayResolutionService.RestoreNative);
                 steps.Add(res ? "✅ resolução nativa" : "⚠ resolução");
-                await Task.Delay(1200);
+                await Task.Delay(1500);
             }
 
-            // 2) HDR de volta, se estava ligado — religa na tela principal
-            //    (posição 0,0 do desktop virtual, a mesma onde desligamos)
-            if (s.RemotePrevHdr)
-            {
-                bool hdrOk = false;
-                try
-                {
-                    foreach (var h in HdrService.GetAllHdrInfo())
-                        if (h.SourceX == 0 && h.SourceY == 0 && h.IsSupported && !h.IsEnabled)
-                            hdrOk |= HdrService.SetHdrEnabled(
-                                h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, true);
-                }
-                catch (Exception ex) { Logger.Error(ex, "RemoteAccess.HdrOn"); }
-                steps.Add(hdrOk ? "✅ HDR on" : "⚠ HDR");
-                s.RemotePrevHdr = false;
-                await Task.Delay(1200);
-            }
-
-            // 3) Todas as telas de volta (layout restaurado pelo Windows)
+            // 2) Todas as telas de volta (layout restaurado pelo Windows) —
+            //    ANTES do HDR: as posições das telas secundárias só existem
+            //    com a topologia estendida.
             bool topo = await Task.Run(MonitorTopologyService.ExtendAll);
             if (topo) s.MultiMonitorDisabled = false;
             steps.Add(topo ? "✅ todas as telas" : "⚠ telas: Win+P → Estender");
+            await Task.Delay(2500);
+
+            // 3) HDR de volta nas telas onde estava ligado. O verificador repete
+            //    a ordem até o driver aceitar (após a troca de topologia o vídeo
+            //    leva alguns segundos para voltar a responder).
+            if (s.RemotePrevHdr)
+            {
+                var wanted = ParsePositions(s.RemoteHdrPositions);
+                bool on = await SetHdrVerifiedAsync(enable: true, h =>
+                    h.IsSupported &&
+                    (wanted.Count == 0
+                        ? h.SourceX == 0 && h.SourceY == 0        // fallback: principal
+                        : wanted.Contains((h.SourceX, h.SourceY))));
+                steps.Add(on ? "✅ HDR on" : "⚠ HDR: religue manualmente");
+                s.RemotePrevHdr = false;
+                s.RemoteHdrPositions = "";
+            }
 
             s.RemoteModeActive = false;
             SettingsService.Save();
             return string.Join(" · ", steps);
+        }
+
+        /// <summary>
+        /// Liga/desliga o HDR nas telas selecionadas por <paramref name="match"/> e
+        /// CONFERE relendo o estado; repete até 4 vezes com pausa — logo após uma
+        /// troca de vídeo, a primeira ordem costuma ser ignorada pelo driver.
+        /// </summary>
+        private static async Task<bool> SetHdrVerifiedAsync(bool enable, Func<HdrInfo, bool> match)
+        {
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                bool pending = false;
+                try
+                {
+                    foreach (var h in HdrService.GetAllHdrInfo())
+                        if (match(h) && h.IsSupported && h.IsEnabled != enable)
+                        {
+                            pending = true;
+                            HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, enable);
+                        }
+                }
+                catch (Exception ex) { Logger.Error(ex, "SetHdrVerifiedAsync"); }
+
+                if (!pending) return true; // tudo já no estado desejado
+                await Task.Delay(1500);    // deixa o vídeo assentar e re-verifica
+            }
+
+            // Última leitura: pegou ou não?
+            try
+            {
+                foreach (var h in HdrService.GetAllHdrInfo())
+                    if (match(h) && h.IsSupported && h.IsEnabled != enable) return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static HashSet<(int X, int Y)> ParsePositions(string? raw)
+        {
+            var set = new HashSet<(int, int)>();
+            foreach (var part in (raw ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var xy = part.Split(',');
+                if (xy.Length == 2 && int.TryParse(xy[0], out int x) && int.TryParse(xy[1], out int y))
+                    set.Add((x, y));
+            }
+            return set;
         }
     }
 }
