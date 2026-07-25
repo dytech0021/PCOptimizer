@@ -102,20 +102,13 @@
                 <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="PnlMonitors"/>
                 </ScrollViewer>
-                <Button x:Name="BtnMonitorMode" Visibility="Collapsed"
-                        Margin="0,8,0,0" Padding="0,7" FontSize="11" FontWeight="SemiBold"
+                <Button x:Name="BtnRemoteMode" Visibility="Collapsed"
+                        Margin="0,8,0,0" Padding="0,8" FontSize="11" FontWeight="SemiBold"
                         Cursor="Hand" BorderThickness="1"
                         Background="{DynamicResource Preset2Bg}"
                         Foreground="{DynamicResource Preset2Fg}"
                         BorderBrush="{DynamicResource Preset2Border}"
-                        Click="BtnMonitorMode_Click"/>
-                <Button x:Name="BtnResolutionMode" Visibility="Collapsed"
-                        Margin="0,6,0,0" Padding="0,7" FontSize="11" FontWeight="SemiBold"
-                        Cursor="Hand" BorderThickness="1"
-                        Background="{DynamicResource Preset3Bg}"
-                        Foreground="{DynamicResource Preset3Fg}"
-                        BorderBrush="{DynamicResource Preset3Border}"
-                        Click="BtnResolutionMode_Click"/>
+                        Click="BtnRemoteMode_Click"/>
             </StackPanel>
 
             <!-- Row 2: Presets -->

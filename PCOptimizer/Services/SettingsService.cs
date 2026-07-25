@@ -40,6 +40,10 @@ namespace PCOptimizer.Services
         // pelo app (mantém o botão de reativar visível mesmo após reiniciar)
         public bool MultiMonitorDisabled { get; set; }
 
+        // Modo Acesso Remoto (botão único): estado geral + HDR anterior
+        public bool RemoteModeActive { get; set; }
+        public bool RemotePrevHdr { get; set; }
+
         // Resolução 1080p para acesso remoto: guarda a nativa para reversão
         public bool RemoteResActive { get; set; }
         public int RemotePrevWidth { get; set; }

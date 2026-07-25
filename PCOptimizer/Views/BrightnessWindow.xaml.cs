@@ -246,137 +246,68 @@ namespace PCOptimizer.Views
             {
                 _initialized = true;
                 _reloadingMonitors = false;
-                UpdateMonitorModeButton();
-                UpdateResolutionButton();
+                UpdateRemoteModeButton();
             }
         }
 
-        // ── Modo acesso remoto: só a tela principal ↔ todas as telas ─────────
+        // ── Modo Acesso Remoto: 1 tela + 1080p + sem HDR, num botão só ───────
 
-        private void UpdateMonitorModeButton()
+        private void UpdateRemoteModeButton()
         {
-            bool single = SettingsService.Current.MultiMonitorDisabled;
-            int active  = MonitorTopologyService.ActiveScreenCount();
-
-            // Aparece quando há mais de uma tela ativa (dá pra reduzir) OU quando
-            // fomos nós que reduzimos (o botão de reativar PRECISA continuar
-            // visível — inclusive após reiniciar o PC no modo de 1 tela).
-            if (!single && active <= 1)
+            if (RemoteAccessService.IsActive)
             {
-                BtnMonitorMode.Visibility = Visibility.Collapsed;
+                // Enquanto ativo, o botão de sair NUNCA some — inclusive após
+                // reiniciar o PC no modo remoto.
+                BtnRemoteMode.Visibility = Visibility.Visible;
+                BtnRemoteMode.Content = "↩ Sair do Modo Acesso Remoto";
                 return;
             }
-            BtnMonitorMode.Visibility = Visibility.Visible;
-            BtnMonitorMode.Content = single
-                ? "🖥🖥 Reativar todas as telas"
-                : "🖥 Usar só a tela principal (acesso remoto)";
-        }
 
-        private void UpdateResolutionButton()
-        {
-            var s = SettingsService.Current;
+            // Só aparece quando há o que preparar: mais de uma tela ativa ou
+            // resolução diferente de 1080p (no PC de acesso comum, fica oculto).
             var cur = DisplayResolutionService.GetCurrent();
-
-            if (s.RemoteResActive)
-            {
-                // Sempre visível enquanto ativo — a reversão não pode sumir.
-                BtnResolutionMode.Visibility = Visibility.Visible;
-                BtnResolutionMode.Content =
-                    $"📐 Restaurar resolução nativa ({s.RemotePrevWidth}×{s.RemotePrevHeight})";
-                return;
-            }
-
-            // Só oferece quando a tela principal NÃO é 1080p (ex.: ultrawide 21:9)
-            // e o monitor suporta reduzir — no PC de acesso (já 1080p) fica oculto.
-            bool canReduce = cur != null && (cur.Value.W != 1920 || cur.Value.H != 1080);
-            BtnResolutionMode.Visibility = canReduce ? Visibility.Visible : Visibility.Collapsed;
-            if (canReduce)
-                BtnResolutionMode.Content = "📐 Mudar para 1080p 16:9 (acesso remoto)";
+            bool hasWork = MonitorTopologyService.ActiveScreenCount() > 1
+                        || (cur != null && (cur.Value.W != 1920 || cur.Value.H != 1080));
+            BtnRemoteMode.Visibility = hasWork ? Visibility.Visible : Visibility.Collapsed;
+            if (hasWork)
+                BtnRemoteMode.Content = "🖥 Modo Acesso Remoto (1 tela · 1080p · sem HDR)";
         }
 
-        private async void BtnMonitorMode_Click(object sender, RoutedEventArgs e)
+        private async void BtnRemoteMode_Click(object sender, RoutedEventArgs e)
         {
-            BtnMonitorMode.IsEnabled = false;
+            BtnRemoteMode.IsEnabled = false;
             try
             {
-                if (!SettingsService.Current.MultiMonitorDisabled)
+                if (!RemoteAccessService.IsActive)
                 {
                     var c = MessageBox.Show(
-                        "Desativar as outras telas, deixando somente a PRINCIPAL?\n\n" +
-                        "Ideal para acesso remoto (AnyDesk etc.). O layout das telas fica " +
-                        "guardado pelo Windows — para voltar, use este mesmo botão " +
-                        "(\"Reativar todas as telas\") ou o atalho Win+P.",
+                        "Ativar o Modo Acesso Remoto?\n\n" +
+                        "• Desativa as outras telas (fica só a principal)\n" +
+                        "• Desliga o HDR (religa na saída, se estava ligado)\n" +
+                        "• Muda a resolução para 1920×1080 (16:9)\n\n" +
+                        "Tudo é revertido por este mesmo botão (\"Sair do Modo " +
+                        "Acesso Remoto\"). Emergência: Win+P restaura as telas.",
                         "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Question);
                     if (c != MessageBoxResult.Yes) return;
 
-                    TxtStatus.Text = "Mudando para somente a tela principal...";
-                    bool ok = await Task.Run(MonitorTopologyService.UsePrimaryOnly);
-                    if (ok)
-                    {
-                        SettingsService.Current.MultiMonitorDisabled = true;
-                        SettingsService.Save();
-                    }
-                    TxtStatus.Text = ok
-                        ? "Somente a tela principal ativa"
-                        : "⚠ Não foi possível mudar o modo de vídeo";
+                    TxtStatus.Text = "Ativando modo acesso remoto...";
+                    TxtStatus.Text = await RemoteAccessService.EnterAsync();
                 }
                 else
                 {
-                    TxtStatus.Text = "Reativando todas as telas...";
-                    bool ok = await Task.Run(MonitorTopologyService.ExtendAll);
-                    if (ok)
-                    {
-                        SettingsService.Current.MultiMonitorDisabled = false;
-                        SettingsService.Save();
-                    }
-                    TxtStatus.Text = ok
-                        ? "Todas as telas reativadas (layout restaurado)"
-                        : "⚠ Não foi possível reativar — tente Win+P → Estender";
+                    TxtStatus.Text = "Restaurando a configuração normal...";
+                    TxtStatus.Text = await RemoteAccessService.ExitAsync();
                 }
 
-                // A troca de topologia demora um instante para assentar; depois
-                // re-enumera para o painel refletir as telas realmente ativas.
-                await Task.Delay(2500);
-                await ReloadMonitorsAsync();
-            }
-            finally
-            {
-                BtnMonitorMode.IsEnabled = true;
-                UpdateMonitorModeButton();
-            }
-        }
-
-        private async void BtnResolutionMode_Click(object sender, RoutedEventArgs e)
-        {
-            BtnResolutionMode.IsEnabled = false;
-            try
-            {
-                if (!SettingsService.Current.RemoteResActive)
-                {
-                    TxtStatus.Text = "Mudando a tela principal para 1920×1080...";
-                    bool ok = await Task.Run(DisplayResolutionService.ApplyRemote1080);
-                    TxtStatus.Text = ok
-                        ? "Tela principal em 1080p — imagem 1:1 no acesso remoto"
-                        : "⚠ O monitor não aceitou 1920×1080";
-                }
-                else
-                {
-                    TxtStatus.Text = "Restaurando a resolução nativa...";
-                    bool ok = await Task.Run(DisplayResolutionService.RestoreNative);
-                    TxtStatus.Text = ok
-                        ? "Resolução nativa restaurada"
-                        : "⚠ Não consegui restaurar — use Configurações → Vídeo";
-                }
-
-                // A troca leva um instante; re-enumera para os overlays/painel
-                // acompanharem o novo tamanho de tela.
+                // Dá um instante para o vídeo assentar e re-enumera — painel e
+                // overlays passam a refletir a configuração real.
                 await Task.Delay(1500);
                 await ReloadMonitorsAsync();
             }
             finally
             {
-                BtnResolutionMode.IsEnabled = true;
-                UpdateResolutionButton();
+                BtnRemoteMode.IsEnabled = true;
+                UpdateRemoteModeButton();
             }
         }
 
