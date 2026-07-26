@@ -69,7 +69,14 @@
                 </StackPanel>
             </CheckBox>
 
-            <TextBlock x:Name="TxtTuneStatus" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,0"
+            <Border CornerRadius="6" Padding="9,7" Margin="0,12,0,0"
+                    Background="#12202E" BorderBrush="#24415C" BorderThickness="1">
+                <TextBlock x:Name="TxtColorMode" FontSize="11" FontWeight="SemiBold"
+                           TextWrapping="Wrap" Foreground="#7DD3FC"
+                           Text="Lendo o modo de cor..."/>
+            </Border>
+
+            <TextBlock x:Name="TxtTuneStatus" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
                        Foreground="{DynamicResource TextSecondary}"/>
 
             <Grid Margin="0,14,0,0">

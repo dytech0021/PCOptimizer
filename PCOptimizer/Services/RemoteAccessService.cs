@@ -44,22 +44,7 @@ namespace PCOptimizer.Services
             var s = SettingsService.Current;
             var steps = new List<string>();
 
-            // 0) ACM/WCG off — principal causa de imagem saturada no acesso remoto.
-            //    Guarda em quais telas estava ligado para restaurar na saída.
-            List<HdrInfo> wcgOn;
-            try { wcgOn = HdrService.GetAllHdrInfo().Where(h => h.WcgEnabled).ToList(); }
-            catch { wcgOn = new List<HdrInfo>(); }
-
-            s.RemoteWcgPositions = string.Join(";", wcgOn.Select(h => $"{h.SourceX},{h.SourceY}"));
-            if (wcgOn.Count > 0)
-            {
-                foreach (var h in wcgOn)
-                    HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
-                steps.Add("✅ cores automáticas off");
-                await Task.Delay(1000);
-            }
-
-            // 1) Filtros do app/Windows que podem entrar na composição — suspensos
+            // 0) Filtros do app/Windows que podem entrar na composição — suspensos
             //    (as configurações do usuário ficam intactas, voltam na saída).
             bool winNl = NightLightService.GetWindowsNightLightEnabled();
             s.RemotePrevWinNightLight = winNl;
@@ -67,8 +52,8 @@ namespace PCOptimizer.Services
             NightLightService.Reset();
             GammaRampService.Reset();
 
-            // 2) HDR off (opcional), com o vídeo ainda estável — e guarda EM QUAIS
-            //    telas estava ligado para religar exatamente nelas na saída.
+            // 1) HDR off, com o vídeo ainda estável — guarda EM QUAIS telas estava
+            //    ligado para religar exatamente nelas na saída.
             List<HdrInfo> hdrOn;
             try { hdrOn = HdrService.GetAllHdrInfo().Where(h => h.IsEnabled).ToList(); }
             catch { hdrOn = new List<HdrInfo>(); }
@@ -87,8 +72,25 @@ namespace PCOptimizer.Services
                 {
                     bool off = await SetHdrVerifiedAsync(enable: false, h => true);
                     steps.Add(off ? "✅ HDR off" : "⚠ HDR não desligou");
-                    await Task.Delay(1000);
+                    await Task.Delay(1200);
                 }
+            }
+
+            // 2) ACM/WCG off — SÓ AGORA, depois do HDR. Ao desligar o HDR com o ACM
+            //    ligado, a tela não vai para SDR: cai no modo WCG (gamut largo), e
+            //    a captura remota sai supersaturada. Desligando o ACM em seguida a
+            //    tela finalmente entra em SDR puro. Guarda o estado para a saída.
+            List<HdrInfo> wcgOn;
+            try { wcgOn = HdrService.GetAllHdrInfo().Where(h => h.WcgEnabled).ToList(); }
+            catch { wcgOn = new List<HdrInfo>(); }
+
+            s.RemoteWcgPositions = string.Join(";", wcgOn.Select(h => $"{h.SourceX},{h.SourceY}"));
+            if (wcgOn.Count > 0)
+            {
+                foreach (var h in wcgOn)
+                    HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
+                steps.Add("✅ gamut largo off");
+                await Task.Delay(1200);
             }
 
             // 3) Só a tela principal (topologia do Win+P — layout fica memorizado)
@@ -196,6 +198,30 @@ namespace PCOptimizer.Services
             }
             catch { }
             return (single, res, hdr, acm);
+        }
+
+        /// <summary>
+        /// Modo de cor em que a tela principal está compondo a imagem — é isso
+        /// que o programa de acesso remoto captura. WCG é o vilão: gamut largo
+        /// interpretado como sRGB do outro lado = imagem saturada e escura.
+        /// </summary>
+        public static string DescribeColorMode()
+        {
+            try
+            {
+                foreach (var h in HdrService.GetAllHdrInfo())
+                {
+                    if (h.SourceX != 0 || h.SourceY != 0) continue; // tela principal
+                    return h.ActiveColorMode switch
+                    {
+                        2 => "Tela principal: HDR",
+                        1 => "Tela principal: WCG (gamut largo) — é o que satura o acesso remoto",
+                        _ => "Tela principal: SDR — ideal para acesso remoto"
+                    };
+                }
+            }
+            catch { }
+            return "";
         }
 
         public static async Task<bool> SetSingleScreenAsync(bool single)

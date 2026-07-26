@@ -18,6 +18,13 @@ namespace PCOptimizer.Services
         // ACM/WCG (Win11 24H2): "Gerenciar cores automaticamente para apps"
         public bool WcgSupported { get; set; }
         public bool WcgEnabled { get; set; }
+        // 0 = SDR, 1 = WCG (gamut largo), 2 = HDR — o modo em que a área de
+        // trabalho é composta. WCG é o que faz a captura remota sair saturada.
+        public uint ActiveColorMode { get; set; }
+        // Nome do monitor vindo do MESMO path do DisplayConfig — correlação
+        // exata, sem depender de casar listas de fontes diferentes (WMI × DDC),
+        // que trocava os nomes entre monitores iguais.
+        public string FriendlyName { get; set; } = "";
     }
 
     public static class HdrService
@@ -146,6 +153,30 @@ namespace PCOptimizer.Services
             public uint value; // bit0 = enableWcg
         }
 
+        // Win11 24H2: alterna SÓ o HDR. Necessário porque o antigo
+        // SET_ADVANCED_COLOR_STATE não funciona quando o usuário tem
+        // "Gerenciar cores automaticamente para apps" (ACM) ligado.
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DISPLAYCONFIG_SET_HDR_STATE
+        {
+            public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+            public uint value; // bit0 = enableHdr
+        }
+
+        // Nome/caminho do monitor associado a um target do DisplayConfig
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct DISPLAYCONFIG_TARGET_DEVICE_NAME
+        {
+            public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+            public uint flags;
+            public int  outputTechnology;
+            public ushort edidManufactureId;
+            public ushort edidProductCodeId;
+            public uint connectorInstance;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]  public string monitorFriendlyDeviceName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string monitorDevicePath;
+        }
+
         [DllImport("user32.dll")]
         private static extern int GetDisplayConfigBufferSizes(uint flags,
             ref uint numPathArrayElements, ref uint numModeInfoArrayElements);
@@ -180,6 +211,14 @@ namespace PCOptimizer.Services
         private static extern int DisplayConfigSetDeviceInfo(
             ref DISPLAYCONFIG_SET_WCG_STATE setPacket);
 
+        [DllImport("user32.dll")]
+        private static extern int DisplayConfigSetDeviceInfo(
+            ref DISPLAYCONFIG_SET_HDR_STATE setPacket);
+
+        [DllImport("user32.dll")]
+        private static extern int DisplayConfigGetDeviceInfo(
+            ref DISPLAYCONFIG_TARGET_DEVICE_NAME requestPacket);
+
         private const uint QDC_ONLY_ACTIVE_PATHS = 2;
         private const int  GET_ADVANCED_COLOR_INFO  = 9;
         private const int  SET_ADVANCED_COLOR_STATE = 10;
@@ -187,8 +226,10 @@ namespace PCOptimizer.Services
         // Tipo NÃO documentado usado pelo slider "Brilho do conteúdo SDR" das
         // Configurações do Windows (confirmado em implementações open-source).
         private const int  SET_SDR_WHITE_LEVEL      = unchecked((int)0xFFFFFFEE);
+        private const int  GET_TARGET_NAME           = 2;
         // Win11 24H2 (valores sequenciais no enum oficial após o 11)
         private const int  GET_ADVANCED_COLOR_INFO_2 = 15;
+        private const int  SET_HDR_STATE             = 16;
         private const int  SET_WCG_STATE             = 17;
 
         public static List<HdrInfo> GetAllHdrInfo()
@@ -239,8 +280,15 @@ namespace PCOptimizer.Services
                     bool isInternal = tech == unchecked((int)0x80000000)
                                    || tech == 6 || tech == 11 || tech == 13;
 
-                    // ACM/WCG (só existe no Win11 24H2+; falha silenciosa antes disso)
+                    // Estado de cor pela API NOVA (Win11 24H2+), que separa HDR de
+                    // WCG. Quando disponível ela é a fonte da verdade: a antiga
+                    // (tipo 9) reporta "advanced color" ligado tanto em HDR quanto
+                    // em WCG, o que confundia o botão de HDR.
                     bool wcgSup = false, wcgOn = false;
+                    bool hdrSup = hdrResult == 0 && (req.value & 1) != 0;
+                    bool hdrOn  = hdrResult == 0 && (req.value & 2) != 0;
+                    uint colorMode = 0;
+
                     var req2 = new DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2
                     {
                         header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
@@ -253,22 +301,42 @@ namespace PCOptimizer.Services
                     };
                     if (DisplayConfigGetDeviceInfo(ref req2) == 0)
                     {
-                        wcgSup = (req2.value & (1u << 6)) != 0; // wideColorSupported
-                        wcgOn  = (req2.value & (1u << 7)) != 0; // wideColorUserEnabled
+                        hdrSup    = (req2.value & (1u << 4)) != 0; // highDynamicRangeSupported
+                        hdrOn     = (req2.value & (1u << 5)) != 0; // highDynamicRangeUserEnabled
+                        wcgSup    = (req2.value & (1u << 6)) != 0; // wideColorSupported
+                        wcgOn     = (req2.value & (1u << 7)) != 0; // wideColorUserEnabled
+                        colorMode = req2.activeColorMode;          // 0=SDR 1=WCG 2=HDR
                     }
+
+                    // Nome do monitor pelo MESMO path — correlação exata
+                    string friendly = "";
+                    var reqName = new DISPLAYCONFIG_TARGET_DEVICE_NAME
+                    {
+                        header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                        {
+                            type      = GET_TARGET_NAME,
+                            size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_TARGET_DEVICE_NAME>(),
+                            adapterId = path.targetInfo.adapterId,
+                            id        = path.targetInfo.id
+                        }
+                    };
+                    if (DisplayConfigGetDeviceInfo(ref reqName) == 0)
+                        friendly = (reqName.monitorFriendlyDeviceName ?? "").Trim();
 
                     result.Add(new HdrInfo
                     {
                         SourceX       = srcX,
                         SourceY       = srcY,
-                        IsSupported   = hdrResult == 0 && (req.value & 1) != 0,
-                        IsEnabled     = hdrResult == 0 && (req.value & 2) != 0,
+                        IsSupported   = hdrSup,
+                        IsEnabled     = hdrOn,
                         AdapterIdLow  = path.targetInfo.adapterId.LowPart,
                         AdapterIdHigh = path.targetInfo.adapterId.HighPart,
                         TargetId      = path.targetInfo.id,
-                        IsInternal    = isInternal,
-                        WcgSupported  = wcgSup,
-                        WcgEnabled    = wcgOn
+                        IsInternal      = isInternal,
+                        WcgSupported    = wcgSup,
+                        WcgEnabled      = wcgOn,
+                        ActiveColorMode = colorMode,
+                        FriendlyName    = friendly
                     });
                 }
             }
@@ -352,8 +420,34 @@ namespace PCOptimizer.Services
             catch (Exception ex) { Logger.Error(ex, "SetWcgEnabled"); return false; }
         }
 
+        /// <summary>
+        /// Liga/desliga o HDR. Tenta primeiro a API do Win11 24H2 (SET_HDR_STATE):
+        /// a antiga (SET_ADVANCED_COLOR_STATE) NÃO funciona quando o usuário tem
+        /// "Gerenciar cores automaticamente para apps" (ACM) ligado — era por isso
+        /// que o botão de HDR não respondia. Em Windows mais antigos a API nova
+        /// falha e caímos na antiga, que lá funciona normalmente.
+        /// </summary>
         public static bool SetHdrEnabled(uint adapterIdLow, int adapterIdHigh, uint targetId, bool enabled)
         {
+            var luid = new LUID { LowPart = adapterIdLow, HighPart = adapterIdHigh };
+
+            try
+            {
+                var pkt = new DISPLAYCONFIG_SET_HDR_STATE
+                {
+                    header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                    {
+                        type      = SET_HDR_STATE,
+                        size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_SET_HDR_STATE>(),
+                        adapterId = luid,
+                        id        = targetId
+                    },
+                    value = enabled ? 1u : 0u
+                };
+                if (DisplayConfigSetDeviceInfo(ref pkt) == 0) return true;
+            }
+            catch { /* Windows sem a API nova — usa a antiga abaixo */ }
+
             try
             {
                 var req = new DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE
@@ -362,7 +456,7 @@ namespace PCOptimizer.Services
                     {
                         type      = SET_ADVANCED_COLOR_STATE,
                         size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE>(),
-                        adapterId = new LUID { LowPart = adapterIdLow, HighPart = adapterIdHigh },
+                        adapterId = luid,
                         id        = targetId
                     },
                     value = enabled ? 1u : 0u

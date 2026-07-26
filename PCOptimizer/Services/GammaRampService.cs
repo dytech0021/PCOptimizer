@@ -86,6 +86,16 @@ namespace PCOptimizer.Services
                 ramp.Blue[i]  = (ushort)Math.Clamp(baseV * gb, 0, 65535);
             }
 
+            bool any = ApplyRamp(ref ramp);
+
+            if (!any)
+                Logger.Warn($"Gamma ramp recusada pela GPU (γ={gamma:F2} {kelvin}K R={gainR} G={gainG} B={gainB})");
+            return any;
+        }
+
+        /// <summary>Envia a rampa para todos os monitores ativos. true se algum aceitou.</summary>
+        private static bool ApplyRamp(ref GammaRamp ramp)
+        {
             bool any = false;
             try
             {
@@ -104,16 +114,28 @@ namespace PCOptimizer.Services
                     dd.cb = Marshal.SizeOf<DISPLAY_DEVICE>();
                 }
             }
-            catch (Exception ex) { Logger.Error(ex, "GammaRampService.Apply"); }
-
-            if (!any)
-                Logger.Warn($"Gamma ramp recusada pela GPU (γ={gamma:F2} {kelvin}K R={gainR} G={gainG} B={gainB})");
+            catch (Exception ex) { Logger.Error(ex, "GammaRampService.ApplyRamp"); }
             return any;
         }
 
-        /// <summary>Volta tudo ao padrão de fábrica (γ 1.0, 6500 K, ganhos 100%).</summary>
-        public static bool Reset() =>
-            Apply(DefaultGamma, DefaultKelvin, DefaultGain, DefaultGain, DefaultGain);
+        /// <summary>
+        /// Volta a rampa da GPU ao NEUTRO absoluto (rampa linear identidade).
+        /// Não passa por Apply: a aproximação de corpo negro em 6500 K reduz o
+        /// azul em ~2%, ou seja, "neutro" ficava levemente quente.
+        /// </summary>
+        public static bool Reset()
+        {
+            var ramp = new GammaRamp
+            {
+                Red = new ushort[256], Green = new ushort[256], Blue = new ushort[256]
+            };
+            for (int i = 0; i < 256; i++)
+            {
+                ushort v = (ushort)(i * 257); // 0..65535 exato
+                ramp.Red[i] = ramp.Green[i] = ramp.Blue[i] = v;
+            }
+            return ApplyRamp(ref ramp);
+        }
 
         /// <summary>Reaplica os ajustes salvos (chamar no startup). Padrão = nada a fazer.</summary>
         public static void RestoreFromSettings()

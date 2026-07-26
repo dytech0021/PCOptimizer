@@ -33,6 +33,9 @@ namespace PCOptimizer.Views
             var cur = DisplayResolutionService.GetCurrent();
             if (cur != null)
                 TxtResNote.Text = $"Agora: {cur.Value.W}×{cur.Value.H} @ {cur.Value.Hz}Hz";
+
+            string mode = RemoteAccessService.DescribeColorMode();
+            if (mode.Length > 0) TxtColorMode.Text = mode;
             _sync = false;
         }
 

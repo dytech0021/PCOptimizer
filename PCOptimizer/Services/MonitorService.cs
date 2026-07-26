@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Management;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -499,6 +500,11 @@ namespace PCOptimizer.Services
                        : edid.FriendlyName)
                     : "";
 
+                // O nome vindo do DisplayConfig (hdr.FriendlyName, resolvido mais
+                // abaixo) tem prioridade: vem do MESMO path que os dados de HDR,
+                // então é impossível trocar entre monitores. A via WMI (fila por
+                // PnP ID) invertia os nomes entre monitores IGUAIS, porque casava
+                // duas enumerações diferentes só pela ordem.
                 string name = !string.IsNullOrEmpty(bestFriendly) ? bestFriendly
                             : !ddcGeneric                          ? ddcDesc
                             : !string.IsNullOrEmpty(edid.Manufacturer) ? $"Monitor {edid.Manufacturer}"
@@ -536,6 +542,15 @@ namespace PCOptimizer.Services
                     deviceKey = mInfoEx.szDevice;
                 }
                 var hdr = hdrInfos.Find(h => h.SourceX == srcX && h.SourceY == srcY);
+
+                // Nome exato do DisplayConfig (mesmo path do HDR) vence a via WMI
+                if (!string.IsNullOrEmpty(hdr?.FriendlyName))
+                {
+                    name = hdr!.FriendlyName;
+                    if (!string.IsNullOrEmpty(edid.Manufacturer) &&
+                        !name.StartsWith(edid.Manufacturer, StringComparison.OrdinalIgnoreCase))
+                        name = $"{edid.Manufacturer} {name}";
+                }
 
                 // WMI fallback SÓ para o painel interno do notebook — WmiSetBrightness
                 // não controla monitores externos; aplicá-lo neles fazia a barra do
@@ -585,6 +600,19 @@ namespace PCOptimizer.Services
                 });
                 // Handle fica vivo no cache para os sets serem instantâneos
             }
+
+            // Monitores IGUAIS geram o mesmo HardwareId (vem do modelo do EDID) —
+            // aí os apelidos que o usuário salva se misturam entre eles. Só nesse
+            // caso desempata pelo id do conector, preservando os apelidos já
+            // salvos de quem não tem duplicata.
+            var dupes = entries.GroupBy(e => e.HardwareId)
+                               .Where(g => g.Count() > 1)
+                               .Select(g => g.Key)
+                               .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (dupes.Count > 0)
+                foreach (var e in entries)
+                    if (dupes.Contains(e.HardwareId))
+                        e.HardwareId = $"{e.HardwareId}#{e.HdrTargetId}";
 
             return entries;
         }
