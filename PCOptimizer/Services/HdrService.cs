@@ -81,7 +81,9 @@ namespace PCOptimizer.Services
         {
             [FieldOffset(0)]  public uint infoType;         // 1=source, 2=target
             [FieldOffset(4)]  public uint id;
-            // adapterId LUID at offsets 8–15 (unused here)
+            // adapterId (LUID) — usado para endereçar o target nas chamadas de HDR
+            [FieldOffset(8)]  public uint adapterIdLow;
+            [FieldOffset(12)] public int  adapterIdHigh;
             [FieldOffset(16)] public uint sourceWidth;
             [FieldOffset(20)] public uint sourceHeight;
             [FieldOffset(24)] public int  pixelFormat;
@@ -133,7 +135,11 @@ namespace PCOptimizer.Services
             public byte finalValue; // 1 = aplica de fato (0 = prévia durante arraste)
         }
 
-        // Win11 24H2: estado de cor avançado detalhado (HDR e WCG separados)
+        // Win11 24H2: estado de cor avançado detalhado (HDR e WCG separados).
+        // ATENÇÃO ao tamanho: 36 bytes (header 20 + value 4 + colorEncoding 4 +
+        // bitsPerColorChannel 4 + activeColorMode 4). O Windows valida o tamanho
+        // EXATO — declarar sem os dois campos do meio fazia a chamada falhar
+        // sempre, e o app caía na API antiga (que não distingue HDR de WCG).
         [StructLayout(LayoutKind.Sequential)]
         private struct DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2
         {
@@ -142,7 +148,9 @@ namespace PCOptimizer.Services
             // bit3 limitedByPolicy, bit4 hdrSupported, bit5 hdrUserEnabled,
             // bit6 wideColorSupported, bit7 wideColorUserEnabled
             public uint value;
-            public uint activeColorMode;
+            public uint colorEncoding;
+            public uint bitsPerColorChannel;
+            public uint activeColorMode; // 0=SDR 1=WCG 2=HDR
         }
 
         // Win11 24H2: liga/desliga o ACM ("gerenciar cores automaticamente")
@@ -261,14 +269,30 @@ namespace PCOptimizer.Services
                         srcY = modes[modeIdx].sourcePositionY;
                     }
 
+                    // Endereça o target pelo MODE INFO quando disponível — é assim
+                    // que as implementações que funcionam no 24H2 fazem; o
+                    // path.targetInfo nem sempre casa com o que a API de cor espera.
+                    var tAdapter = path.targetInfo.adapterId;
+                    uint tId     = path.targetInfo.id;
+                    uint tIdx    = path.targetInfo.modeInfoIdx;
+                    if (tIdx < numModes && modes[tIdx].infoType == 2) // 2 = target mode
+                    {
+                        tAdapter = new LUID
+                        {
+                            LowPart  = modes[tIdx].adapterIdLow,
+                            HighPart = modes[tIdx].adapterIdHigh
+                        };
+                        tId = modes[tIdx].id;
+                    }
+
                     var req = new DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO
                     {
                         header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
                         {
                             type      = GET_ADVANCED_COLOR_INFO,
                             size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO>(),
-                            adapterId = path.targetInfo.adapterId,
-                            id        = path.targetInfo.id
+                            adapterId = tAdapter,
+                            id        = tId
                         }
                     };
 
@@ -295,8 +319,8 @@ namespace PCOptimizer.Services
                         {
                             type      = GET_ADVANCED_COLOR_INFO_2,
                             size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2>(),
-                            adapterId = path.targetInfo.adapterId,
-                            id        = path.targetInfo.id
+                            adapterId = tAdapter,
+                            id        = tId
                         }
                     };
                     if (DisplayConfigGetDeviceInfo(ref req2) == 0)
@@ -316,8 +340,8 @@ namespace PCOptimizer.Services
                         {
                             type      = GET_TARGET_NAME,
                             size      = (uint)Marshal.SizeOf<DISPLAYCONFIG_TARGET_DEVICE_NAME>(),
-                            adapterId = path.targetInfo.adapterId,
-                            id        = path.targetInfo.id
+                            adapterId = tAdapter,
+                            id        = tId
                         }
                     };
                     if (DisplayConfigGetDeviceInfo(ref reqName) == 0)
@@ -329,9 +353,9 @@ namespace PCOptimizer.Services
                         SourceY       = srcY,
                         IsSupported   = hdrSup,
                         IsEnabled     = hdrOn,
-                        AdapterIdLow  = path.targetInfo.adapterId.LowPart,
-                        AdapterIdHigh = path.targetInfo.adapterId.HighPart,
-                        TargetId      = path.targetInfo.id,
+                        AdapterIdLow  = tAdapter.LowPart,
+                        AdapterIdHigh = tAdapter.HighPart,
+                        TargetId      = tId,
                         IsInternal      = isInternal,
                         WcgSupported    = wcgSup,
                         WcgEnabled      = wcgOn,
