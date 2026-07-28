@@ -49,6 +49,10 @@ namespace PCOptimizer.Services
         public bool RemotePrevWinNightLight { get; set; }
         // Telas que estavam com ACM/WCG ("cores automáticas") ligado
         public string RemoteWcgPositions { get; set; } = "";
+        // Vigia: manter HDR/ACM desligados enquanto o modo remoto estiver ativo
+        // (o Windows os religa sozinho a cada reconfiguração de vídeo)
+        public bool RemoteEnforceHdrOff { get; set; }
+        public bool RemoteEnforceAcmOff { get; set; }
 
         // Resolução 1080p para acesso remoto: guarda a nativa para reversão
         public bool RemoteResActive { get; set; }
