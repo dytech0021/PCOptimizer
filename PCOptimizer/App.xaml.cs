@@ -35,8 +35,20 @@ namespace PCOptimizer
             // Se o PC reiniciou dentro do Modo Acesso Remoto, o vigia volta junto
             // — senão o Windows religaria HDR/gamut largo e a imagem remota
             // voltaria a sair saturada.
+            // A correção automática de cor foi removida (piscava a tela em loop).
+            // Desliga a opção herdada de versões antigas para ninguém continuar
+            // preso no ciclo — agora existe um botão manual na janela 🔬.
+            if (SettingsService.Current.KeepSdrMode)
+            {
+                SettingsService.Current.KeepSdrMode = false;
+                SettingsService.Save();
+            }
+
             if (RemoteAccessService.GuardNeeded())
+            {
+                RemoteAccessService.ResetGuardBudget();
                 RemoteAccessService.StartGuard();
+            }
 
             TrayService.ShowBrightnessRequested += ToggleBrightnessWindow;
             TrayService.ExitRequested += Shutdown;
