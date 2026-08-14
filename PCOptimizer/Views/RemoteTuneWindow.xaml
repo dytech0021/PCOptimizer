@@ -84,16 +84,9 @@
                             Background="#22C55E" Foreground="#05210F"
                             Click="BtnFixColor_Click"/>
 
-                    <CheckBox x:Name="ChkKeepHdrOff" Margin="0,10,0,0"
-                              Foreground="{DynamicResource TextPrimary}"
-                              Click="ChkKeepHdrOff_Click">
-                        <StackPanel Margin="4,0,0,0">
-                            <TextBlock Text="Manter o HDR desligado" FontSize="12"
-                                       FontWeight="SemiBold" Foreground="#86EFAC"/>
-                            <TextBlock FontSize="10" TextWrapping="Wrap" Foreground="#6EE7B7"
-                                       Text="Reconectar o acesso remoto religa o HDR — com isto marcado o app desliga de novo em até 5s, sozinho. Só desliga, nunca liga."/>
-                        </StackPanel>
-                    </CheckBox>
+                    <TextBlock FontSize="9" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Foreground="#4ADE80" Opacity="0.85"
+                               Text="Sem correção automática: neste PC o Windows recusa o comando de HDR do app, e o atalho Win+Alt+B só ALTERNA — automatizá-lo fazia a tela piscar entre normal e saturado. Use o botão acima quando precisar."/>
                 </StackPanel>
             </Border>
 

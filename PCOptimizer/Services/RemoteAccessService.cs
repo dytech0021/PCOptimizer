@@ -148,7 +148,13 @@ namespace PCOptimizer.Services
         /// se ela for recusada nesta máquina, (2) o atalho nativo Win+Alt+B, que é
         /// o mesmo caminho da interface do Windows. Devolve o que aconteceu.
         /// </summary>
-        public static async Task<(bool Ok, string Detail)> EnsureHdrOffAsync()
+        /// <param name="allowHotkey">
+        /// Permite recorrer ao Win+Alt+B. SÓ para ação manual do usuário: esse
+        /// atalho ALTERNA o HDR (não desliga), então se ele agir numa tela que já
+        /// estava sem HDR, LIGA — e num vigia automático isso vira cabo de guerra,
+        /// com a tela piscando entre normal e saturado.
+        /// </param>
+        public static async Task<(bool Ok, string Detail)> EnsureHdrOffAsync(bool allowHotkey)
         {
             if (!HdrService.AnyHdrOn()) return (true, "HDR já estava desligado");
 
@@ -165,7 +171,10 @@ namespace PCOptimizer.Services
             await Task.Delay(1500);
             if (!HdrService.AnyHdrOn()) return (true, "HDR desligado pela API");
 
-            // A API não pegou nesta máquina — usa o atalho do Windows
+            if (!allowHotkey)
+                return (false, $"A API recusou desligar o HDR. {detail}");
+
+            // Último recurso, e só a pedido do usuário
             HdrService.PressHdrHotkey();
             await Task.Delay(2000);
             if (!HdrService.AnyHdrOn())
@@ -183,7 +192,7 @@ namespace PCOptimizer.Services
                 if (targets.Count == 0) return "Nenhuma tela com suporte a HDR";
 
                 // 1) Desliga o HDR (API e, se ela falhar, o atalho do Windows)
-                var (ok, detail) = await EnsureHdrOffAsync();
+                var (ok, detail) = await EnsureHdrOffAsync(allowHotkey: true);
 
                 // 2) Com o HDR fora do caminho, desliga o gamut largo
                 foreach (var h in HdrService.GetAllHdrInfo())
@@ -272,15 +281,23 @@ namespace PCOptimizer.Services
                     if (wantHdrOff && HdrService.AnyHdrOn())
                     {
                         Logger.Info("Vigia: HDR foi religado (reconexão do acesso remoto?) — desligando");
-                        var (ok, detail) = EnsureHdrOffAsync().GetAwaiter().GetResult();
+                        // allowHotkey: false — o vigia NUNCA usa Win+Alt+B. Ele
+                        // alterna, e num laço automático acaba LIGANDO o HDR de
+                        // volta: era isso que piscava entre normal e saturado.
+                        var (ok, detail) = EnsureHdrOffAsync(allowHotkey: false)
+                                           .GetAwaiter().GetResult();
                         Logger.Info("Vigia: " + detail);
                         acted = true;
                         if (!ok)
                         {
-                            // Não adianta insistir a cada 5 s se nem a API nem o
-                            // atalho funcionam — recua e deixa registrado.
+                            // A API é recusada nesta máquina: insistir não resolve.
+                            // Desliga a opção e avisa no log, em vez de ficar tentando.
+                            s.KeepHdrOff = false;
+                            SettingsService.Save();
                             _backoffUntil = now.AddMinutes(BackoffMinutes);
-                            Logger.Warn("Vigia: sem meio de desligar o HDR nesta máquina — pausando");
+                            Logger.Warn("Vigia: a API de HDR é recusada neste PC — opção " +
+                                        "'Manter o HDR desligado' desativada. Use o botão " +
+                                        "manual 'Corrigir cor agora'.");
                             return;
                         }
                     }
