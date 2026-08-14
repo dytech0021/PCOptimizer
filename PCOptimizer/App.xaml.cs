@@ -35,8 +35,7 @@ namespace PCOptimizer
             // Se o PC reiniciou dentro do Modo Acesso Remoto, o vigia volta junto
             // — senão o Windows religaria HDR/gamut largo e a imagem remota
             // voltaria a sair saturada.
-            if (SettingsService.Current.RemoteEnforceHdrOff ||
-                SettingsService.Current.RemoteEnforceAcmOff)
+            if (RemoteAccessService.GuardNeeded())
                 RemoteAccessService.StartGuard();
 
             TrayService.ShowBrightnessRequested += ToggleBrightnessWindow;

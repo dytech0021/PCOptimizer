@@ -134,22 +134,30 @@ namespace PCOptimizer.Services
 
         private static void StopGuard() => _guard?.Stop();
 
+        /// <summary>O vigia precisa estar rodando?</summary>
+        public static bool GuardNeeded()
+        {
+            var s = SettingsService.Current;
+            return s.KeepSdrMode
+                || (s.RemoteModeActive && (s.RemoteEnforceHdrOff || s.RemoteEnforceAcmOff));
+        }
+
+        // Evita ficar repetindo o ciclo de HDR se ele não estiver resolvendo
+        private static int _wcgFixAttempts;
+
         private static void EnforceTick()
         {
             var s = SettingsService.Current;
-            if (!s.RemoteModeActive || (!s.RemoteEnforceHdrOff && !s.RemoteEnforceAcmOff))
-            {
-                StopGuard();
-                return;
-            }
+            if (!GuardNeeded()) { StopGuard(); return; }
             if (_guardBusy) return;
             _guardBusy = true;
 
             // Fora da thread de UI: alternar HDR reconfigura o vídeo e trava a janela.
-            _ = Task.Run(() =>
+            _ = Task.Run(async () =>
             {
                 try
                 {
+                    bool inWcg = false;
                     foreach (var h in HdrService.GetAllHdrInfo())
                     {
                         if (s.RemoteEnforceHdrOff && h.IsSupported && h.IsEnabled)
@@ -157,16 +165,61 @@ namespace PCOptimizer.Services
                             Logger.Info("Vigia: Windows religou o HDR — desligando de novo");
                             HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
                         }
-                        if (s.RemoteEnforceAcmOff && h.WcgSupported && h.WcgEnabled)
+                        if ((s.RemoteEnforceAcmOff || s.KeepSdrMode) && h.WcgSupported && h.WcgEnabled)
                         {
                             Logger.Info("Vigia: Windows religou o gamut largo — desligando de novo");
                             HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
                         }
+                        // WCG = o estado que sai saturado na captura remota
+                        if (h.ActiveColorMode == 1) inWcg = true;
                     }
+
+                    if (s.KeepSdrMode && inWcg)
+                        await FixWcgAsync();
+                    else if (!inWcg)
+                        _wcgFixAttempts = 0; // voltou ao normal — zera o contador
                 }
                 catch (Exception ex) { Logger.Error(ex, "RemoteAccess.EnforceTick"); }
                 finally { _guardBusy = false; }
             });
+        }
+
+        /// <summary>
+        /// Tira a tela do modo WCG (gamut largo) repetindo o que funciona na mão:
+        /// LIGA o HDR e DESLIGA em seguida — só esse ciclo faz o Windows assentar
+        /// em SDR puro. Desligar o HDR direto (quando já está desligado) não muda
+        /// nada, e é por isso que a saturação voltava a cada reconexão.
+        /// </summary>
+        private static async Task FixWcgAsync()
+        {
+            if (_wcgFixAttempts >= 3)
+            {
+                // Já tentou o bastante: evita ficar piscando a tela em loop
+                return;
+            }
+            _wcgFixAttempts++;
+            Logger.Info($"Vigia: tela em WCG — ciclo HDR on/off (tentativa {_wcgFixAttempts})");
+
+            try
+            {
+                var targets = HdrService.GetAllHdrInfo()
+                    .Where(h => h.IsSupported && h.ActiveColorMode == 1).ToList();
+                if (targets.Count == 0) return;
+
+                foreach (var h in targets)
+                    HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, true);
+                await Task.Delay(1800); // o vídeo precisa entrar em HDR de fato
+
+                foreach (var h in targets)
+                    HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
+                await Task.Delay(1500);
+
+                // Com o HDR fora do caminho, o ACM pode ser desligado de vez
+                foreach (var h in HdrService.GetAllHdrInfo())
+                    if (h.WcgSupported && h.WcgEnabled)
+                        HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
+            }
+            catch (Exception ex) { Logger.Error(ex, "FixWcgAsync"); }
         }
 
         /// <summary>Reverte tudo: resolução → telas → HDR → ACM → filtros.</summary>

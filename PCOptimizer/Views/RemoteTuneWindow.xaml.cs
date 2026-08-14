@@ -36,7 +36,22 @@ namespace PCOptimizer.Views
 
             string mode = RemoteAccessService.DescribeColorMode();
             if (mode.Length > 0) TxtColorMode.Text = mode;
+
+            ChkKeepSdr.IsChecked = SettingsService.Current.KeepSdrMode;
             _sync = false;
+        }
+
+        private void ChkKeepSdr_Click(object sender, RoutedEventArgs e)
+        {
+            if (_sync) return;
+            bool on = ChkKeepSdr.IsChecked == true;
+            SettingsService.Current.KeepSdrMode = on;
+            SettingsService.Save();
+
+            if (on) RemoteAccessService.StartGuard();
+            TxtTuneStatus.Text = on
+                ? "Vigia ligado — a tela volta ao SDR sozinha em até 5s se sair dele"
+                : "Vigia desligado";
         }
 
         private async Task RunAsync(string busy, System.Func<Task<bool>> action, string doneMsg)

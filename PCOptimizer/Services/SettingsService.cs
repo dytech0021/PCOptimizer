@@ -54,6 +54,10 @@ namespace PCOptimizer.Services
         public bool RemoteEnforceHdrOff { get; set; }
         public bool RemoteEnforceAcmOff { get; set; }
 
+        // Mantém a tela em SDR puro o tempo todo (independe do modo remoto):
+        // corrige sozinho a saturação que volta a cada reconexão do acesso remoto
+        public bool KeepSdrMode { get; set; }
+
         // Modo 16:9 com barras pretas (jogos) por monitor ultrawide:
         // HardwareId → "LARGURAxALTURAxHZ" da resolução original, para reverter
         public Dictionary<string, string> GameArPrevMode { get; set; } = new();
