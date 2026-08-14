@@ -617,7 +617,12 @@ namespace PCOptimizer.Services
             if (dupes.Count > 0)
                 foreach (var e in entries)
                     if (dupes.Contains(e.HardwareId))
-                        e.HardwareId = $"{e.HardwareId}#{e.HdrTargetId}";
+                        // TargetId é 0 quando a correlação por posição falha — aí
+                        // dois monitores iguais receberiam o MESMO sufixo e a
+                        // colisão continuaria. O índice desempata nesse caso.
+                        e.HardwareId = e.HdrTargetId != 0
+                            ? $"{e.HardwareId}#{e.HdrTargetId}"
+                            : $"{e.HardwareId}#i{e.Index}";
 
             return entries;
         }
