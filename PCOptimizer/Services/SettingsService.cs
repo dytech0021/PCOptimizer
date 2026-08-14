@@ -54,6 +54,10 @@ namespace PCOptimizer.Services
         public bool RemoteEnforceHdrOff { get; set; }
         public bool RemoteEnforceAcmOff { get; set; }
 
+        // Modo 16:9 com barras pretas (jogos) por monitor ultrawide:
+        // HardwareId → "LARGURAxALTURAxHZ" da resolução original, para reverter
+        public Dictionary<string, string> GameArPrevMode { get; set; } = new();
+
         // Resolução 1080p para acesso remoto: guarda a nativa para reversão
         public bool RemoteResActive { get; set; }
         public int RemotePrevWidth { get; set; }

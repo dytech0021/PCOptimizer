@@ -68,6 +68,50 @@ namespace PCOptimizer.Services
             catch { return ""; }
         }
 
+        /// <summary>Resolução atual de um monitor específico (\\.\DISPLAYn).</summary>
+        public static (int W, int H, int Hz)? GetCurrentFor(string device)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(device)) return null;
+                var dm = NewDevMode();
+                if (!EnumDisplaySettings(device, ENUM_CURRENT_SETTINGS, ref dm)) return null;
+                return (dm.dmPelsWidth, dm.dmPelsHeight, dm.dmDisplayFrequency);
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Melhor modo 16:9 suportado por esse monitor, preferindo a mesma altura
+        /// do modo atual — num 2560×1080 (21:9) isso dá 1920×1080. null se não houver.
+        /// </summary>
+        public static (int W, int H)? FindBest169(string device)
+        {
+            try
+            {
+                var cur = GetCurrentFor(device);
+                if (cur == null) return null;
+
+                (int W, int H)? best = null;
+                var probe = NewDevMode();
+                for (int i = 0; EnumDisplaySettings(device, i, ref probe); i++)
+                {
+                    int w = probe.dmPelsWidth, h = probe.dmPelsHeight;
+                    if (h <= 0 || w <= 0) continue;
+                    // 16:9 com tolerância (evita erro de arredondamento)
+                    if (Math.Abs(w * 9.0 / h - 16.0) > 0.02) continue;
+                    if (h > cur.Value.H) continue;          // não passa da altura do painel
+                    if (best == null || w > best.Value.W) best = (w, h);
+                }
+                return best;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Aplica width×height a um monitor específico.</summary>
+        public static bool SetFor(string device, int width, int height, int preferHz = 0)
+            => SetMode(device, width, height, preferHz);
+
         private static DEVMODE NewDevMode() =>
             new() { dmSize = (short)Marshal.SizeOf<DEVMODE>() };
 
@@ -131,9 +175,11 @@ namespace PCOptimizer.Services
         /// refresh exato; senão (ou se não existir) usa o MAIOR disponível.
         /// </summary>
         private static bool SetPrimary(int width, int height, int preferHz = 0)
+            => SetMode(PrimaryDevice(), width, height, preferHz);
+
+        private static bool SetMode(string dev, int width, int height, int preferHz = 0)
         {
-            string dev = PrimaryDevice();
-            if (dev.Length == 0) return false;
+            if (string.IsNullOrEmpty(dev)) return false;
 
             // Enumera os modos suportados e escolhe o refresh certo — aplicar um
             // modo que o monitor não suporta faria a tela apagar até o timeout.

@@ -91,6 +91,11 @@ namespace PCOptimizer.Services
         private static extern bool SetVCPFeature(IntPtr hMonitor, byte vcpCode, uint newValue);
 
         private const byte VCP_LUMINANCE = 0x10;
+        // VCP 0x86 "Display Scaling": 0x02 = imagem máxima SEM distorcer a
+        // proporção (gera as barras pretas), 0x03 = estica para preencher.
+        private const byte VCP_DISPLAY_SCALING = 0x86;
+        private const uint SCALING_ASPECT  = 0x02;
+        private const uint SCALING_STRETCH = 0x03;
 
         // ── Display device info P/Invoke (for PnP ID correlation) ─────────────
 
@@ -636,6 +641,20 @@ namespace PCOptimizer.Services
                 : (uint)percent;
             return SetMonitorBrightness(m.Handle, target)
                 || SetVCPFeature(m.Handle, VCP_LUMINANCE, target);
+        }
+
+        /// <summary>
+        /// Pede ao MONITOR para preservar a proporção da imagem (barras pretas)
+        /// ou esticar para preencher a tela, via DDC/CI (VCP 0x86). Nem todo
+        /// monitor implementa esse código — retorna false quando não aceita, e aí
+        /// resta ajustar no menu do monitor ou no painel da placa de vídeo.
+        /// </summary>
+        public static bool SetAspectScaling(int monitorIndex, bool preserveAspect)
+        {
+            var monitors = GetCachedMonitors();
+            if (monitorIndex < 0 || monitorIndex >= monitors.Count) return false;
+            return SetVCPFeature(monitors[monitorIndex].Handle, VCP_DISPLAY_SCALING,
+                preserveAspect ? SCALING_ASPECT : SCALING_STRETCH);
         }
 
         public static bool SetContrastForIndex(int monitorIndex, int percent)

@@ -32,6 +32,7 @@ namespace PCOptimizer.Views
             public bool BrightnessBusy;
             public int PendingContrast = -1;
             public bool ContrastBusy;
+            public string HardwareId { get; init; } = "";
             public bool SupportsHdr { get; init; }
             public bool HdrEnabled { get; set; }
             public uint HdrAdapterIdLow { get; init; }
@@ -503,6 +504,7 @@ namespace PCOptimizer.Views
                 Index = entry.Index, IsWmi = entry.IsWmi,
                 IsSoftware   = entry.IsSoftware,
                 DeviceKey    = entry.DeviceKey,
+                HardwareId   = entry.HardwareId,
                 ScreenLeft   = entry.ScreenLeft,
                 ScreenTop    = entry.ScreenTop,
                 ScreenWidth  = entry.ScreenWidth,
@@ -519,6 +521,11 @@ namespace PCOptimizer.Views
 
             if (entry.SupportsHdr)
                 container.Children.Add(MakeHdrButton(mc));
+
+            // Ultrawide (21:9 e mais largos): oferece o modo 16:9 com barras
+            // pretas, usado em CS/R6 e afins.
+            if (mc.ScreenHeight > 0 && mc.ScreenWidth / (double)mc.ScreenHeight > 2.0)
+                container.Children.Add(MakeGameArButton(mc));
 
             // Events — aplica o primeiro valor NA HORA; durante o arraste, envia
             // sempre o valor mais recente assim que o anterior termina (sem debounce)
@@ -889,6 +896,102 @@ namespace PCOptimizer.Views
                 }
             };
             return btn;
+        }
+
+        /// <summary>
+        /// Modo 16:9 com barras pretas para jogos competitivos (CS, R6…) em
+        /// monitores ultrawide: troca a resolução para o melhor modo 16:9 e pede
+        /// ao monitor, por DDC/CI, para NÃO esticar a imagem — o que sobra das
+        /// laterais fica preto. Reversível pelo mesmo botão.
+        /// </summary>
+        private Button MakeGameArButton(MonitorControl mc)
+        {
+            var btn = new Button
+            {
+                FontSize = 11,
+                Margin = new Thickness(0, 4, 0, 0),
+                Padding = new Thickness(12, 5, 12, 5),
+                Cursor = Cursors.Hand,
+                BorderThickness = new Thickness(1),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                ToolTip = "Joga em 16:9 com barras pretas nas laterais (CS, R6…)"
+            };
+
+            bool active = SettingsService.Current.GameArPrevMode.ContainsKey(mc.HardwareId);
+            ApplyGameArButtonStyle(btn, active);
+
+            btn.Click += async (_, _) =>
+            {
+                btn.IsEnabled = false;
+                try
+                {
+                    var s = SettingsService.Current;
+                    if (!s.GameArPrevMode.TryGetValue(mc.HardwareId, out var prev))
+                    {
+                        var target = DisplayResolutionService.FindBest169(mc.DeviceKey);
+                        if (target == null)
+                        {
+                            TxtStatus.Text = "Este monitor não oferece um modo 16:9";
+                            return;
+                        }
+                        var cur = DisplayResolutionService.GetCurrentFor(mc.DeviceKey);
+                        if (cur == null) { TxtStatus.Text = "Não consegui ler a resolução"; return; }
+
+                        TxtStatus.Text = $"Aplicando {target.Value.W}×{target.Value.H}...";
+                        bool ok = await Task.Run(() => DisplayResolutionService.SetFor(
+                            mc.DeviceKey, target.Value.W, target.Value.H, cur.Value.Hz));
+                        if (!ok) { TxtStatus.Text = "O monitor não aceitou o modo 16:9"; return; }
+
+                        s.GameArPrevMode[mc.HardwareId] = $"{cur.Value.W}x{cur.Value.H}x{cur.Value.Hz}";
+                        SettingsService.Save();
+
+                        // Pede ao monitor para preservar a proporção (barras pretas).
+                        bool ddc = await Task.Run(() => MonitorService.SetAspectScaling(mc.Index, true));
+                        TxtStatus.Text = ddc
+                            ? $"16:9 ({target.Value.W}×{target.Value.H}) com barras pretas"
+                            : $"16:9 aplicado. Se esticar, ajuste a proporção no menu do " +
+                              "monitor ou no painel da placa de vídeo";
+                        ApplyGameArButtonStyle(btn, true);
+                    }
+                    else
+                    {
+                        var p = prev.Split('x');
+                        if (p.Length == 3 && int.TryParse(p[0], out int w) &&
+                            int.TryParse(p[1], out int h) && int.TryParse(p[2], out int hz))
+                        {
+                            TxtStatus.Text = "Voltando ao ultrawide...";
+                            await Task.Run(() => DisplayResolutionService.SetFor(mc.DeviceKey, w, h, hz));
+                            await Task.Run(() => MonitorService.SetAspectScaling(mc.Index, false));
+                        }
+                        s.GameArPrevMode.Remove(mc.HardwareId);
+                        SettingsService.Save();
+                        TxtStatus.Text = "Resolução ultrawide restaurada";
+                        ApplyGameArButtonStyle(btn, false);
+                    }
+
+                    await Task.Delay(1500);
+                    await ReloadMonitorsAsync();
+                }
+                finally { btn.IsEnabled = true; }
+            };
+            return btn;
+        }
+
+        private static void ApplyGameArButtonStyle(Button btn, bool active)
+        {
+            btn.Content = active ? "🎮 Voltar ao ultrawide" : "🎮 16:9 com barras pretas";
+            if (active)
+            {
+                btn.Background  = new SolidColorBrush(Color.FromRgb(0x2A, 0x1E, 0x05));
+                btn.Foreground  = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF));
+                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x5A, 0x42, 0x10));
+            }
+            else
+            {
+                btn.Background  = Brushes.Transparent;
+                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x45));
+                btn.SetResourceReference(Control.ForegroundProperty, "TextSecondary");
+            }
         }
 
         private static void ApplyHdrButtonStyle(Button btn, bool enabled)
