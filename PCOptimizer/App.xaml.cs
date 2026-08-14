@@ -52,6 +52,10 @@ namespace PCOptimizer
                 RemoteAccessService.StartGuard();
             }
 
+            // Correção de cor por evento de mudança de vídeo (acesso remoto)
+            if (SettingsService.Current.AutoFixColorOnDisplayChange)
+                RemoteAccessService.SetAutoFixHook(true);
+
             TrayService.ShowBrightnessRequested += ToggleBrightnessWindow;
             TrayService.ExitRequested += Shutdown;
             HotkeyService.HotkeyPressed += ToggleBrightnessWindow;

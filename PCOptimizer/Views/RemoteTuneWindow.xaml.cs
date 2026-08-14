@@ -37,7 +37,21 @@ namespace PCOptimizer.Views
             string mode = RemoteAccessService.DescribeColorMode();
             if (mode.Length > 0) TxtColorMode.Text = mode;
 
+            ChkAutoFix.IsChecked = SettingsService.Current.AutoFixColorOnDisplayChange;
             _sync = false;
+        }
+
+        private void ChkAutoFix_Click(object sender, RoutedEventArgs e)
+        {
+            if (_sync) return;
+            bool on = ChkAutoFix.IsChecked == true;
+            SettingsService.Current.AutoFixColorOnDisplayChange = on;
+            SettingsService.Save();
+            RemoteAccessService.SetAutoFixHook(on);
+
+            TxtTuneStatus.Text = on
+                ? "Ligado — ao reconectar o acesso remoto, a cor se corrige sozinha"
+                : "Desligado — use o botão acima quando precisar";
         }
 
         private async void BtnFixColor_Click(object sender, RoutedEventArgs e)

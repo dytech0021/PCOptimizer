@@ -58,9 +58,13 @@ namespace PCOptimizer.Services
         // o app conseguir desligá-la em quem atualizou de uma versão antiga
         public bool KeepSdrMode { get; set; }
 
-        // Mantém o HDR desligado: o acesso remoto religa o HDR ao reconectar, e o
-        // vigia desliga de novo. Só DESLIGA (nunca liga), então não oscila sozinho.
+        // Removida na v1.72.1 (o vigia por tempo brigava com o Windows e piscava
+        // a tela) — mantida só para o app conseguir desligá-la em quem atualizou
         public bool KeepHdrOff { get; set; }
+
+        // Corrige a cor automaticamente quando o vídeo muda (é o que acontece ao
+        // conectar o acesso remoto). Por EVENTO, não por varredura periódica.
+        public bool AutoFixColorOnDisplayChange { get; set; }
 
         // Modo 16:9 com barras pretas (jogos) por monitor ultrawide:
         // HardwareId → "LARGURAxALTURAxHZ" da resolução original, para reverter

@@ -184,6 +184,69 @@ namespace PCOptimizer.Services
                            "O atalho Win+Alt+B também não pegou.");
         }
 
+        // ── Correção automática por EVENTO ───────────────────────────────────
+        // Conectar o acesso remoto reconfigura o vídeo e religa o HDR. Em vez de
+        // ficar verificando de tempos em tempos (o que virava cabo de guerra e
+        // piscava a tela), o app reage ao EVENTO de mudança de vídeo: uma
+        // correção por evento, com trava enquanto corrige e carência depois.
+        private static bool _autoHooked;
+        private static bool _autoBusy;
+        private static DateTime _autoLastFix = DateTime.MinValue;
+        private const int AutoCooldownSeconds = 30;
+
+        /// <summary>Liga/desliga a escuta do evento de mudança de vídeo.</summary>
+        public static void SetAutoFixHook(bool on)
+        {
+            try
+            {
+                if (on && !_autoHooked)
+                {
+                    Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+                    _autoHooked = true;
+                    Logger.Info("AutoFix de cor: escutando mudanças de vídeo");
+                }
+                else if (!on && _autoHooked)
+                {
+                    Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+                    _autoHooked = false;
+                    Logger.Info("AutoFix de cor: parou de escutar");
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, "SetAutoFixHook"); }
+        }
+
+        private static void OnDisplaySettingsChanged(object? sender, EventArgs e)
+        {
+            if (!SettingsService.Current.AutoFixColorOnDisplayChange) return;
+            if (_autoBusy) return;   // a nossa própria correção dispara este evento
+            if ((DateTime.Now - _autoLastFix).TotalSeconds < AutoCooldownSeconds) return;
+            _ = HandleDisplayChangeAsync();
+        }
+
+        private static async Task HandleDisplayChangeAsync()
+        {
+            _autoBusy = true;
+            try
+            {
+                await Task.Delay(2500); // deixa o vídeo assentar antes de olhar
+
+                // Só age se a tela REALMENTE está no estado que satura o remoto
+                uint mode = PrimaryColorMode();
+                if (mode != 1 && mode != 2) return;   // já está em SDR
+
+                Logger.Info($"AutoFix: vídeo mudou e a tela está em " +
+                            $"{(mode == 2 ? "HDR" : "WCG")} — corrigindo");
+                string result = await FixColorNowAsync();
+                Logger.Info("AutoFix: " + result);
+            }
+            catch (Exception ex) { Logger.Error(ex, "HandleDisplayChangeAsync"); }
+            finally
+            {
+                _autoLastFix = DateTime.Now;   // carência conta a partir do FIM
+                _autoBusy = false;
+            }
+        }
+
         public static async Task<string> FixColorNowAsync()
         {
             try
