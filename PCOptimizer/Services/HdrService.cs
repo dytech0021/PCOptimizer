@@ -461,8 +461,18 @@ namespace PCOptimizer.Services
         /// falha e caímos na antiga, que lá funciona normalmente.
         /// </summary>
         public static bool SetHdrEnabled(uint adapterIdLow, int adapterIdHigh, uint targetId, bool enabled)
+            => SetHdrEnabledEx(adapterIdLow, adapterIdHigh, targetId, enabled, out _);
+
+        /// <summary>
+        /// Igual ao SetHdrEnabled, mas devolve em <paramref name="detail"/> o que
+        /// cada API retornou. Sem isso as falhas eram silenciosas — e automatizar
+        /// em cima de um comando que falha calado é o que fez o problema arrastar.
+        /// </summary>
+        public static bool SetHdrEnabledEx(uint adapterIdLow, int adapterIdHigh, uint targetId,
+                                           bool enabled, out string detail)
         {
             var luid = new LUID { LowPart = adapterIdLow, HighPart = adapterIdHigh };
+            int rcNew = -1, rcOld = -1;
 
             try
             {
@@ -477,9 +487,10 @@ namespace PCOptimizer.Services
                     },
                     value = enabled ? 1u : 0u
                 };
-                if (DisplayConfigSetDeviceInfo(ref pkt) == 0) return true;
+                rcNew = DisplayConfigSetDeviceInfo(ref pkt);
+                if (rcNew == 0) { detail = "SET_HDR_STATE ok"; return true; }
             }
-            catch { /* Windows sem a API nova — usa a antiga abaixo */ }
+            catch (Exception ex) { Logger.Error(ex, "SET_HDR_STATE"); }
 
             try
             {
@@ -494,9 +505,51 @@ namespace PCOptimizer.Services
                     },
                     value = enabled ? 1u : 0u
                 };
-                return DisplayConfigSetDeviceInfo(ref req) == 0;
+                rcOld = DisplayConfigSetDeviceInfo(ref req);
+                if (rcOld == 0) { detail = "SET_ADVANCED_COLOR_STATE ok"; return true; }
             }
-            catch { return false; }
+            catch (Exception ex) { Logger.Error(ex, "SET_ADVANCED_COLOR_STATE"); }
+
+            detail = $"HDR API falhou (novo={rcNew}, antigo={rcOld})";
+            Logger.Warn(detail);
+            return false;
+        }
+
+        // ── Atalho nativo do Windows (Win+Alt+B) ─────────────────────────────
+        // Caminho de último recurso: alterna o HDR pelo MESMO mecanismo da
+        // interface do Windows. Vale quando a API do DisplayConfig é recusada
+        // nesta máquina — o usuário confirmou que pelas Configurações funciona.
+
+        [DllImport("user32.dll")]
+        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+        private const byte VK_LWIN = 0x5B;
+        private const byte VK_ALT  = 0x12;
+        private const byte VK_B    = 0x42;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
+
+        /// <summary>Envia Win+Alt+B — o atalho do Windows que alterna o HDR.</summary>
+        public static void PressHdrHotkey()
+        {
+            try
+            {
+                keybd_event(VK_LWIN, 0, 0, UIntPtr.Zero);
+                keybd_event(VK_ALT,  0, 0, UIntPtr.Zero);
+                keybd_event(VK_B,    0, 0, UIntPtr.Zero);
+                keybd_event(VK_B,    0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                keybd_event(VK_ALT,  0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                Logger.Info("HDR: enviado Win+Alt+B");
+            }
+            catch (Exception ex) { Logger.Error(ex, "PressHdrHotkey"); }
+        }
+
+        /// <summary>true se ALGUMA tela está com HDR ligado.</summary>
+        public static bool AnyHdrOn()
+        {
+            try { foreach (var h in GetAllHdrInfo()) if (h.IsEnabled) return true; }
+            catch { }
+            return false;
         }
     }
 }

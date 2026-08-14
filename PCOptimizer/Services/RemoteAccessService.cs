@@ -143,6 +143,38 @@ namespace PCOptimizer.Services
         /// Deliberadamente MANUAL: automatizar isso reconfigura o vídeo e, se o
         /// Windows insistir em voltar, vira um ciclo infinito piscando a tela.
         /// </summary>
+        /// <summary>
+        /// Garante o HDR desligado, tentando na ordem: (1) API do DisplayConfig e,
+        /// se ela for recusada nesta máquina, (2) o atalho nativo Win+Alt+B, que é
+        /// o mesmo caminho da interface do Windows. Devolve o que aconteceu.
+        /// </summary>
+        public static async Task<(bool Ok, string Detail)> EnsureHdrOffAsync()
+        {
+            if (!HdrService.AnyHdrOn()) return (true, "HDR já estava desligado");
+
+            string detail = "";
+            try
+            {
+                foreach (var h in HdrService.GetAllHdrInfo())
+                    if (h.IsSupported && h.IsEnabled)
+                        HdrService.SetHdrEnabledEx(h.AdapterIdLow, h.AdapterIdHigh,
+                                                   h.TargetId, false, out detail);
+            }
+            catch (Exception ex) { Logger.Error(ex, "EnsureHdrOffAsync/api"); }
+
+            await Task.Delay(1500);
+            if (!HdrService.AnyHdrOn()) return (true, "HDR desligado pela API");
+
+            // A API não pegou nesta máquina — usa o atalho do Windows
+            HdrService.PressHdrHotkey();
+            await Task.Delay(2000);
+            if (!HdrService.AnyHdrOn())
+                return (true, "HDR desligado pelo atalho Win+Alt+B");
+
+            return (false, $"Não consegui desligar o HDR. {detail}. " +
+                           "O atalho Win+Alt+B também não pegou.");
+        }
+
         public static async Task<string> FixColorNowAsync()
         {
             try
@@ -150,27 +182,24 @@ namespace PCOptimizer.Services
                 var targets = HdrService.GetAllHdrInfo().Where(h => h.IsSupported).ToList();
                 if (targets.Count == 0) return "Nenhuma tela com suporte a HDR";
 
-                foreach (var h in targets)
-                    HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, true);
-                await Task.Delay(2000); // o vídeo precisa entrar em HDR de fato
+                // 1) Desliga o HDR (API e, se ela falhar, o atalho do Windows)
+                var (ok, detail) = await EnsureHdrOffAsync();
 
-                foreach (var h in targets)
-                    HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
-                await Task.Delay(1500);
-
-                // Com o HDR fora do caminho, o gamut largo pode ser desligado
+                // 2) Com o HDR fora do caminho, desliga o gamut largo
                 foreach (var h in HdrService.GetAllHdrInfo())
                     if (h.WcgSupported && h.WcgEnabled)
                         HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
-                await Task.Delay(800);
+                await Task.Delay(900);
+
+                if (!ok) return "⚠ " + detail;
 
                 uint mode = PrimaryColorMode();
                 return mode switch
                 {
-                    0 => "✅ Tela em SDR puro — cor normalizada",
-                    1 => "⚠ Ainda em gamut largo — tente pelas Configurações do Windows",
-                    2 => "Tela ficou em HDR — clique de novo para cair em SDR",
-                    _ => "Ciclo aplicado"
+                    0 => $"✅ Tela em SDR puro — cor normalizada ({detail})",
+                    1 => $"⚠ Ainda em gamut largo ({detail}) — tente pelas Configurações do Windows",
+                    2 => $"Tela ainda em HDR ({detail}) — clique de novo",
+                    _ => detail
                 };
             }
             catch (Exception ex) { Logger.Error(ex, "FixColorNowAsync"); return "Erro: " + ex.Message; }
@@ -239,22 +268,30 @@ namespace PCOptimizer.Services
                     bool wantAcmOff = s.KeepHdrOff || s.RemoteEnforceAcmOff;
                     bool acted = false;
 
-                    foreach (var h in HdrService.GetAllHdrInfo())
+                    // Só DESLIGA — nunca liga. Assim o vigia não oscila sozinho.
+                    if (wantHdrOff && HdrService.AnyHdrOn())
                     {
-                        // Só DESLIGA — nunca liga. Assim o vigia não consegue
-                        // oscilar por conta própria.
-                        if (wantHdrOff && h.IsSupported && h.IsEnabled)
+                        Logger.Info("Vigia: HDR foi religado (reconexão do acesso remoto?) — desligando");
+                        var (ok, detail) = EnsureHdrOffAsync().GetAwaiter().GetResult();
+                        Logger.Info("Vigia: " + detail);
+                        acted = true;
+                        if (!ok)
                         {
-                            Logger.Info("Vigia: HDR foi religado (reconexão do acesso remoto?) — desligando");
-                            HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
-                            acted = true;
-                        }
-                        if (wantAcmOff && h.WcgSupported && h.WcgEnabled)
-                        {
-                            HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
-                            acted = true;
+                            // Não adianta insistir a cada 5 s se nem a API nem o
+                            // atalho funcionam — recua e deixa registrado.
+                            _backoffUntil = now.AddMinutes(BackoffMinutes);
+                            Logger.Warn("Vigia: sem meio de desligar o HDR nesta máquina — pausando");
+                            return;
                         }
                     }
+
+                    if (wantAcmOff)
+                        foreach (var h in HdrService.GetAllHdrInfo())
+                            if (h.WcgSupported && h.WcgEnabled)
+                            {
+                                HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
+                                acted = true;
+                            }
 
                     if (!acted) return;
 
