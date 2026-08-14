@@ -112,6 +112,38 @@ namespace PCOptimizer.Services
         public static bool SetFor(string device, int width, int height, int preferHz = 0)
             => SetMode(device, width, height, preferHz);
 
+        /// <summary>Resolução NATIVA (maior modo suportado) do monitor.</summary>
+        public static (int W, int H)? GetNative(string device)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(device)) return null;
+                (int W, int H)? best = null;
+                var probe = NewDevMode();
+                for (int i = 0; EnumDisplaySettings(device, i, ref probe); i++)
+                {
+                    if (probe.dmPelsWidth <= 0 || probe.dmPelsHeight <= 0) continue;
+                    if (best == null ||
+                        (long)probe.dmPelsWidth * probe.dmPelsHeight >
+                        (long)best.Value.W * best.Value.H)
+                        best = (probe.dmPelsWidth, probe.dmPelsHeight);
+                }
+                return best;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// true se o PAINEL é ultrawide (proporção nativa maior que 2:1), mesmo
+        /// que esteja num modo 16:9 no momento. Usar a resolução ATUAL aqui fazia
+        /// o botão de 16:9 sumir justamente depois de ativado — impedindo reverter.
+        /// </summary>
+        public static bool IsUltrawidePanel(string device)
+        {
+            var n = GetNative(device);
+            return n != null && n.Value.H > 0 && n.Value.W / (double)n.Value.H > 2.0;
+        }
+
         private static DEVMODE NewDevMode() =>
             new() { dmSize = (short)Marshal.SizeOf<DEVMODE>() };
 

@@ -133,6 +133,32 @@ namespace PCOptimizer.Services
 
         // Returns the PnP hardware ID of the monitor attached to this logical display handle.
         // e.g. "DEL4079" for a Dell monitor — matches the segment in WmiMonitorID.InstanceName.
+        /// <summary>
+        /// Caminho da interface do monitor (\\?\DISPLAY#MG900#...#{guid}) — o
+        /// MESMO formato que o DisplayConfig devolve em monitorDevicePath, o que
+        /// permite casar as duas enumerações sem depender de posição/ordem.
+        /// </summary>
+        private static string GetMonitorInterfacePath(IntPtr hMonitor)
+        {
+            try
+            {
+                var mi = new MONITORINFOEX { cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>() };
+                if (!GetMonitorInfo(hMonitor, ref mi)) return "";
+
+                for (uint i = 0; ; i++)
+                {
+                    var dd = new DISPLAY_DEVICE { cb = (uint)Marshal.SizeOf<DISPLAY_DEVICE>() };
+                    // 1 = EDD_GET_DEVICE_INTERFACE_NAME
+                    if (!EnumDisplayDevices(mi.szDevice, i, ref dd, 1)) break;
+                    if (!string.IsNullOrEmpty(dd.DeviceID) &&
+                        dd.DeviceID.StartsWith(@"\\?\", StringComparison.Ordinal))
+                        return dd.DeviceID;
+                }
+            }
+            catch { }
+            return "";
+        }
+
         private static string GetMonitorPnpId(IntPtr hMonitor)
         {
             try
@@ -546,7 +572,16 @@ namespace PCOptimizer.Services
                     scrH = mInfoEx.rcMonitor.bottom - mInfoEx.rcMonitor.top;
                     deviceKey = mInfoEx.szDevice;
                 }
-                var hdr = hdrInfos.Find(h => h.SourceX == srcX && h.SourceY == srcY);
+                // Correlação EXATA pelo caminho da interface do monitor; a posição
+                // na área de trabalho fica só como reserva (era ela que trocava os
+                // nomes entre os monitores).
+                string ifacePath = GetMonitorInterfacePath(m.LogicalHandle);
+                var hdr = !string.IsNullOrEmpty(ifacePath)
+                    ? hdrInfos.Find(h => !string.IsNullOrEmpty(h.DevicePath) &&
+                                         string.Equals(h.DevicePath, ifacePath,
+                                                       StringComparison.OrdinalIgnoreCase))
+                    : null;
+                hdr ??= hdrInfos.Find(h => h.SourceX == srcX && h.SourceY == srcY);
 
                 // Nome exato do DisplayConfig (mesmo path do HDR) vence a via WMI
                 if (!string.IsNullOrEmpty(hdr?.FriendlyName))

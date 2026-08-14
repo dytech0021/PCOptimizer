@@ -523,8 +523,11 @@ namespace PCOptimizer.Views
                 container.Children.Add(MakeHdrButton(mc));
 
             // Ultrawide (21:9 e mais largos): oferece o modo 16:9 com barras
-            // pretas, usado em CS/R6 e afins.
-            if (mc.ScreenHeight > 0 && mc.ScreenWidth / (double)mc.ScreenHeight > 2.0)
+            // pretas, usado em CS/R6 e afins. A checagem é pela resolução NATIVA
+            // do painel — pela atual, o botão sumia assim que o 16:9 era aplicado
+            // (a tela deixa de ser "larga") e não dava mais para reverter.
+            if (DisplayResolutionService.IsUltrawidePanel(mc.DeviceKey)
+                || FindGameArKey(mc.HardwareId) != null)
                 container.Children.Add(MakeGameArButton(mc));
 
             // Events — aplica o primeiro valor NA HORA; durante o arraste, envia
@@ -904,20 +907,40 @@ namespace PCOptimizer.Views
         /// ao monitor, por DDC/CI, para NÃO esticar a imagem — o que sobra das
         /// laterais fica preto. Reversível pelo mesmo botão.
         /// </summary>
+        /// <summary>
+        /// Acha a chave salva desse monitor. Além da correspondência exata, aceita
+        /// a mesma base antes do "#": o sufixo de desempate de monitores iguais
+        /// mudou entre versões, e sem isso o estado salvo ficava órfão — o botão
+        /// tentava aplicar de novo em vez de reverter.
+        /// </summary>
+        private static string? FindGameArKey(string hardwareId)
+        {
+            var d = SettingsService.Current.GameArPrevMode;
+            if (string.IsNullOrEmpty(hardwareId)) return null;
+            if (d.ContainsKey(hardwareId)) return hardwareId;
+
+            string baseId = hardwareId.Split('#')[0];
+            foreach (var k in d.Keys)
+                if (k.Split('#')[0].Equals(baseId, StringComparison.OrdinalIgnoreCase))
+                    return k;
+            return null;
+        }
+
         private Button MakeGameArButton(MonitorControl mc)
         {
             var btn = new Button
             {
-                FontSize = 11,
-                Margin = new Thickness(0, 4, 0, 0),
-                Padding = new Thickness(12, 5, 12, 5),
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 6, 0, 2),
+                Padding = new Thickness(12, 9, 12, 9),
                 Cursor = Cursors.Hand,
                 BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 ToolTip = "Joga em 16:9 com barras pretas nas laterais (CS, R6…)"
             };
 
-            bool active = SettingsService.Current.GameArPrevMode.ContainsKey(mc.HardwareId);
+            bool active = FindGameArKey(mc.HardwareId) != null;
             ApplyGameArButtonStyle(btn, active);
 
             btn.Click += async (_, _) =>
@@ -926,7 +949,8 @@ namespace PCOptimizer.Views
                 try
                 {
                     var s = SettingsService.Current;
-                    if (!s.GameArPrevMode.TryGetValue(mc.HardwareId, out var prev))
+                    string? savedKey = FindGameArKey(mc.HardwareId);
+                    if (savedKey == null)
                     {
                         var target = DisplayResolutionService.FindBest169(mc.DeviceKey);
                         if (target == null)
@@ -955,17 +979,30 @@ namespace PCOptimizer.Views
                     }
                     else
                     {
+                        string prev = s.GameArPrevMode[savedKey];
                         var p = prev.Split('x');
+                        bool ok = false;
                         if (p.Length == 3 && int.TryParse(p[0], out int w) &&
                             int.TryParse(p[1], out int h) && int.TryParse(p[2], out int hz))
                         {
                             TxtStatus.Text = "Voltando ao ultrawide...";
-                            await Task.Run(() => DisplayResolutionService.SetFor(mc.DeviceKey, w, h, hz));
+                            ok = await Task.Run(() => DisplayResolutionService.SetFor(mc.DeviceKey, w, h, hz));
                             await Task.Run(() => MonitorService.SetAspectScaling(mc.Index, false));
                         }
-                        s.GameArPrevMode.Remove(mc.HardwareId);
+                        else
+                        {
+                            // Registro corrompido: volta para a resolução NATIVA
+                            var nat = DisplayResolutionService.GetNative(mc.DeviceKey);
+                            if (nat != null)
+                                ok = await Task.Run(() => DisplayResolutionService.SetFor(
+                                    mc.DeviceKey, nat.Value.W, nat.Value.H));
+                        }
+
+                        s.GameArPrevMode.Remove(savedKey);
                         SettingsService.Save();
-                        TxtStatus.Text = "Resolução ultrawide restaurada";
+                        TxtStatus.Text = ok
+                            ? "Resolução ultrawide restaurada"
+                            : "⚠ Não consegui restaurar — use Configurações → Vídeo";
                         ApplyGameArButtonStyle(btn, false);
                     }
 
@@ -979,18 +1016,21 @@ namespace PCOptimizer.Views
 
         private static void ApplyGameArButtonStyle(Button btn, bool active)
         {
-            btn.Content = active ? "🎮 Voltar ao ultrawide" : "🎮 16:9 com barras pretas";
+            btn.Content = active ? "🎮 Voltar ao ultrawide (21:9)"
+                                 : "🎮 Jogar em 16:9 (barras pretas)";
             if (active)
             {
-                btn.Background  = new SolidColorBrush(Color.FromRgb(0x2A, 0x1E, 0x05));
-                btn.Foreground  = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF));
-                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x5A, 0x42, 0x10));
+                // Ativo em laranja forte: é o estado em que o usuário precisa
+                // achar o botão rápido para voltar ao normal.
+                btn.Background  = new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B));
+                btn.Foreground  = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x06));
+                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B));
             }
             else
             {
-                btn.Background  = Brushes.Transparent;
-                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x45));
-                btn.SetResourceReference(Control.ForegroundProperty, "TextSecondary");
+                btn.Background  = new SolidColorBrush(Color.FromRgb(0x1E, 0x29, 0x3B));
+                btn.Foreground  = new SolidColorBrush(Color.FromRgb(0x93, 0xC5, 0xFD));
+                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x2F, 0x4A, 0x6B));
             }
         }
 

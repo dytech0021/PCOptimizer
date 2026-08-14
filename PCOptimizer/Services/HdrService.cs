@@ -25,6 +25,10 @@ namespace PCOptimizer.Services
         // exata, sem depender de casar listas de fontes diferentes (WMI × DDC),
         // que trocava os nomes entre monitores iguais.
         public string FriendlyName { get; set; } = "";
+        // Caminho da interface do monitor (\\?\DISPLAY#MG900#4&...&UID256#{guid}).
+        // Casa EXATAMENTE com o que EnumDisplayDevices devolve no lado do DDC —
+        // correlação sem depender de posição na área de trabalho.
+        public string DevicePath { get; set; } = "";
     }
 
     public static class HdrService
@@ -344,8 +348,12 @@ namespace PCOptimizer.Services
                             id        = tId
                         }
                     };
+                    string devPath = "";
                     if (DisplayConfigGetDeviceInfo(ref reqName) == 0)
+                    {
                         friendly = (reqName.monitorFriendlyDeviceName ?? "").Trim();
+                        devPath  = (reqName.monitorDevicePath ?? "").Trim();
+                    }
 
                     result.Add(new HdrInfo
                     {
@@ -360,7 +368,8 @@ namespace PCOptimizer.Services
                         WcgSupported    = wcgSup,
                         WcgEnabled      = wcgOn,
                         ActiveColorMode = colorMode,
-                        FriendlyName    = friendly
+                        FriendlyName    = friendly,
+                        DevicePath      = devPath
                     });
                 }
             }
