@@ -37,7 +37,25 @@ namespace PCOptimizer.Views
             string mode = RemoteAccessService.DescribeColorMode();
             if (mode.Length > 0) TxtColorMode.Text = mode;
 
+            ChkKeepHdrOff.IsChecked = SettingsService.Current.KeepHdrOff;
             _sync = false;
+        }
+
+        private void ChkKeepHdrOff_Click(object sender, RoutedEventArgs e)
+        {
+            if (_sync) return;
+            bool on = ChkKeepHdrOff.IsChecked == true;
+            SettingsService.Current.KeepHdrOff = on;
+            SettingsService.Save();
+
+            if (on)
+            {
+                RemoteAccessService.ResetGuardBudget();
+                RemoteAccessService.StartGuard();
+            }
+            TxtTuneStatus.Text = on
+                ? "Ligado — se o HDR voltar, o app desliga sozinho em até 5s"
+                : "Desligado — o HDR fica como o Windows deixar";
         }
 
         private async void BtnFixColor_Click(object sender, RoutedEventArgs e)

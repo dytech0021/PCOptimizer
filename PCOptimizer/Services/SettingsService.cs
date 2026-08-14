@@ -54,9 +54,13 @@ namespace PCOptimizer.Services
         public bool RemoteEnforceHdrOff { get; set; }
         public bool RemoteEnforceAcmOff { get; set; }
 
-        // Mantém a tela em SDR puro o tempo todo (independe do modo remoto):
-        // corrige sozinho a saturação que volta a cada reconexão do acesso remoto
+        // Removida na v1.70 (o ciclo automático piscava a tela) — mantida só para
+        // o app conseguir desligá-la em quem atualizou de uma versão antiga
         public bool KeepSdrMode { get; set; }
+
+        // Mantém o HDR desligado: o acesso remoto religa o HDR ao reconectar, e o
+        // vigia desliga de novo. Só DESLIGA (nunca liga), então não oscila sozinho.
+        public bool KeepHdrOff { get; set; }
 
         // Modo 16:9 com barras pretas (jogos) por monitor ultrawide:
         // HardwareId → "LARGURAxALTURAxHZ" da resolução original, para reverter

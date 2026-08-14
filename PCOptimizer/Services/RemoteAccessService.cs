@@ -136,12 +136,6 @@ namespace PCOptimizer.Services
 
         private static void StopGuard() => _guard?.Stop();
 
-        /// <summary>Para o vigia a partir de uma thread de fundo.</summary>
-        private static void StopGuardSafe()
-        {
-            try { _guard?.Dispatcher.Invoke(() => _guard?.Stop()); } catch { }
-        }
-
         /// <summary>
         /// Ciclo manual: LIGA o HDR e DESLIGA em seguida — o procedimento que tira
         /// a tela do modo WCG (gamut largo) e a faz assentar em SDR puro. É o que
@@ -186,17 +180,28 @@ namespace PCOptimizer.Services
         public static bool GuardNeeded()
         {
             var s = SettingsService.Current;
-            return s.RemoteModeActive && (s.RemoteEnforceHdrOff || s.RemoteEnforceAcmOff);
+            return s.KeepHdrOff
+                || (s.RemoteModeActive && (s.RemoteEnforceHdrOff || s.RemoteEnforceAcmOff));
         }
 
-        // Teto de correções por ativação do modo remoto. Se o Windows insistir em
-        // religar o HDR/ACM, o vigia desiste em vez de brigar para sempre — essa
-        // briga aparecia como a tela piscando sem parar.
-        private static int _corrections;
-        private const int MaxCorrections = 4;
+        // Limite de taxa. O vigia só DESLIGA o HDR (nunca liga), então sozinho ele
+        // não oscila; o risco seria o Windows religar sem parar. Nesse caso, em vez
+        // de brigar — o que aparecia como a tela piscando —, ele recua por um tempo.
+        private static DateTime _lastCorrectionAt = DateTime.MinValue;
+        private static DateTime _backoffUntil = DateTime.MinValue;
+        private static readonly List<DateTime> _recent = new();
+        private const int MinSecondsBetween   = 10;
+        private const int BurstLimit          = 5;   // correções…
+        private const int BurstWindowSeconds  = 60;  // …nesta janela dispara o recuo
+        private const int BackoffMinutes      = 5;
 
-        /// <summary>Zera o teto de correções (ao entrar no modo remoto).</summary>
-        public static void ResetGuardBudget() => _corrections = 0;
+        /// <summary>Libera o vigia (ao entrar no modo remoto ou ligar a opção).</summary>
+        public static void ResetGuardBudget()
+        {
+            _backoffUntil = DateTime.MinValue;
+            _lastCorrectionAt = DateTime.MinValue;
+            _recent.Clear();
+        }
 
         // Controle do ciclo de HDR. O ciclo PASSA por "HDR ligado", então nunca
         // se pode concluir "voltou ao normal" olhando um instante qualquer — era
@@ -226,26 +231,46 @@ namespace PCOptimizer.Services
             {
                 try
                 {
-                    if (_corrections >= MaxCorrections) { StopGuardSafe(); return; }
+                    var now = DateTime.Now;
+                    if (now < _backoffUntil) return;
+                    if ((now - _lastCorrectionAt).TotalSeconds < MinSecondsBetween) return;
+
+                    bool wantHdrOff = s.KeepHdrOff || s.RemoteEnforceHdrOff;
+                    bool wantAcmOff = s.KeepHdrOff || s.RemoteEnforceAcmOff;
+                    bool acted = false;
 
                     foreach (var h in HdrService.GetAllHdrInfo())
                     {
-                        if (s.RemoteEnforceHdrOff && h.IsSupported && h.IsEnabled)
+                        // Só DESLIGA — nunca liga. Assim o vigia não consegue
+                        // oscilar por conta própria.
+                        if (wantHdrOff && h.IsSupported && h.IsEnabled)
                         {
-                            _corrections++;
-                            Logger.Info($"Vigia: Windows religou o HDR — desligando ({_corrections}/{MaxCorrections})");
+                            Logger.Info("Vigia: HDR foi religado (reconexão do acesso remoto?) — desligando");
                             HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
+                            acted = true;
                         }
-                        if (s.RemoteEnforceAcmOff && h.WcgSupported && h.WcgEnabled)
+                        if (wantAcmOff && h.WcgSupported && h.WcgEnabled)
                         {
-                            _corrections++;
                             HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
+                            acted = true;
                         }
                     }
 
-                    if (_corrections >= MaxCorrections)
-                        Logger.Warn("Vigia: o Windows insiste em religar o HDR/gamut largo — " +
-                                    "parando para não ficar piscando a tela");
+                    if (!acted) return;
+
+                    _lastCorrectionAt = now;
+                    _recent.Add(now);
+                    _recent.RemoveAll(t => (now - t).TotalSeconds > BurstWindowSeconds);
+
+                    // Rajada de correções = o Windows está religando sem parar.
+                    // Recua em vez de brigar (era assim que a tela ficava piscando).
+                    if (_recent.Count >= BurstLimit)
+                    {
+                        _backoffUntil = now.AddMinutes(BackoffMinutes);
+                        _recent.Clear();
+                        Logger.Warn($"Vigia: o Windows está religando o HDR sem parar — " +
+                                    $"pausando por {BackoffMinutes} min para não piscar a tela");
+                    }
                 }
                 catch (Exception ex) { Logger.Error(ex, "RemoteAccess.EnforceTick"); }
                 finally { _guardBusy = false; }
