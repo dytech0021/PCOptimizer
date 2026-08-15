@@ -134,5 +134,97 @@ namespace PCOptimizer.Services
 
         public static bool SetCoreOffsetMhz(int mhz) => SetClockOffsetKHz(ClockGraphics, mhz * 1000);
         public static bool SetMemoryOffsetMhz(int mhz) => SetClockOffsetKHz(ClockMemory, mhz * 1000);
+
+        // ── Vibração digital (saturação) ─────────────────────────────────────
+        // A rampa de gama trata cada canal isoladamente e por isso NÃO consegue
+        // fazer saturação (que exige misturar os canais). O caminho é o Digital
+        // Vibrance do driver NVIDIA — o mesmo controle do Painel de Controle.
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int EnumNvDisplayHandleDel(int thisEnum, out IntPtr hDisplay);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int GetDVCInfoDel(IntPtr hDisplay, uint outputId, IntPtr info);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int SetDVCLevelDel(IntPtr hDisplay, uint outputId, int level);
+
+        private const uint IdEnumNvDisplayHandle = 0x9ABDD40D;
+        private const uint IdGetDVCInfo          = 0x4085DE45;
+        private const uint IdSetDVCLevel         = 0x172409B4;
+
+        private const int NvapiEndEnumeration = -8;
+
+        /// <summary>Faixa do Digital Vibrance no driver (0 = neutro).</summary>
+        public const int DvcMin = 0, DvcMax = 63, DvcDefault = 0;
+
+        private static readonly System.Collections.Generic.List<IntPtr> _displays = new();
+        private static GetDVCInfoDel? _getDvc;
+        private static SetDVCLevelDel? _setDvc;
+        private static bool _dvcTried, _dvcOk;
+
+        /// <summary>
+        /// Inicialização própria da saturação — separada da de overclock, que
+        /// exige funções que nem todo driver expõe. Uma não pode bloquear a outra.
+        /// </summary>
+        private static bool EnsureDvc()
+        {
+            if (_dvcTried) return _dvcOk;
+            _dvcTried = true;
+            try
+            {
+                var init    = GetFn<InitializeDel>(IdInitialize);
+                var enumDisp = GetFn<EnumNvDisplayHandleDel>(IdEnumNvDisplayHandle);
+                _getDvc = GetFn<GetDVCInfoDel>(IdGetDVCInfo);
+                _setDvc = GetFn<SetDVCLevelDel>(IdSetDVCLevel);
+                if (init == null || enumDisp == null || _getDvc == null || _setDvc == null)
+                    return false;
+                if (init() != 0) return false;
+
+                _displays.Clear();
+                for (int i = 0; i < 16; i++)
+                {
+                    int rc = enumDisp(i, out IntPtr h);
+                    if (rc == NvapiEndEnumeration || rc != 0 || h == IntPtr.Zero) break;
+                    _displays.Add(h);
+                }
+                _dvcOk = _displays.Count > 0;
+            }
+            catch { _dvcOk = false; } // sem driver NVIDIA
+            return _dvcOk;
+        }
+
+        /// <summary>Há suporte a ajuste de saturação nesta máquina?</summary>
+        public static bool IsVibranceAvailable() => EnsureDvc();
+
+        /// <summary>Nível atual (0–63). Devolve o neutro se não conseguir ler.</summary>
+        public static int GetDigitalVibrance()
+        {
+            if (!EnsureDvc() || _displays.Count == 0) return DvcDefault;
+            var buf = new byte[16]; // version + current + min + max
+            var h = GCHandle.Alloc(buf, GCHandleType.Pinned);
+            try
+            {
+                IntPtr p = h.AddrOfPinnedObject();
+                Marshal.WriteInt32(p, 0, unchecked((int)(0x00010000u | 16u))); // v1, 16 bytes
+                if (_getDvc!(_displays[0], 0, p) != 0) return DvcDefault;
+                return Math.Clamp(Marshal.ReadInt32(p, 4), DvcMin, DvcMax);
+            }
+            catch { return DvcDefault; }
+            finally { h.Free(); }
+        }
+
+        /// <summary>Aplica o nível de saturação (0–63) em todas as telas NVIDIA.</summary>
+        public static bool SetDigitalVibrance(int level)
+        {
+            if (!EnsureDvc()) return false;
+            level = Math.Clamp(level, DvcMin, DvcMax);
+            bool any = false;
+            foreach (var d in _displays)
+            {
+                try { if (_setDvc!(d, 0, level) == 0) any = true; }
+                catch { }
+            }
+            if (!any) Logger.Warn($"Digital Vibrance: driver recusou o nível {level}");
+            return any;
+        }
     }
 }

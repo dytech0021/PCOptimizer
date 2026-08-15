@@ -79,6 +79,9 @@ namespace PCOptimizer.Services
         // Cor avançada (gamma ramp da GPU): gama, temperatura e ganho por canal
         public double GammaValue { get; set; } = 1.0;  // 0.5–2.5 (1.0 = neutro)
         public int ColorTempK { get; set; } = 6500;    // 2000–10000 K (6500 = neutro)
+        // Saturação (Digital Vibrance da NVIDIA): 0 = neutro, 63 = máximo.
+        // Não dá para fazer pela rampa de gama — ela não mistura os canais.
+        public int Saturation { get; set; }
         public int GainR { get; set; } = 100;          // 25–100%
         public int GainG { get; set; } = 100;
         public int GainB { get; set; } = 100;

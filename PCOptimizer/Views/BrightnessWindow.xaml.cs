@@ -111,6 +111,15 @@ namespace PCOptimizer.Views
             SliderGainR.Value     = Math.Clamp(s.GainR, 25, 100);
             SliderGainG.Value     = Math.Clamp(s.GainG, 25, 100);
             SliderGainB.Value     = Math.Clamp(s.GainB, 25, 100);
+
+            // Saturação só existe via driver NVIDIA — some em AMD/Intel em vez de
+            // ficar um controle morto na tela.
+            if (NvapiService.IsVibranceAvailable())
+            {
+                SaturationRow.Visibility = Visibility.Visible;
+                int cur = NvapiService.GetDigitalVibrance();
+                SliderSaturation.Value = s.Saturation > 0 ? s.Saturation : cur;
+            }
             _advInit = false;
             UpdateAdvColorLabels();
 
@@ -127,6 +136,8 @@ namespace PCOptimizer.Views
             TxtGammaValue.Text     = SliderGamma.Value.ToString("F2",
                 System.Globalization.CultureInfo.InvariantCulture);
             TxtColorTempValue.Text = $"{(int)SliderColorTemp.Value}K";
+            // 0–63 do driver mostrado como 0–100% para o usuário
+            TxtSaturationValue.Text = $"{(int)Math.Round(SliderSaturation.Value / 63.0 * 100)}%";
             TxtGainRValue.Text     = $"{(int)SliderGainR.Value}%";
             TxtGainGValue.Text     = $"{(int)SliderGainG.Value}%";
             TxtGainBValue.Text     = $"{(int)SliderGainB.Value}%";
@@ -164,6 +175,21 @@ namespace PCOptimizer.Views
             if (serial == _advSaveSerial) SettingsService.Save();
         }
 
+        private async void SliderSaturation_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_advInit || TxtSaturationValue == null) return;
+            UpdateAdvColorLabels();
+
+            int level = (int)SliderSaturation.Value;
+            bool ok = await Task.Run(() => NvapiService.SetDigitalVibrance(level));
+            if (!ok) TxtStatus.Text = "⚠ O driver de vídeo recusou o ajuste de saturação";
+
+            SettingsService.Current.Saturation = level;
+            int serial = ++_advSaveSerial;
+            await Task.Delay(250);
+            if (serial == _advSaveSerial) SettingsService.Save();
+        }
+
         private void BtnAdvColorReset_Click(object sender, RoutedEventArgs e)
         {
             _advInit = true;
@@ -172,12 +198,15 @@ namespace PCOptimizer.Views
             SliderGainR.Value     = GammaRampService.DefaultGain;
             SliderGainG.Value     = GammaRampService.DefaultGain;
             SliderGainB.Value     = GammaRampService.DefaultGain;
+            SliderSaturation.Value = NvapiService.DvcDefault;
             _advInit = false;
             UpdateAdvColorLabels();
 
             GammaRampService.Reset();
+            NvapiService.SetDigitalVibrance(NvapiService.DvcDefault);
 
             var s = SettingsService.Current;
+            s.Saturation = NvapiService.DvcDefault;
             s.GammaValue = GammaRampService.DefaultGamma;
             s.ColorTempK = GammaRampService.DefaultKelvin;
             s.GainR = s.GainG = s.GainB = GammaRampService.DefaultGain;

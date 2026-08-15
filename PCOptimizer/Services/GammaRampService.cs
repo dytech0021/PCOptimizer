@@ -143,6 +143,11 @@ namespace PCOptimizer.Services
             try
             {
                 var s = SettingsService.Current;
+
+                // Saturação vive no driver da GPU e também se perde no reboot
+                if (s.Saturation != NvapiService.DvcDefault)
+                    NvapiService.SetDigitalVibrance(s.Saturation);
+
                 if (IsDefault(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB)) return;
                 Apply(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB);
             }
