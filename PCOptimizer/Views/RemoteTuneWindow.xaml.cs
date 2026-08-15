@@ -54,6 +54,17 @@ namespace PCOptimizer.Views
                 : "Desligado — use o botão acima quando precisar";
         }
 
+        private void BtnDiagMonitors_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string txt = MonitorService.Diagnose();
+                Clipboard.SetText(txt);
+                TxtTuneStatus.Text = "Diagnóstico copiado — cole no chat do suporte";
+            }
+            catch (Exception ex) { TxtTuneStatus.Text = "Erro ao copiar: " + ex.Message; }
+        }
+
         private async void BtnFixColor_Click(object sender, RoutedEventArgs e)
         {
             IsEnabled = false;

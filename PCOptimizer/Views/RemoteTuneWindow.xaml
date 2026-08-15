@@ -111,6 +111,16 @@
                        Foreground="{DynamicResource TextSecondary}"/>
 
             <Grid Margin="0,14,0,0">
+                <Button Content="📋 Copiar diagnóstico dos monitores"
+                        HorizontalAlignment="Center" Padding="12,6" FontSize="10"
+                        Cursor="Hand" Background="Transparent"
+                        Foreground="{DynamicResource TextSecondary}"
+                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
+                        ToolTip="Copia o que o app enxerga de cada monitor — cole no chat do suporte"
+                        Click="BtnDiagMonitors_Click"/>
+            </Grid>
+
+            <Grid Margin="0,10,0,0">
                 <Button Content="↩ Reverter tudo" HorizontalAlignment="Left"
                         Padding="14,7" FontSize="11" Cursor="Hand"
                         Background="Transparent"

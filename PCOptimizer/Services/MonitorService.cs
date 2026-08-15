@@ -20,6 +20,10 @@ namespace PCOptimizer.Services
         public uint CurrentContrast { get; set; }
         public bool SupportsBrightness { get; set; }
         public bool SupportsContrast { get; set; }
+        // Modelo informado pelo PRÓPRIO monitor, pelo mesmo canal DDC/CI usado
+        // para brilho/contraste. Como vem do mesmo handle que controlamos, é
+        // impossível ficar trocado entre monitores.
+        public string DdcModel { get; set; } = "";
     }
 
     public class MonitorEntry
@@ -90,6 +94,13 @@ namespace PCOptimizer.Services
         [DllImport("dxva2.dll")]
         private static extern bool SetVCPFeature(IntPtr hMonitor, byte vcpCode, uint newValue);
 
+        [DllImport("dxva2.dll", SetLastError = true)]
+        private static extern bool GetCapabilitiesStringLength(IntPtr hMonitor, out uint length);
+
+        [DllImport("dxva2.dll", SetLastError = true, CharSet = CharSet.Ansi)]
+        private static extern bool CapabilitiesRequestAndCapabilitiesReply(
+            IntPtr hMonitor, StringBuilder asciiString, uint length);
+
         private const byte VCP_LUMINANCE = 0x10;
         // VCP 0x86 "Display Scaling": 0x02 = imagem máxima SEM distorcer a
         // proporção (gera as barras pretas), 0x03 = estica para preencher.
@@ -138,6 +149,31 @@ namespace PCOptimizer.Services
         /// MESMO formato que o DisplayConfig devolve em monitorDevicePath, o que
         /// permite casar as duas enumerações sem depender de posição/ordem.
         /// </summary>
+        /// <summary>
+        /// Pergunta o MODELO ao próprio monitor pelo canal DDC/CI (string de
+        /// capacidades, campo "model"). Vem do mesmo handle que usamos para
+        /// brilho/contraste — então o nome nunca pode pertencer a outro monitor.
+        /// Retorna "" quando o monitor não informa o modelo.
+        /// </summary>
+        private static string GetDdcModel(IntPtr hPhysicalMonitor)
+        {
+            try
+            {
+                if (!GetCapabilitiesStringLength(hPhysicalMonitor, out uint len)
+                    || len == 0 || len > 65536) return "";
+
+                var sb = new StringBuilder((int)len + 1);
+                if (!CapabilitiesRequestAndCapabilitiesReply(hPhysicalMonitor, sb, len)) return "";
+
+                // Formato: (prot(monitor)type(lcd)model(MG900)cmds(...)vcp(...))
+                var m = System.Text.RegularExpressions.Regex.Match(
+                    sb.ToString(), @"model\(([^)]+)\)",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                return m.Success ? m.Groups[1].Value.Trim() : "";
+            }
+            catch { return ""; }
+        }
+
         private static string GetMonitorInterfacePath(IntPtr hMonitor)
         {
             try
@@ -231,7 +267,8 @@ namespace PCOptimizer.Services
                     {
                         Handle = pm.hPhysicalMonitor,
                         LogicalHandle = hMonitor,
-                        Name = pm.szPhysicalMonitorDescription
+                        Name = pm.szPhysicalMonitorDescription,
+                        DdcModel = GetDdcModel(pm.hPhysicalMonitor)
                     };
 
                     uint bMin = 0, bCur = 0, bMax = 0;
@@ -592,6 +629,25 @@ namespace PCOptimizer.Services
                         name = $"{edid.Manufacturer} {name}";
                 }
 
+                // MELHOR FONTE: o modelo que o PRÓPRIO monitor informa pelo canal
+                // DDC/CI. Vem do mesmo handle que controla o brilho deste item da
+                // lista, então nome e controles não têm como pertencer a monitores
+                // diferentes — que era a origem da inversão MG900/MG800.
+                if (!string.IsNullOrEmpty(m.DdcModel))
+                {
+                    name = m.DdcModel;
+                    if (!string.IsNullOrEmpty(edid.Manufacturer) &&
+                        !name.StartsWith(edid.Manufacturer, StringComparison.OrdinalIgnoreCase))
+                        name = $"{edid.Manufacturer} {name}";
+                    // Identificador estável: o caminho da interface não muda de
+                    // valor quando o monitor troca de posição (a posição, sim) —
+                    // assim os apelidos salvos continuam no monitor certo.
+                    string disc = !string.IsNullOrEmpty(ifacePath)
+                        ? Math.Abs(ifacePath.GetHashCode()).ToString("x8")
+                        : $"{srcX}x{srcY}";
+                    hwId = $"ddc_{m.DdcModel}_{disc}";
+                }
+
                 // WMI fallback SÓ para o painel interno do notebook — WmiSetBrightness
                 // não controla monitores externos; aplicá-lo neles fazia a barra do
                 // monitor externo mudar o brilho do painel do notebook.
@@ -689,6 +745,36 @@ namespace PCOptimizer.Services
         /// monitor implementa esse código — retorna false quando não aceita, e aí
         /// resta ajustar no menu do monitor ou no painel da placa de vídeo.
         /// </summary>
+        /// <summary>
+        /// Relatório do que o app enxerga de cada monitor e de QUAL fonte veio o
+        /// nome. Serve para diagnosticar nomes trocados sem ficar no chute.
+        /// </summary>
+        public static string Diagnose()
+        {
+            var sb = new StringBuilder();
+            try
+            {
+                var entries = GetMonitorEntries();
+                var raw = GetCachedMonitors();
+                sb.AppendLine($"Monitores detectados: {entries.Count}");
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    var e = entries[i];
+                    string ddc = i < raw.Count ? raw[i].DdcModel : "";
+                    string desc = i < raw.Count ? raw[i].Name : "";
+                    sb.AppendLine($"\n[{i}] {e.Name}");
+                    sb.AppendLine($"   modelo via DDC : {(ddc.Length > 0 ? ddc : "(monitor não informa)")}");
+                    sb.AppendLine($"   descrição DDC  : {desc}");
+                    sb.AppendLine($"   posição/tamanho: {e.ScreenLeft},{e.ScreenTop} {e.ScreenWidth}x{e.ScreenHeight}");
+                    sb.AppendLine($"   device         : {e.DeviceKey}");
+                    sb.AppendLine($"   id salvo       : {e.HardwareId}");
+                    sb.AppendLine($"   brilho/contr.  : {e.SupportsBrightness}/{e.SupportsContrast}  HDR: {e.SupportsHdr}");
+                }
+            }
+            catch (Exception ex) { sb.AppendLine("Erro: " + ex.Message); }
+            return sb.ToString();
+        }
+
         public static bool SetAspectScaling(int monitorIndex, bool preserveAspect)
         {
             var monitors = GetCachedMonitors();
