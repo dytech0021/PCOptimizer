@@ -112,8 +112,31 @@ namespace PCOptimizer.Services
         public static bool SetFor(string device, int width, int height, int preferHz = 0)
             => SetMode(device, width, height, preferHz);
 
+        // Enumerar TODOS os modos de vídeo é caro e a nativa não muda enquanto o
+        // monitor for o mesmo — guardar evita repetir a cada abertura da janela.
+        private static readonly System.Collections.Generic.Dictionary<string, (int W, int H)?> _nativeCache
+            = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Limpa o cache de resoluções nativas (troca de monitores).</summary>
+        public static void InvalidateNativeCache()
+        {
+            lock (_nativeCache) _nativeCache.Clear();
+        }
+
         /// <summary>Resolução NATIVA (maior modo suportado) do monitor.</summary>
         public static (int W, int H)? GetNative(string device)
+        {
+            if (!string.IsNullOrEmpty(device))
+                lock (_nativeCache)
+                    if (_nativeCache.TryGetValue(device, out var hit)) return hit;
+
+            var found = GetNativeUncached(device);
+            if (!string.IsNullOrEmpty(device))
+                lock (_nativeCache) _nativeCache[device] = found;
+            return found;
+        }
+
+        private static (int W, int H)? GetNativeUncached(string device)
         {
             try
             {

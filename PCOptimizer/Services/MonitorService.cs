@@ -155,6 +155,26 @@ namespace PCOptimizer.Services
         /// brilho/contraste — então o nome nunca pode pertencer a outro monitor.
         /// Retorna "" quando o monitor não informa o modelo.
         /// </summary>
+        // O modelo nunca muda para um mesmo monitor, e a consulta é lenta (ida e
+        // volta no barramento DDC). Guarda por monitor e só refaz se o vídeo mudar.
+        private static readonly Dictionary<string, string> _ddcModelCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        private static string GetDdcModelCached(string key, IntPtr hPhysicalMonitor)
+        {
+            if (!string.IsNullOrEmpty(key))
+            {
+                lock (_ddcModelCache)
+                    if (_ddcModelCache.TryGetValue(key, out var hit)) return hit;
+            }
+
+            string model = GetDdcModel(hPhysicalMonitor);
+
+            if (!string.IsNullOrEmpty(key))
+                lock (_ddcModelCache) _ddcModelCache[key] = model;
+            return model;
+        }
+
         private static string GetDdcModel(IntPtr hPhysicalMonitor)
         {
             try
@@ -230,6 +250,30 @@ namespace PCOptimizer.Services
         private static readonly object _cacheLock = new();
         private static List<MonitorInfo>? _cache;
 
+        // Só re-enumera quando a configuração de vídeo REALMENTE muda. Antes o
+        // cache era descartado a cada abertura da janela, refazendo toda a sondagem
+        // DDC (brilho, contraste e a consulta de modelo, que é lenta) — era isso
+        // que deixava a janela de brilho demorada para abrir.
+        private static volatile bool _displayDirty = true;
+
+        static MonitorService()
+        {
+            try
+            {
+                Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) =>
+                {
+                    _displayDirty = true;
+                    _edidCache = null;
+                    lock (_ddcModelCache) _ddcModelCache.Clear();
+                    DisplayResolutionService.InvalidateNativeCache();
+                };
+            }
+            catch { /* sem bomba de mensagens — segue sem invalidação automática */ }
+        }
+
+        /// <summary>Força re-enumeração na próxima leitura (troca de monitores).</summary>
+        public static void MarkDisplaysChanged() => _displayDirty = true;
+
         private static List<MonitorInfo> GetCachedMonitors()
         {
             lock (_cacheLock) { return _cache ??= GetMonitors(); }
@@ -261,6 +305,9 @@ namespace PCOptimizer.Services
                 if (!GetPhysicalMonitorsFromHMONITOR(hMonitor, count, phys))
                     return true;
 
+                string modelKey = GetMonitorInterfacePath(hMonitor);
+                int physIdx = 0;
+
                 foreach (var pm in phys)
                 {
                     var info = new MonitorInfo
@@ -268,7 +315,8 @@ namespace PCOptimizer.Services
                         Handle = pm.hPhysicalMonitor,
                         LogicalHandle = hMonitor,
                         Name = pm.szPhysicalMonitorDescription,
-                        DdcModel = GetDdcModel(pm.hPhysicalMonitor)
+                        DdcModel = GetDdcModelCached(
+                            modelKey.Length > 0 ? $"{modelKey}#{physIdx++}" : "", pm.hPhysicalMonitor)
                     };
 
                     uint bMin = 0, bCur = 0, bMax = 0;
@@ -410,9 +458,26 @@ namespace PCOptimizer.Services
 
         // Returns a queue per PnP ID so that identical monitors (same model) are
         // consumed in the order WMI reports them — which should match connector order.
+        // Consultas WMI custam centenas de ms; o resultado só muda quando o vídeo
+        // muda, então fica guardado (a lista crua, para remontar as filas).
+        private static List<(string PnpId, EdidInfo Info)>? _edidCache;
+
         private static Dictionary<string, Queue<EdidInfo>> GetEdidInfosByPnpId()
         {
+            if (_edidCache != null)
+            {
+                var cached = new Dictionary<string, Queue<EdidInfo>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (pnp, info) in _edidCache)
+                {
+                    if (!cached.TryGetValue(pnp, out var q))
+                        cached[pnp] = q = new Queue<EdidInfo>();
+                    q.Enqueue(info);
+                }
+                return cached;
+            }
+
             var result = new Dictionary<string, Queue<EdidInfo>>(StringComparer.OrdinalIgnoreCase);
+            var flat = new List<(string, EdidInfo)>();
             try
             {
                 using var s = new ManagementObjectSearcher("root\\WMI",
@@ -436,6 +501,12 @@ namespace PCOptimizer.Services
                     if (!result.ContainsKey(pnpId))
                         result[pnpId] = new Queue<EdidInfo>();
 
+                    flat.Add((pnpId, new EdidInfo
+                    {
+                        Manufacturer = MapManufacturer(mfr),
+                        FriendlyName = friendly,
+                        HardwareId   = hwId
+                    }));
                     result[pnpId].Enqueue(new EdidInfo
                     {
                         Manufacturer = MapManufacturer(mfr),
@@ -444,6 +515,7 @@ namespace PCOptimizer.Services
                     });
                     idx++;
                 }
+                _edidCache = flat;
             }
             catch { }
             return result;
@@ -509,7 +581,12 @@ namespace PCOptimizer.Services
 
         public static List<MonitorEntry> GetMonitorEntries()
         {
-            InvalidateCache();
+            // Re-enumera só se o vídeo mudou desde a última vez
+            if (_displayDirty)
+            {
+                InvalidateCache();
+                _displayDirty = false;
+            }
             var monitors = GetCachedMonitors();
 
             // Pure WMI path: no DDC monitors at all (notebook with no external display)
@@ -735,8 +812,12 @@ namespace PCOptimizer.Services
             uint target = m.MaxBrightness > m.MinBrightness
                 ? m.MinBrightness + (uint)((m.MaxBrightness - m.MinBrightness) * percent / 100.0)
                 : (uint)percent;
-            return SetMonitorBrightness(m.Handle, target)
-                || SetVCPFeature(m.Handle, VCP_LUMINANCE, target);
+            bool ok = SetMonitorBrightness(m.Handle, target)
+                   || SetVCPFeature(m.Handle, VCP_LUMINANCE, target);
+            // Mantém o cache coerente: como não re-enumeramos a cada abertura da
+            // janela, sem isto ela reabriria mostrando o valor antigo.
+            if (ok) m.CurrentBrightness = target;
+            return ok;
         }
 
         /// <summary>
@@ -797,7 +878,10 @@ namespace PCOptimizer.Services
             var m = monitors[i];
             if (!m.SupportsContrast || m.MaxContrast < m.MinContrast) return false;
             uint range = m.MaxContrast - m.MinContrast;
-            return SetMonitorContrast(m.Handle, m.MinContrast + (uint)(range * percent / 100.0));
+            uint target = m.MinContrast + (uint)(range * percent / 100.0);
+            bool ok = SetMonitorContrast(m.Handle, target);
+            if (ok) m.CurrentContrast = target;   // mantém o cache coerente
+            return ok;
         }
 
         // ── All-monitors helpers (used by presets) ────────────────────────────
