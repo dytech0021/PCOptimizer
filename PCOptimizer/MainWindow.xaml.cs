@@ -897,6 +897,45 @@ namespace PCOptimizer
             win.ShowDialog();
         }
 
+        private async void BtnMaximizeDisplay_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isRunning) return;
+
+            BtnMaximizeDisplay.IsEnabled = false;
+            TxtMaximizeStatus.Text = "Aplicando o melhor modo em cada monitor...";
+            try
+            {
+                var results = await Task.Run(DisplayResolutionService.MaximizeAll);
+                if (results.Count == 0)
+                {
+                    TxtMaximizeStatus.Text = "Não consegui ler os monitores";
+                    return;
+                }
+
+                foreach (var r in results)
+                    Log(r.Ok
+                        ? $"✅ {r.Device}: {r.W}×{r.H} @ {r.Hz}Hz"
+                        : $"⚠️ {r.Device}: o Windows recusou o modo máximo");
+
+                int ok = results.Count(r => r.Ok);
+                var first = results[0];
+                TxtMaximizeStatus.Text = ok == results.Count
+                    ? (results.Count == 1
+                        ? $"✅ {first.W}×{first.H} @ {first.Hz}Hz"
+                        : $"✅ {ok} monitores no máximo — veja o log")
+                    : $"⚠️ {ok} de {results.Count} monitores aplicados — veja o log";
+
+                // A troca de modo muda o layout: refaz o painel de brilho.
+                MonitorService.MarkDisplaysChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "BtnMaximizeDisplay_Click");
+                TxtMaximizeStatus.Text = "Erro: " + ex.Message;
+            }
+            finally { BtnMaximizeDisplay.IsEnabled = true; }
+        }
+
         private async void BtnDeepRepair_Click(object sender, RoutedEventArgs e)
         {
             if (_isRunning) return;

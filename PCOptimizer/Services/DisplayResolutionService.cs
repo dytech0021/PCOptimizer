@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace PCOptimizer.Services
@@ -154,6 +155,45 @@ namespace PCOptimizer.Services
                 return best;
             }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// Coloca UM monitor na maior resolução que ele suporta e, nela, na maior
+        /// taxa de atualização disponível (SetMode com preferHz 0 já escolhe o
+        /// maior Hz válido para aquela resolução).
+        /// </summary>
+        public static (bool Ok, int W, int H, int Hz) ApplyBestMode(string device)
+        {
+            var nat = GetNative(device);
+            if (nat == null) return (false, 0, 0, 0);
+
+            bool ok = SetMode(device, nat.Value.W, nat.Value.H);
+            var now = GetCurrentFor(device);
+            return (ok, now?.W ?? nat.Value.W, now?.H ?? nat.Value.H, now?.Hz ?? 0);
+        }
+
+        /// <summary>
+        /// Aplica o melhor modo em TODAS as telas ativas. Devolve uma linha por
+        /// monitor para o log.
+        /// </summary>
+        public static List<(string Device, bool Ok, int W, int H, int Hz)> MaximizeAll()
+        {
+            var results = new List<(string, bool, int, int, int)>();
+            try
+            {
+                foreach (var scr in System.Windows.Forms.Screen.AllScreens)
+                {
+                    var before = GetCurrentFor(scr.DeviceName);
+                    var r = ApplyBestMode(scr.DeviceName);
+
+                    // Já estava no melhor modo? Conta como sucesso mesmo assim.
+                    bool already = before != null && r.W == before.Value.W
+                                && r.H == before.Value.H && r.Hz == before.Value.Hz;
+                    results.Add((scr.DeviceName, r.Ok || already, r.W, r.H, r.Hz));
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, "MaximizeAll"); }
+            return results;
         }
 
         /// <summary>
