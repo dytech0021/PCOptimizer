@@ -66,6 +66,11 @@ namespace PCOptimizer.Services
         // conectar o acesso remoto). Por EVENTO, não por varredura periódica.
         public bool AutoFixColorOnDisplayChange { get; set; }
 
+        // Sai da frente dos jogos: com um jogo em tela cheia, pausa os timers de
+        // segundo plano e baixa a prioridade do processo. Ligado por padrão —
+        // nada do que esses timers fazem é visível durante um jogo em tela cheia.
+        public bool GameAwareMode { get; set; } = true;
+
         // Monitores desativados pelo app: device (\\.\DISPLAYn) →
         // "LARGURAxALTURAxHZxPOSXxPOSY" de antes, para a reativação devolver a
         // tela ao mesmo lugar

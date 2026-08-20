@@ -126,8 +126,23 @@ namespace PCOptimizer.Services
         // reafirma o topmost a cada 2 s enquanto houver escurecimento ativo.
         private static System.Windows.Threading.DispatcherTimer? _watchdog;
 
+        // Em jogo de tela cheia o overlay está por baixo do jogo: reafirmar o
+        // topmost não muda nada e só disputa CPU.
+        private static bool _paused;
+
+        public static void Pause() { _paused = true; _watchdog?.Stop(); }
+
+        public static void Resume()
+        {
+            _paused = false;
+            lock (_lock)
+                foreach (var o in _overlays.Values)
+                    if (o.Percent < 100 && o.Window.IsVisible) { EnsureWatchdog(); break; }
+        }
+
         private static void EnsureWatchdog()
         {
+            if (_paused) return;
             if (_watchdog == null)
             {
                 _watchdog = new System.Windows.Threading.DispatcherTimer(

@@ -98,8 +98,21 @@ namespace PCOptimizer.Services
         // (mesma técnica do timer da barra de tarefas transparente).
         private static System.Windows.Threading.DispatcherTimer? _watchdog;
 
+        // Em jogo de tela cheia o overlay fica por baixo: reafirmar posição/topmost
+        // não muda nada na tela e só disputa CPU com o jogo.
+        private static bool _paused;
+
+        public static void Pause() { _paused = true; _watchdog?.Stop(); }
+
+        public static void Resume()
+        {
+            _paused = false;
+            if (_overlay is { IsVisible: true }) { RepositionToVirtualScreen(); EnsureWatchdog(); }
+        }
+
         private static void EnsureWatchdog()
         {
+            if (_paused) return;
             if (_watchdog == null)
             {
                 _watchdog = new System.Windows.Threading.DispatcherTimer(

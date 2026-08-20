@@ -266,6 +266,8 @@ namespace PCOptimizer.Services
                     _edidCache = null;
                     lock (_ddcModelCache) _ddcModelCache.Clear();
                     DisplayResolutionService.InvalidateNativeCache();
+                    // As barras secundárias mudam junto com os monitores
+                    TaskbarTransparencyService.InvalidateBarsCache();
                 };
             }
             catch { /* sem bomba de mensagens — segue sem invalidação automática */ }

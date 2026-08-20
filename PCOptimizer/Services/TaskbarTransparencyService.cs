@@ -47,6 +47,9 @@ namespace PCOptimizer.Services
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string? className, string? windowName);
 
+        [DllImport("user32.dll")]
+        private static extern bool IsWindow(IntPtr hWnd);
+
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern bool SendNotifyMessage(IntPtr hWnd, uint msg, UIntPtr wParam, string? lParam);
 
@@ -210,7 +213,27 @@ namespace PCOptimizer.Services
             {
                 Interval = TimeSpan.FromMilliseconds(RefreshIntervalMs)
             };
-            _timer.Tick += (_, _) => { if (IsActive) ApplyToAllTaskbars(); };
+            _timer.Tick += (_, _) => { if (IsActive && !_paused) ApplyToAllTaskbars(); };
+        }
+
+        // Durante um jogo em tela cheia a barra está coberta: reaplicar o efeito
+        // não muda nada na tela e só disputa CPU com o jogo.
+        private static bool _paused;
+
+        public static void Pause()
+        {
+            _paused = true;
+            _timer?.Stop();
+        }
+
+        public static void Resume()
+        {
+            _paused = false;
+            if (IsActive)
+            {
+                ApplyToAllTaskbars();   // recupera o que o Windows desfez enquanto isso
+                _timer?.Start();
+            }
         }
 
         // Variações de renderização: a MESMA chamada é interpretada diferente
@@ -332,14 +355,47 @@ namespace PCOptimizer.Services
             finally { Marshal.FreeHGlobal(ptr); }
         }
 
+        // Handles das barras, guardados entre os ticks. Sem isto, o timer varria
+        // TODAS as janelas de topo do sistema (EnumWindows) duas vezes por segundo
+        // — a operação mais cara do app em segundo plano. Agora só re-varre quando
+        // algum handle deixa de ser válido (explorer reiniciado, monitor trocado).
+        private static List<IntPtr>? _barsCache;
+
+        private static bool CacheStillValid()
+        {
+            if (_barsCache == null || _barsCache.Count == 0) return false;
+            foreach (var h in _barsCache) if (!IsWindow(h)) return false;
+            return true;
+        }
+
+        /// <summary>Descarta os handles guardados (troca de monitores, explorer reiniciado).</summary>
+        public static void InvalidateBarsCache() => _barsCache = null;
+
         private static List<IntPtr> GetTaskbarWindows(bool includeChildren = true)
         {
-            var bars = new List<IntPtr>();
+            List<IntPtr> bars;
+            if (CacheStillValid())
+            {
+                bars = _barsCache!;
+                if (!includeChildren) return bars;
+            }
+            else
+            {
+                bars = new List<IntPtr>();
+                IntPtr primary = FindWindow("Shell_TrayWnd", null);
+                if (primary != IntPtr.Zero) bars.Add(primary);
+                return FinishEnumeration(bars, includeChildren);
+            }
 
-            IntPtr primary = FindWindow("Shell_TrayWnd", null);
-            if (primary != IntPtr.Zero) bars.Add(primary);
+            // Cache válido: só resolve as filhas (FindWindowEx é barato)
+            return AddChildren(bars);
+        }
 
-            // Barras secundárias (uma por monitor extra).
+        private static List<IntPtr> FinishEnumeration(List<IntPtr> bars, bool includeChildren)
+        {
+
+            // Barras secundárias (uma por monitor extra). Esta varredura é a parte
+            // cara — o resultado fica guardado e só se repete quando invalida.
             EnumWindows((hwnd, _) =>
             {
                 var sb = new StringBuilder(64);
@@ -349,12 +405,20 @@ namespace PCOptimizer.Services
                 return true;
             }, IntPtr.Zero);
 
+            _barsCache = bars;
+
             // Modo WholeBar usa só as janelas top-level (a camada vale p/ a árvore toda).
             if (!includeChildren) return bars;
+            return AddChildren(bars);
+        }
 
-            // No Windows 11 o fundo da barra é desenhado por uma janela-filha
-            // (DesktopWindowContentBridge). Aplicar o accent também nela aumenta a
-            // chance de o efeito pegar. Não atrapalha no Win10 (a filha não existe).
+        /// <summary>
+        /// No Windows 11 o fundo da barra é desenhado por uma janela-filha
+        /// (DesktopWindowContentBridge). Aplicar o accent também nela aumenta a
+        /// chance de o efeito pegar. Não atrapalha no Win10 (a filha não existe).
+        /// </summary>
+        private static List<IntPtr> AddChildren(List<IntPtr> bars)
+        {
             var targets = new List<IntPtr>(bars);
             foreach (var bar in bars)
             {
@@ -362,7 +426,6 @@ namespace PCOptimizer.Services
                     "Windows.UI.Composition.DesktopWindowContentBridge", null);
                 if (child != IntPtr.Zero) targets.Add(child);
             }
-
             return targets;
         }
 

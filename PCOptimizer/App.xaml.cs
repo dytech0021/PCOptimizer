@@ -56,6 +56,14 @@ namespace PCOptimizer
             if (SettingsService.Current.AutoFixColorOnDisplayChange)
                 RemoteAccessService.SetAutoFixHook(true);
 
+            // Sair da frente dos jogos: durante um jogo em tela cheia, tudo o que
+            // roda em segundo plano é invisível — pausar libera CPU para o jogo.
+            if (SettingsService.Current.GameAwareMode)
+            {
+                GameAwarenessService.GameStateChanged += OnGameStateChanged;
+                GameAwarenessService.Start();
+            }
+
             TrayService.ShowBrightnessRequested += ToggleBrightnessWindow;
             TrayService.ExitRequested += Shutdown;
             HotkeyService.HotkeyPressed += ToggleBrightnessWindow;
@@ -63,6 +71,31 @@ namespace PCOptimizer
             // Exibe a janela flutuante de brilho automaticamente ao abrir
             if (MainWindow != null)
                 MainWindow.Loaded += (_, _) => ToggleBrightnessWindow();
+        }
+
+        /// <summary>
+        /// Pausa/retoma o que roda em segundo plano conforme entra e sai de jogo.
+        /// Só timers e prioridade: nenhum efeito já aplicado é desfeito, então o
+        /// usuário não perde brilho, luz noturna nem barra transparente.
+        /// </summary>
+        private static void OnGameStateChanged(bool gameRunning)
+        {
+            try
+            {
+                if (gameRunning)
+                {
+                    TaskbarTransparencyService.Pause();
+                    SoftwareBrightnessService.Pause();
+                    NightLightService.Pause();
+                }
+                else
+                {
+                    TaskbarTransparencyService.Resume();
+                    SoftwareBrightnessService.Resume();
+                    NightLightService.Resume();
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, "OnGameStateChanged"); }
         }
 
         /// <summary>
