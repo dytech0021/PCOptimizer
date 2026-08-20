@@ -544,6 +544,38 @@ namespace PCOptimizer.Services
             catch (Exception ex) { Logger.Error(ex, "PressHdrHotkey"); }
         }
 
+        /// <summary>
+        /// Anota quais telas estão com HDR ligado. Trocar de resolução faz o
+        /// Windows reaplicar a configuração daquele modo, o que pode derrubar o
+        /// HDR — guardar antes permite devolvê-lo depois.
+        /// </summary>
+        public static List<uint> SnapshotHdrOnTargets()
+        {
+            var list = new List<uint>();
+            try
+            {
+                foreach (var h in GetAllHdrInfo())
+                    if (h.IsEnabled) list.Add(h.TargetId);
+            }
+            catch { }
+            return list;
+        }
+
+        /// <summary>Religa o HDR nas telas anotadas. Devolve quantas voltaram.</summary>
+        public static int RestoreHdrOnTargets(List<uint> targets)
+        {
+            if (targets == null || targets.Count == 0) return 0;
+            int n = 0;
+            try
+            {
+                foreach (var h in GetAllHdrInfo())
+                    if (h.IsSupported && !h.IsEnabled && targets.Contains(h.TargetId))
+                        if (SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, true)) n++;
+            }
+            catch (Exception ex) { Logger.Error(ex, "RestoreHdrOnTargets"); }
+            return n;
+        }
+
         /// <summary>true se ALGUMA tela está com HDR ligado.</summary>
         public static bool AnyHdrOn()
         {

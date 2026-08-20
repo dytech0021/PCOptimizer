@@ -215,9 +215,21 @@ namespace PCOptimizer.Services
             catch (Exception ex) { Logger.Error(ex, "SetAutoFixHook"); }
         }
 
+        private static DateTime _suppressUntil = DateTime.MinValue;
+
+        /// <summary>
+        /// Silencia a correção automática por alguns segundos. Usado sempre que é o
+        /// PRÓPRIO app que muda o vídeo (16:9, maximizar tela, ligar/desligar
+        /// monitor): essas mudanças disparam o mesmo evento de uma reconexão
+        /// remota, e sem isso o app desligava o HDR do usuário por engano.
+        /// </summary>
+        public static void SuppressAutoFixFor(int seconds)
+            => _suppressUntil = DateTime.Now.AddSeconds(seconds);
+
         private static void OnDisplaySettingsChanged(object? sender, EventArgs e)
         {
             if (!SettingsService.Current.AutoFixColorOnDisplayChange) return;
+            if (DateTime.Now < _suppressUntil) return;  // mudança feita pelo app
             if (_autoBusy) return;   // a nossa própria correção dispara este evento
             if ((DateTime.Now - _autoLastFix).TotalSeconds < AutoCooldownSeconds) return;
             _ = HandleDisplayChangeAsync();

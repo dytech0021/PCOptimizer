@@ -905,6 +905,11 @@ namespace PCOptimizer
             TxtMaximizeStatus.Text = "Aplicando o melhor modo em cada monitor...";
             try
             {
+                // Trocar de modo pode derrubar o HDR e dispara o mesmo evento de
+                // uma reconexão remota — preserva o HDR e cala a correção automática.
+                var hdrWasOn = HdrService.SnapshotHdrOnTargets();
+                RemoteAccessService.SuppressAutoFixFor(20);
+
                 var results = await Task.Run(DisplayResolutionService.MaximizeAll);
                 if (results.Count == 0)
                 {
@@ -924,6 +929,10 @@ namespace PCOptimizer
                         ? $"✅ {first.W}×{first.H} @ {first.Hz}Hz"
                         : $"✅ {ok} monitores no máximo — veja o log")
                     : $"⚠️ {ok} de {results.Count} monitores aplicados — veja o log";
+
+                // Devolve o HDR que a troca de modo tenha derrubado
+                await Task.Delay(1200);
+                await Task.Run(() => HdrService.RestoreHdrOnTargets(hdrWasOn));
 
                 // A troca de modo muda o layout: refaz o painel de brilho.
                 MonitorService.MarkDisplaysChanged();

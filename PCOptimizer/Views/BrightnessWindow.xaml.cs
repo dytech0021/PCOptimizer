@@ -235,12 +235,19 @@ namespace PCOptimizer.Views
                 {
                     btn.IsEnabled = false;
                     TxtStatus.Text = attached ? "Desativando monitor..." : "Reativando monitor...";
+
+                    // Anexar/desanexar mexe no vídeo: preserva o HDR das outras
+                    // telas e cala a correção automática de cor.
+                    var hdrWasOn = HdrService.SnapshotHdrOnTargets();
+                    RemoteAccessService.SuppressAutoFixFor(20);
+
                     var r = await Task.Run(() => attached
                         ? MonitorEnableService.Disable(dev)
                         : MonitorEnableService.Enable(dev));
                     TxtStatus.Text = r.Message;
 
                     await Task.Delay(1500);      // o vídeo precisa assentar
+                    await Task.Run(() => HdrService.RestoreHdrOnTargets(hdrWasOn));
                     BuildDisplayToggles();
                     await ReloadMonitorsAsync();
                     btn.IsEnabled = true;
@@ -1084,6 +1091,12 @@ namespace PCOptimizer.Views
                 btn.IsEnabled = false;
                 try
                 {
+                    // Trocar de resolução faz o Windows reaplicar a configuração
+                    // daquele modo e pode derrubar o HDR. Anota o que estava ligado
+                    // para devolver no fim — o 16:9 é sobre proporção, não sobre cor.
+                    var hdrWasOn = HdrService.SnapshotHdrOnTargets();
+                    RemoteAccessService.SuppressAutoFixFor(15);
+
                     var s = SettingsService.Current;
                     string? savedKey = FindGameArKey(mc.HardwareId);
                     if (savedKey == null)
@@ -1143,6 +1156,11 @@ namespace PCOptimizer.Views
                     }
 
                     await Task.Delay(1500);
+
+                    // Devolve o HDR que a troca de resolução tenha derrubado
+                    int back = await Task.Run(() => HdrService.RestoreHdrOnTargets(hdrWasOn));
+                    if (back > 0) await Task.Delay(1200);
+
                     await ReloadMonitorsAsync();
                 }
                 finally { btn.IsEnabled = true; }
