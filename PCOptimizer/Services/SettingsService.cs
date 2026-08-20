@@ -66,6 +66,11 @@ namespace PCOptimizer.Services
         // conectar o acesso remoto). Por EVENTO, não por varredura periódica.
         public bool AutoFixColorOnDisplayChange { get; set; }
 
+        // Monitores desativados pelo app: device (\\.\DISPLAYn) →
+        // "LARGURAxALTURAxHZxPOSXxPOSY" de antes, para a reativação devolver a
+        // tela ao mesmo lugar
+        public Dictionary<string, string> DisabledMonitors { get; set; } = new();
+
         // Modo 16:9 com barras pretas (jogos) por monitor ultrawide:
         // HardwareId → "LARGURAxALTURAxHZ" da resolução original, para reverter
         public Dictionary<string, string> GameArPrevMode { get; set; } = new();

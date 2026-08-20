@@ -91,6 +91,22 @@ namespace PCOptimizer.Views
             }
             _winNlInitializing = false;
 
+            // Seções recolhidas por padrão para a janela ficar limpa — mas abrem
+            // sozinhas quando há algo ativo ali dentro, senão o usuário não teria
+            // como perceber (nem desfazer) o que está valendo.
+            if (SettingsService.Current.NightLightEnabled || winNlOn)
+            {
+                NightSection.Visibility = Visibility.Visible;
+                TxtNightArrow.Text = "▾";
+            }
+            if (SettingsService.Current.DisabledMonitors.Count > 0 ||
+                RemoteAccessService.IsActive)
+            {
+                DisplaysPanel.Visibility = Visibility.Visible;
+                TxtDisplaysArrow.Text = "▾";
+                BuildDisplayToggles();
+            }
+
             InitAdvColor();
         }
 
@@ -141,6 +157,97 @@ namespace PCOptimizer.Views
             TxtGainRValue.Text     = $"{(int)SliderGainR.Value}%";
             TxtGainGValue.Text     = $"{(int)SliderGainG.Value}%";
             TxtGainBValue.Text     = $"{(int)SliderGainB.Value}%";
+        }
+
+        private void NightSection_Toggle(object sender, MouseButtonEventArgs e)
+        {
+            bool show = NightSection.Visibility != Visibility.Visible;
+            NightSection.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            TxtNightArrow.Text = show ? "▾" : "▸";
+        }
+
+        private void Displays_Toggle(object sender, MouseButtonEventArgs e)
+        {
+            bool show = DisplaysPanel.Visibility != Visibility.Visible;
+            DisplaysPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            TxtDisplaysArrow.Text = show ? "▾" : "▸";
+            if (show) BuildDisplayToggles();
+        }
+
+        /// <summary>
+        /// Uma linha por saída de vídeo, com botão de ligar/desligar. Usa a lista
+        /// que enxerga também as telas desanexadas — senão não haveria como
+        /// reativar o que foi desligado.
+        /// </summary>
+        private void BuildDisplayToggles()
+        {
+            PnlDisplayToggles.Children.Clear();
+            var devices = MonitorEnableService.ListAll();
+
+            foreach (var d in devices)
+            {
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var label = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                var name = new TextBlock
+                {
+                    Text = d.Description + (d.Primary ? "  (principal)" : ""),
+                    FontSize = 11, FontWeight = FontWeights.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 175
+                };
+                name.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+                var sub = new TextBlock
+                {
+                    Text = d.Attached ? "Ativa" : "Desativada",
+                    FontSize = 9, Opacity = 0.7
+                };
+                sub.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
+                label.Children.Add(name);
+                label.Children.Add(sub);
+                row.Children.Add(label);
+
+                var btn = new Button
+                {
+                    Content = d.Attached ? "Desativar" : "Ativar",
+                    FontSize = 10, Padding = new Thickness(12, 5, 12, 5),
+                    Cursor = Cursors.Hand, BorderThickness = new Thickness(1),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(btn, 1);
+                if (d.Attached)
+                {
+                    btn.Background  = Brushes.Transparent;
+                    btn.Foreground  = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8));
+                    btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x5A, 0x2A, 0x35));
+                }
+                else
+                {
+                    btn.Background  = new SolidColorBrush(Color.FromRgb(0x16, 0x33, 0x22));
+                    btn.Foreground  = new SolidColorBrush(Color.FromRgb(0x86, 0xEF, 0xAC));
+                    btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x1C, 0x51, 0x38));
+                }
+
+                string dev = d.Device;
+                bool attached = d.Attached;
+                btn.Click += async (_, _) =>
+                {
+                    btn.IsEnabled = false;
+                    TxtStatus.Text = attached ? "Desativando monitor..." : "Reativando monitor...";
+                    var r = await Task.Run(() => attached
+                        ? MonitorEnableService.Disable(dev)
+                        : MonitorEnableService.Enable(dev));
+                    TxtStatus.Text = r.Message;
+
+                    await Task.Delay(1500);      // o vídeo precisa assentar
+                    BuildDisplayToggles();
+                    await ReloadMonitorsAsync();
+                    btn.IsEnabled = true;
+                };
+                row.Children.Add(btn);
+                PnlDisplayToggles.Children.Add(row);
+            }
         }
 
         private void AdvColor_Toggle(object sender, MouseButtonEventArgs e)
