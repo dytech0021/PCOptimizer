@@ -55,35 +55,49 @@ namespace PCOptimizer.Views
                 : "Desligado — use o botão acima quando precisar";
         }
 
-        private void BtnDiagMonitors_Click(object sender, RoutedEventArgs e)
+        private async void BtnDiagMonitors_Click(object sender, RoutedEventArgs e)
         {
+            IsEnabled = false;
             try
             {
-                string txt = MonitorService.Diagnose();
+                TxtTuneStatus.Text = "Lendo os monitores...";
+                // Fora da thread de UI: Diagnose refaz a enumeração completa
+                // (DDC/CI, WMI e DisplayConfig) e congelaria a janela por segundos.
+                string txt = await Task.Run(MonitorService.Diagnose);
                 Clipboard.SetText(txt);
                 TxtTuneStatus.Text = "Diagnóstico copiado — cole no chat do suporte";
             }
             catch (Exception ex) { TxtTuneStatus.Text = "Erro ao copiar: " + ex.Message; }
+            finally { IsEnabled = true; }
         }
 
         private async void BtnFixColor_Click(object sender, RoutedEventArgs e)
         {
             IsEnabled = false;
-            TxtTuneStatus.Text = "Aplicando o ciclo de HDR — a tela vai piscar...";
-            TxtTuneStatus.Text = await RemoteAccessService.FixColorNowAsync();
-            Refresh();
-            IsEnabled = true;
+            try
+            {
+                TxtTuneStatus.Text = "Aplicando o ciclo de HDR — a tela vai piscar...";
+                TxtTuneStatus.Text = await RemoteAccessService.FixColorNowAsync();
+                Refresh();
+            }
+            catch (Exception ex) { TxtTuneStatus.Text = "Erro: " + ex.Message; }
+            finally { IsEnabled = true; }
         }
 
         private async Task RunAsync(string busy, System.Func<Task<bool>> action, string doneMsg)
         {
             IsEnabled = false;
-            TxtTuneStatus.Text = busy;
-            bool ok = await action();
-            await Task.Delay(1200); // o vídeo precisa assentar antes de reler
-            TxtTuneStatus.Text = ok ? doneMsg : "⚠ O Windows não aceitou essa mudança";
-            Refresh();
-            IsEnabled = true;
+            try
+            {
+                TxtTuneStatus.Text = busy;
+                bool ok = await action();
+                await Task.Delay(1200); // o vídeo precisa assentar antes de reler
+                TxtTuneStatus.Text = ok ? doneMsg : "⚠ O Windows não aceitou essa mudança";
+                Refresh();
+            }
+            catch (Exception ex) { TxtTuneStatus.Text = "Erro: " + ex.Message; }
+            // finally: sem isto, uma falha deixava a janela morta (nem fechar dava)
+            finally { IsEnabled = true; }
         }
 
         private async void ChkSingle_Click(object sender, RoutedEventArgs e)
@@ -125,10 +139,14 @@ namespace PCOptimizer.Views
         private async void BtnRevertAll_Click(object sender, RoutedEventArgs e)
         {
             IsEnabled = false;
-            TxtTuneStatus.Text = "Revertendo tudo...";
-            TxtTuneStatus.Text = await RemoteAccessService.ExitAsync();
-            Refresh();
-            IsEnabled = true;
+            try
+            {
+                TxtTuneStatus.Text = "Revertendo tudo...";
+                TxtTuneStatus.Text = await RemoteAccessService.ExitAsync();
+                Refresh();
+            }
+            catch (Exception ex) { TxtTuneStatus.Text = "Erro: " + ex.Message; }
+            finally { IsEnabled = true; }
         }
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

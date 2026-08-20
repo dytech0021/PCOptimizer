@@ -264,6 +264,7 @@ namespace PCOptimizer.Services
                 {
                     _displayDirty = true;
                     _edidCache = null;
+                    _hasWmiCache = null;
                     lock (_ddcModelCache) _ddcModelCache.Clear();
                     DisplayResolutionService.InvalidateNativeCache();
                     // As barras secundárias mudam junto com os monitores
@@ -408,7 +409,18 @@ namespace PCOptimizer.Services
 
         // ── WMI fallback (notebooks / painéis sem DDC/CI) ─────────────────────
 
+        // Consulta WMI custa centenas de ms e o resultado só muda quando o vídeo
+        // muda — a janela de brilho reabre com frequência e pagava isso toda vez.
+        private static bool? _hasWmiCache;
+
         private static bool HasWmiMonitors()
+        {
+            if (_hasWmiCache.HasValue) return _hasWmiCache.Value;
+            _hasWmiCache = HasWmiMonitorsUncached();
+            return _hasWmiCache.Value;
+        }
+
+        private static bool HasWmiMonitorsUncached()
         {
             try
             {

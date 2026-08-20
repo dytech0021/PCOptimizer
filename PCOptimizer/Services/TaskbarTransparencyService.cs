@@ -98,7 +98,9 @@ namespace PCOptimizer.Services
         // Reaplica a cada 500 ms: rápido o bastante para parecer instantâneo após
         // um repintar do Windows, leve o bastante para não pesar (custo: um
         // FindWindow + SetWindowCompositionAttribute por barra).
-        private const int RefreshIntervalMs = 500;
+        // 2 s: rápido o bastante para corrigir um repintar do Windows antes de
+        // incomodar, e 4× menos trabalho de fundo que os 500 ms anteriores.
+        private const int RefreshIntervalMs = 2000;
 
         private static DispatcherTimer? _timer;
 
@@ -146,8 +148,14 @@ namespace PCOptimizer.Services
         /// Liga "Efeitos de transparência" do Windows (Personalização → Cores). Sem isso,
         /// o accent de blur/acrílico não tem efeito visível na barra.
         /// </summary>
+        // Basta uma vez por sessão: era chamado a cada tick do slider, gravando
+        // no registro e fazendo broadcast dezenas de vezes por segundo.
+        private static bool _transparencyEnsured;
+
         private static void EnsureSystemTransparency()
         {
+            if (_transparencyEnsured) return;
+            _transparencyEnsured = true;
             try
             {
                 using var key = Registry.CurrentUser.CreateSubKey(

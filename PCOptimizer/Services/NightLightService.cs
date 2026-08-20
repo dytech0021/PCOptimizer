@@ -219,7 +219,24 @@ namespace PCOptimizer.Services
         // Localiza a subchave correta — o nome do container e da folha variam entre versões do Windows.
         // Estratégia: tenta os nomes conhecidos primeiro, depois enumera todas as subchaves de
         // DefaultAccount\Current\ procurando qualquer container que contenha o nome do recurso.
+        // O caminho da chave não muda em execução, e a busca enumera todos os
+        // containers do CloudStore abrindo cada folha — cara para repetir a cada
+        // leitura de estado (que acontece ao abrir a janela de brilho).
+        private static string? _nlPathSettings, _nlPathState;
+        private static bool _nlPathSettingsDone, _nlPathStateDone;
+
         private static string? FindNlKeyPath(bool settings)
+        {
+            if (settings && _nlPathSettingsDone) return _nlPathSettings;
+            if (!settings && _nlPathStateDone) return _nlPathState;
+
+            string? found = FindNlKeyPathUncached(settings);
+            if (settings) { _nlPathSettings = found; _nlPathSettingsDone = true; }
+            else          { _nlPathState = found;    _nlPathStateDone = true; }
+            return found;
+        }
+
+        private static string? FindNlKeyPathUncached(bool settings)
         {
             const string baseP =
                 @"Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\";

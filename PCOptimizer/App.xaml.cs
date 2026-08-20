@@ -87,12 +87,14 @@ namespace PCOptimizer
                     TaskbarTransparencyService.Pause();
                     SoftwareBrightnessService.Pause();
                     NightLightService.Pause();
+                    RemoteAccessService.Pause();
                 }
                 else
                 {
                     TaskbarTransparencyService.Resume();
                     SoftwareBrightnessService.Resume();
                     NightLightService.Resume();
+                    RemoteAccessService.Resume();
                 }
             }
             catch (Exception ex) { Logger.Error(ex, "OnGameStateChanged"); }

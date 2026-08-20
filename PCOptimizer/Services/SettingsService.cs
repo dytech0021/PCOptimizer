@@ -108,26 +108,45 @@ namespace PCOptimizer.Services
 
         public static AppSettings Current { get; private set; } = new();
 
+        // Save é chamado da UI e de threads de fundo (modo remoto, ligar/desligar
+        // monitor). Sem trava, duas gravações simultâneas no mesmo arquivo, ou
+        // serializar enquanto outra thread mexe nos dicionários, falham — e o
+        // catch engolia isso, fazendo o usuário perder configurações em silêncio.
+        private static readonly object _io = new();
+
         public static void Load()
         {
-            try
+            lock (_io)
             {
-                if (!File.Exists(SettingsPath)) return;
-                var json = File.ReadAllText(SettingsPath);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                Current = JsonSerializer.Deserialize<AppSettings>(json, opts) ?? new();
+                try
+                {
+                    if (!File.Exists(SettingsPath)) return;
+                    var json = File.ReadAllText(SettingsPath);
+                    var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    Current = JsonSerializer.Deserialize<AppSettings>(json, opts) ?? new();
+                }
+                catch { Current = new(); }
             }
-            catch { Current = new(); }
         }
 
         public static void Save()
         {
-            try
+            lock (_io)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-                File.WriteAllText(SettingsPath, JsonSerializer.Serialize(Current, new JsonSerializerOptions { WriteIndented = true }));
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+                    string json = JsonSerializer.Serialize(Current,
+                        new JsonSerializerOptions { WriteIndented = true });
+
+                    // Grava em arquivo temporário e troca: uma queda no meio da
+                    // escrita não deixa o arquivo de configurações truncado.
+                    string tmp = SettingsPath + ".tmp";
+                    File.WriteAllText(tmp, json);
+                    File.Move(tmp, SettingsPath, overwrite: true);
+                }
+                catch (Exception ex) { Logger.Error(ex, "SettingsService.Save"); }
             }
-            catch { }
         }
     }
 }

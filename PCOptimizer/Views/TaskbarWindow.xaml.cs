@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using PCOptimizer.Services;
@@ -124,9 +125,23 @@ namespace PCOptimizer.Views
             s.TaskbarTransparencyEnabled = mode != TaskbarMode.Off;
             s.TaskbarMode      = mode.ToString();
             s.TaskbarTintAlpha = effective;
-            SettingsService.Save();
+            SaveDebounced();
 
             UpdateMsg();
+        }
+
+        private int _saveSerial;
+
+        /// <summary>
+        /// Grava as configurações só quando o usuário para de arrastar. Salvar a
+        /// cada tick reescrevia o JSON inteiro no disco dezenas de vezes por
+        /// segundo, travando o slider.
+        /// </summary>
+        private async void SaveDebounced()
+        {
+            int serial = ++_saveSerial;
+            await Task.Delay(300);
+            if (serial == _saveSerial) SettingsService.Save();
         }
 
         private void UpdateMsg()

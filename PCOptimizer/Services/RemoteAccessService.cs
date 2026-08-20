@@ -128,10 +128,22 @@ namespace PCOptimizer.Services
             {
                 _guard = new System.Windows.Threading.DispatcherTimer(
                     System.Windows.Threading.DispatcherPriority.Background)
-                { Interval = TimeSpan.FromSeconds(5) };
+                { Interval = TimeSpan.FromSeconds(15) };
                 _guard.Tick += (_, _) => EnforceTick();
             }
-            _guard.Start();
+            if (!_guardPaused) _guard.Start();
+        }
+
+        // Durante jogo em tela cheia não há acesso remoto para atender — o vigia
+        // só disputaria CPU com o jogo.
+        private static bool _guardPaused;
+
+        public static void Pause() { _guardPaused = true; _guard?.Stop(); }
+
+        public static void Resume()
+        {
+            _guardPaused = false;
+            if (GuardNeeded()) StartGuard();
         }
 
         private static void StopGuard() => _guard?.Stop();
@@ -352,8 +364,14 @@ namespace PCOptimizer.Services
                     bool wantAcmOff = s.KeepHdrOff || s.RemoteEnforceAcmOff;
                     bool acted = false;
 
+                    // UMA leitura por tick: cada GetAllHdrInfo percorre todos os
+                    // paths com 3 consultas por path — fazer duas era desperdício.
+                    var infos = HdrService.GetAllHdrInfo();
+                    bool hdrOn = false;
+                    foreach (var h in infos) if (h.IsEnabled) { hdrOn = true; break; }
+
                     // Só DESLIGA — nunca liga. Assim o vigia não oscila sozinho.
-                    if (wantHdrOff && HdrService.AnyHdrOn())
+                    if (wantHdrOff && hdrOn)
                     {
                         Logger.Info("Vigia: HDR foi religado (reconexão do acesso remoto?) — desligando");
                         // allowHotkey: false — o vigia NUNCA usa Win+Alt+B. Ele
@@ -378,7 +396,7 @@ namespace PCOptimizer.Services
                     }
 
                     if (wantAcmOff)
-                        foreach (var h in HdrService.GetAllHdrInfo())
+                        foreach (var h in infos)
                             if (h.WcgSupported && h.WcgEnabled)
                             {
                                 HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);

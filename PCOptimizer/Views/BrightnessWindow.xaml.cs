@@ -278,7 +278,11 @@ namespace PCOptimizer.Views
             s.GainG      = (int)SliderGainG.Value;
             s.GainB      = (int)SliderGainB.Value;
 
-            bool ok = GammaRampService.Apply(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB);
+            // Fora da thread de UI: Apply faz EnumDisplayDevices + CreateDC +
+            // SetDeviceGammaRamp por monitor, e isso a cada tick do arraste
+            // engasgava o slider.
+            bool ok = await Task.Run(() =>
+                GammaRampService.Apply(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB));
             if (!ok) TxtStatus.Text = "⚠ A placa de vídeo recusou o ajuste de cor";
             else if (_monitorControls.Any(m => m.HdrEnabled))
                 TxtStatus.Text = "Nota: monitores com HDR ativo ignoram gama/RGB — use o brilho SDR";
@@ -958,9 +962,13 @@ namespace PCOptimizer.Views
             }
         }
 
-        private void ScheduleShutdown(int minutes)
+        private async void ScheduleShutdown(int minutes)
         {
-            if (ShutdownService.Schedule(minutes))
+            // Fora da thread de UI: Schedule espera o shutdown.exe /a terminar
+            // (até 5 s), e isso congelava a janela ao clicar num preset de timer.
+            TxtStatus.Text = "Agendando...";
+            bool ok = await Task.Run(() => ShutdownService.Schedule(minutes));
+            if (ok)
             {
                 BtnTimerCancel.Visibility = Visibility.Visible;
                 StartCountdown();
