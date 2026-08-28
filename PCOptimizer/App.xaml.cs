@@ -26,6 +26,11 @@ namespace PCOptimizer
             HookGlobalExceptions();
 
             SettingsService.Load();
+
+            // ANTES de qualquer outra coisa: se o app foi morto com o Turbo de
+            // Jogo ativo, há processos presos nos E-cores esperando restauração.
+            BoostStateStore.RestoreOrphansFromPreviousRun();
+
             ThemeManager.Initialize();
             TrayService.Initialize();
 
@@ -58,7 +63,9 @@ namespace PCOptimizer
 
             // Sair da frente dos jogos: durante um jogo em tela cheia, tudo o que
             // roda em segundo plano é invisível — pausar libera CPU para o jogo.
-            if (SettingsService.Current.GameAwareMode)
+            // O detector de tela cheia serve a dois recursos: pausar as tarefas de
+            // fundo e ligar o Turbo de Jogo. Basta um deles estar ativo.
+            if (SettingsService.Current.GameAwareMode || SettingsService.Current.GameBoostEnabled)
             {
                 GameAwarenessService.GameStateChanged += OnGameStateChanged;
                 GameAwarenessService.Start();
@@ -82,6 +89,12 @@ namespace PCOptimizer
         {
             try
             {
+                // Duas responsabilidades independentes, cada uma com sua opção
+                if (SettingsService.Current.GameBoostEnabled)
+                    GameBoostService.OnGameStateChanged(gameRunning);
+
+                if (!SettingsService.Current.GameAwareMode) return;
+
                 if (gameRunning)
                 {
                     TaskbarTransparencyService.Pause();
@@ -287,6 +300,11 @@ namespace PCOptimizer
 
         protected override void OnExit(ExitEventArgs e)
         {
+            // PRIMEIRO: devolve os programas confinados nos E-cores. Se isto não
+            // rodar, eles ficariam lentos até o próximo reboot.
+            try { GameBoostService.ReleaseAll("app encerrando"); }
+            catch (Exception ex) { Logger.Error(ex, "OnExit/GameBoost"); }
+
             // Restaura a barra de tarefas ao padrão (o efeito só vale com o app aberto).
             TaskbarTransparencyService.Stop();
             HotkeyService.Dispose();

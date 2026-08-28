@@ -45,6 +45,10 @@ namespace PCOptimizer
                 TaskbarTransparencyService.RestoreFromSettings();
                 RefreshTaskbarStatus();
                 RefreshGameBoostCard();
+                // O turbo pode ligar/desligar sozinho (jogo abriu ou fechou) —
+                // o card se atualiza pelo evento, sem precisar de timer próprio.
+                GameBoostService.StatusChanged += () =>
+                    Dispatcher.BeginInvoke(new Action(RefreshGameBoostCard));
             };
         }
 
@@ -898,33 +902,13 @@ namespace PCOptimizer
             win.ShowDialog();
         }
 
-        /// <summary>
-        /// Etapa 1: mostra só a topologia do processador. O botão continua
-        /// desabilitado até a etapa que confina os processos existir — assim dá
-        /// para conferir a leitura dos núcleos sem nada ser alterado no sistema.
-        /// </summary>
         private void RefreshGameBoostCard()
         {
             try
             {
-                var t = CpuTopologyService.Get();
-                if (t.CanPark)
-                {
-                    TxtGameBoostStatus.Text =
-                        $"{CpuTopologyService.Describe()} — os outros programas vão para os E-cores, " +
-                        "deixando os P-cores livres para o jogo";
-                }
-                else if (t.MultiGroup)
-                {
-                    TxtGameBoostStatus.Text =
-                        "Este PC tem mais de 64 núcleos lógicos — o recurso não se aplica";
-                }
-                else
-                {
-                    TxtGameBoostStatus.Text =
-                        $"{CpuTopologyService.Describe()} — este recurso precisa de um " +
-                        "processador híbrido (P-cores + E-cores)";
-                }
+                TxtGameBoostStatus.Text = GameBoostService.StatusText();
+                BtnGameBoost.IsEnabled  = CpuTopologyService.Get().CanPark;
+                BtnGameBoost.Content    = GameBoostService.IsActive ? "Desativar" : "Ativar agora";
             }
             catch (Exception ex)
             {
@@ -933,9 +917,64 @@ namespace PCOptimizer
             }
         }
 
-        private void BtnGameBoost_Click(object sender, RoutedEventArgs e)
+        private async void BtnGameBoost_Click(object sender, RoutedEventArgs e)
         {
-            // Desabilitado nesta etapa — o confinamento ainda não foi implementado.
+            if (_isRunning) return;
+
+            BtnGameBoost.IsEnabled = false;
+            try
+            {
+                if (GameBoostService.IsActive)
+                {
+                    TxtGameBoostStatus.Text = await Task.Run(
+                        () => GameBoostService.ReleaseAll("botão manual"));
+                    return;
+                }
+
+                if (!SettingsService.Current.GameBoostWarningShown)
+                {
+                    var r = MessageBox.Show(
+                        "🚀 Turbo de Jogo\n\n" +
+                        "Enquanto o jogo roda, os outros programas (navegador, Discord, " +
+                        "fatiador 3D…) são movidos para os E-cores, deixando os P-cores " +
+                        "livres para o jogo. É como jogar sem mais nada aberto.\n\n" +
+                        "Eles ficam mais lentos nesse período — isso é esperado. Tudo volta " +
+                        "ao normal quando o jogo fecha ou você clica em Desativar.\n\n" +
+                        "O app NÃO altera o processo do jogo, então não interfere com " +
+                        "anticheat.\n\nContinuar?",
+                        "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                    if (r != MessageBoxResult.Yes) return;
+                    SettingsService.Current.GameBoostWarningShown = true;
+                    SettingsService.Save();
+                }
+
+                // A janela em primeiro plano agora é a do próprio app — dá tempo
+                // de o usuário clicar no jogo antes de capturarmos o alvo.
+                for (int i = 5; i > 0; i--)
+                {
+                    TxtGameBoostStatus.Text = $"Clique na janela do jogo… {i}";
+                    await Task.Delay(1000);
+                }
+
+                var target = GameTargetService.FromForegroundWindow();
+                if (target == null)
+                {
+                    TxtGameBoostStatus.Text = "Não consegui identificar o jogo — tente de novo";
+                    return;
+                }
+
+                TxtGameBoostStatus.Text = GameBoostService.ApplyTo(target, manual: true);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "BtnGameBoost_Click");
+                TxtGameBoostStatus.Text = "Erro: " + ex.Message;
+            }
+            finally
+            {
+                BtnGameBoost.IsEnabled = CpuTopologyService.Get().CanPark;
+                BtnGameBoost.Content   = GameBoostService.IsActive ? "Desativar" : "Ativar agora";
+            }
         }
 
         private async void BtnMaximizeDisplay_Click(object sender, RoutedEventArgs e)

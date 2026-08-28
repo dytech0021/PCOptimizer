@@ -66,6 +66,14 @@ namespace PCOptimizer.Services
         // conectar o acesso remoto). Por EVENTO, não por varredura periódica.
         public bool AutoFixColorOnDisplayChange { get; set; }
 
+        // Turbo de Jogo: confina os outros programas nos E-cores enquanto o jogo
+        // roda, deixando os P-cores livres. Nunca toca no processo do jogo.
+        public bool GameBoostEnabled { get; set; } = true;        // liga sozinho ao detectar jogo
+        public bool GameBoostLowerPriority { get; set; } = true;  // além dos E-cores, prioridade baixa
+        public bool GameBoostWarningShown { get; set; }
+        // Programas que o usuário quer manter fora do confinamento
+        public List<string> GameBoostUserProtected { get; set; } = new();
+
         // Sai da frente dos jogos: com um jogo em tela cheia, pausa os timers de
         // segundo plano e baixa a prioridade do processo. Ligado por padrão —
         // nada do que esses timers fazem é visível durante um jogo em tela cheia.
