@@ -44,6 +44,7 @@ namespace PCOptimizer
                 _ = RefreshWoLStatusAsync();
                 TaskbarTransparencyService.RestoreFromSettings();
                 RefreshTaskbarStatus();
+                RefreshGameBoostCard();
             };
         }
 
@@ -895,6 +896,46 @@ namespace PCOptimizer
         {
             var win = new Views.MalwareScanWindow { Owner = this };
             win.ShowDialog();
+        }
+
+        /// <summary>
+        /// Etapa 1: mostra só a topologia do processador. O botão continua
+        /// desabilitado até a etapa que confina os processos existir — assim dá
+        /// para conferir a leitura dos núcleos sem nada ser alterado no sistema.
+        /// </summary>
+        private void RefreshGameBoostCard()
+        {
+            try
+            {
+                var t = CpuTopologyService.Get();
+                if (t.CanPark)
+                {
+                    TxtGameBoostStatus.Text =
+                        $"{CpuTopologyService.Describe()} — os outros programas vão para os E-cores, " +
+                        "deixando os P-cores livres para o jogo";
+                }
+                else if (t.MultiGroup)
+                {
+                    TxtGameBoostStatus.Text =
+                        "Este PC tem mais de 64 núcleos lógicos — o recurso não se aplica";
+                }
+                else
+                {
+                    TxtGameBoostStatus.Text =
+                        $"{CpuTopologyService.Describe()} — este recurso precisa de um " +
+                        "processador híbrido (P-cores + E-cores)";
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "RefreshGameBoostCard");
+                TxtGameBoostStatus.Text = "Não consegui ler os núcleos do processador";
+            }
+        }
+
+        private void BtnGameBoost_Click(object sender, RoutedEventArgs e)
+        {
+            // Desabilitado nesta etapa — o confinamento ainda não foi implementado.
         }
 
         private async void BtnMaximizeDisplay_Click(object sender, RoutedEventArgs e)
