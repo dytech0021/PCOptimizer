@@ -70,6 +70,7 @@ namespace PCOptimizer.Services
 
             EnsureTimer();
             _timer!.Start();
+            CompetitiveTelemetryService.Start(target.Pid, target.Name, "Turbo atual");
 
             Logger.Info($"Turbo ligado em {target.Name} (PID {target.Pid}) — {n} programa(s) movido(s)");
             Notify();
@@ -82,6 +83,7 @@ namespace PCOptimizer.Services
             _timer?.Stop();
 
             int n = CoreParkingService.RestoreAll();
+            CompetitiveTelemetryService.Stop(reason);
 
             if (_target != null)
             {
@@ -98,6 +100,7 @@ namespace PCOptimizer.Services
         public static void OnGameStateChanged(bool gameRunning)
         {
             if (!SettingsService.Current.GameBoostEnabled) return;
+            if (CompetitiveModeService.IsActive) return;
 
             if (gameRunning)
             {
@@ -139,6 +142,7 @@ namespace PCOptimizer.Services
                 // ParkAll só olha PIDs novos, então isto é barato.
                 int added = CoreParkingService.ParkAll(_target.Pid, _target.ExePath,
                                                        SettingsService.Current.GameBoostLowerPriority);
+                CompetitiveTelemetryService.Sample();
                 if (added > 0) Notify();
             }
             catch (Exception ex) { Logger.Error(ex, "GameBoost.Tick"); }

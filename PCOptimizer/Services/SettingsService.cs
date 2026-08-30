@@ -71,6 +71,7 @@ namespace PCOptimizer.Services
         public bool GameBoostEnabled { get; set; } = true;        // liga sozinho ao detectar jogo
         public bool GameBoostLowerPriority { get; set; } = true;  // além dos E-cores, prioridade baixa
         public bool GameBoostWarningShown { get; set; }
+        public bool CompetitiveModeWarningShown { get; set; }
         // Programas que o usuário quer manter fora do confinamento
         public List<string> GameBoostUserProtected { get; set; } = new();
 

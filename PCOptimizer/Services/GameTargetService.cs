@@ -81,6 +81,26 @@ namespace PCOptimizer.Services
             catch (Exception ex) { Logger.Error(ex, "GameTarget.FromForegroundWindow"); return null; }
         }
 
+        /// <summary>Localiza um jogo já aberto pelo nome do executável.</summary>
+        public static Target? FromProcessName(string processName)
+        {
+            try
+            {
+                foreach (var process in Process.GetProcessesByName(processName))
+                {
+                    try
+                    {
+                        int pid = process.Id;
+                        var target = FromPid(pid);
+                        if (target != null) return target;
+                    }
+                    finally { process.Dispose(); }
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, $"GameTarget.FromProcessName({processName})"); }
+            return null;
+        }
+
         public static Target? FromPid(int pid)
         {
             if (pid <= 4 || pid == Environment.ProcessId) return null;

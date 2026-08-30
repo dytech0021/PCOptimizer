@@ -45,10 +45,17 @@ namespace PCOptimizer
                 TaskbarTransparencyService.RestoreFromSettings();
                 RefreshTaskbarStatus();
                 RefreshGameBoostCard();
+                RefreshCompetitiveCard();
                 // O turbo pode ligar/desligar sozinho (jogo abriu ou fechou) —
                 // o card se atualiza pelo evento, sem precisar de timer próprio.
                 GameBoostService.StatusChanged += () =>
                     Dispatcher.BeginInvoke(new Action(RefreshGameBoostCard));
+                CompetitiveModeService.StatusChanged += () =>
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        RefreshCompetitiveCard();
+                        RefreshGameBoostCard();
+                    }));
             };
         }
 
@@ -931,6 +938,9 @@ namespace PCOptimizer
                     return;
                 }
 
+                if (CompetitiveModeService.IsActive)
+                    CompetitiveModeService.ReleaseAll("troca para Turbo de Jogo");
+
                 if (!SettingsService.Current.GameBoostWarningShown)
                 {
                     var r = MessageBox.Show(
@@ -974,6 +984,83 @@ namespace PCOptimizer
             {
                 BtnGameBoost.IsEnabled = CpuTopologyService.Get().CanPark;
                 BtnGameBoost.Content   = GameBoostService.IsActive ? "Desativar" : "Ativar agora";
+            }
+        }
+
+        private void RefreshCompetitiveCard()
+        {
+            try
+            {
+                TxtCompetitiveStatus.Text = CompetitiveModeService.StatusText();
+                BtnCompetitive.IsEnabled = CpuTopologyService.Get().CanPark;
+                BtnCompetitive.Content = CompetitiveModeService.IsActive ? "Desativar" : "Ativar competitivo";
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "RefreshCompetitiveCard");
+                TxtCompetitiveStatus.Text = "Não consegui preparar o perfil competitivo";
+            }
+        }
+
+        private async void BtnCompetitive_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isRunning) return;
+            BtnCompetitive.IsEnabled = false;
+            try
+            {
+                if (CompetitiveModeService.IsActive)
+                {
+                    TxtCompetitiveStatus.Text = await Task.Run(
+                        () => CompetitiveModeService.ReleaseAll("botão manual"));
+                    return;
+                }
+
+                if (!SettingsService.Current.CompetitiveModeWarningShown)
+                {
+                    var answer = MessageBox.Show(
+                        "🏆 Modo Competitivo — Dota 2\n\n" +
+                        "Este modo é separado do Turbo atual para permitir comparação. " +
+                        "Ele orienta o Dota 2 a preferir os P-cores, coloca programas de " +
+                        "fundo nos E-cores com CPU Sets e reduz dinamicamente somente os " +
+                        "que estiverem disputando CPU.\n\n" +
+                        "Também ativa um plano temporário de baixa latência. Tudo é " +
+                        "restaurado ao fechar o jogo ou desativar o botão.\n\nContinuar?",
+                        "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                    if (answer != MessageBoxResult.Yes) return;
+                    SettingsService.Current.CompetitiveModeWarningShown = true;
+                    SettingsService.Save();
+                }
+
+                // Para Dota 2 não exige alt-tab: encontra dota2.exe diretamente.
+                var target = GameTargetService.FromProcessName("dota2");
+                if (target == null)
+                {
+                    for (int i = 5; i > 0; i--)
+                    {
+                        TxtCompetitiveStatus.Text = $"Dota 2 não encontrado — clique no jogo… {i}";
+                        await Task.Delay(1000);
+                    }
+                    target = GameTargetService.FromForegroundWindow();
+                }
+
+                if (target == null)
+                {
+                    TxtCompetitiveStatus.Text = "Não encontrei o Dota 2 nem outro jogo em primeiro plano";
+                    return;
+                }
+
+                TxtCompetitiveStatus.Text = CompetitiveModeService.ApplyTo(target);
+                RefreshGameBoostCard();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "BtnCompetitive_Click");
+                TxtCompetitiveStatus.Text = "Erro: " + ex.Message;
+            }
+            finally
+            {
+                BtnCompetitive.IsEnabled = CpuTopologyService.Get().CanPark;
+                BtnCompetitive.Content = CompetitiveModeService.IsActive ? "Desativar" : "Ativar competitivo";
             }
         }
 

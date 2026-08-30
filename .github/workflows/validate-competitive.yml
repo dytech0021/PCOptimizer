@@ -1,0 +1,22 @@
+name: Validate Competitive Mode
+
+on:
+  push:
+    branches: [ "codex/competitive-mode-1.83-validation" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "6.0.x"
+      - name: Restore
+        run: dotnet restore PCOptimizer/PCOptimizer.csproj
+      - name: Build Release
+        run: dotnet build PCOptimizer/PCOptimizer.csproj -c Release --no-restore
