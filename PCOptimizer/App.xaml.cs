@@ -30,6 +30,8 @@ namespace PCOptimizer
             // ANTES de qualquer outra coisa: se o app foi morto com o Turbo de
             // Jogo ativo, há processos presos nos E-cores esperando restauração.
             BoostStateStore.RestoreOrphansFromPreviousRun();
+            CompetitiveModeService.RestoreOrphansFromPreviousRun();
+            CompetitivePowerProfileService.RestoreOrphanFromPreviousRun();
 
             ThemeManager.Initialize();
             TrayService.Initialize();
@@ -300,6 +302,11 @@ namespace PCOptimizer
 
         protected override void OnExit(ExitEventArgs e)
         {
+            // O modo competitivo também altera preferências de CPU e usa um plano
+            // temporário. Restaura antes de qualquer outro serviço encerrar.
+            try { CompetitiveModeService.ReleaseAll("app encerrando"); }
+            catch (Exception ex) { Logger.Error(ex, "OnExit/CompetitiveMode"); }
+
             // PRIMEIRO: devolve os programas confinados nos E-cores. Se isto não
             // rodar, eles ficariam lentos até o próximo reboot.
             try { GameBoostService.ReleaseAll("app encerrando"); }
