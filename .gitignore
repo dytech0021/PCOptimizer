@@ -6,3 +6,4 @@ obj/
 *.cache
 *.log
 .claude/
+__pycache__/

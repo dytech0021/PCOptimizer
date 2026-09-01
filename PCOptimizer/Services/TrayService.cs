@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace PCOptimizer.Services
@@ -9,9 +8,6 @@ namespace PCOptimizer.Services
     {
         private static NotifyIcon? _trayIcon;
         private static Icon? _icon;
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool DestroyIcon(IntPtr handle);
 
         public static event Action? ShowBrightnessRequested;
         public static event Action? ExitRequested;
@@ -56,38 +52,49 @@ namespace PCOptimizer.Services
             _icon = null;
         }
 
+        private const string IconResource = "PCOptimizer.Assets.icon.ico";
+
+        /// <summary>
+        /// Carrega o mesmo icone do executavel (Assets/icon.ico, embutido como
+        /// recurso) no tamanho que o Windows pede para a bandeja. O .ico tem
+        /// varias resolucoes (16, 20, 24, 32...), entao em tela de alta
+        /// densidade o icone sai nitido em vez de ser esticado de 16px.
+        /// </summary>
         private static Icon CreateIcon()
         {
-            using var bmp = new Bitmap(16, 16);
-            using var g = Graphics.FromImage(bmp);
-            g.Clear(Color.Transparent);
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-            using var brush = new SolidBrush(Color.FromArgb(255, 220, 50));
-            g.FillEllipse(brush, 3, 3, 10, 10);
-
-            using var pen = new Pen(Color.FromArgb(255, 170, 0), 1.5f);
-            g.DrawLine(pen, 8, 0, 8, 2);
-            g.DrawLine(pen, 8, 13, 8, 15);
-            g.DrawLine(pen, 0, 8, 2, 8);
-            g.DrawLine(pen, 13, 8, 15, 8);
-            g.DrawLine(pen, 2, 2, 4, 4);
-            g.DrawLine(pen, 12, 12, 14, 14);
-            g.DrawLine(pen, 12, 2, 14, 4);
-            g.DrawLine(pen, 2, 12, 4, 14);
-
-            // GetHicon cria um HICON nao gerenciado; clonamos para um Icon
-            // independente e destruimos o handle original para nao vazar.
-            IntPtr hIcon = bmp.GetHicon();
+            var size = SystemInformation.SmallIconSize;
             try
             {
-                using var temp = Icon.FromHandle(hIcon);
-                return (Icon)temp.Clone();
+                using var stream = typeof(TrayService).Assembly.GetManifestResourceStream(IconResource);
+                if (stream != null)
+                {
+                    return new Icon(stream, size);
+                }
             }
-            finally
+            catch
             {
-                DestroyIcon(hIcon);
+                // cai no icone do proprio executavel logo abaixo
             }
+
+            // Reserva: o icone carimbado no .exe pelo <ApplicationIcon>.
+            try
+            {
+                var exe = Environment.ProcessPath;
+                if (!string.IsNullOrEmpty(exe))
+                {
+                    var extracted = Icon.ExtractAssociatedIcon(exe);
+                    if (extracted != null)
+                    {
+                        return extracted;
+                    }
+                }
+            }
+            catch
+            {
+                // ignora e usa o icone padrao do sistema
+            }
+
+            return (Icon)SystemIcons.Application.Clone();
         }
     }
 }
