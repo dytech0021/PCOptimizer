@@ -18,7 +18,10 @@ namespace PCOptimizer.Views
             public int Index { get; init; }
             public bool IsWmi { get; init; }
             public bool IsSoftware { get; init; }
-            public string DeviceKey { get; init; } = "";
+            // Identidade estável do monitor — indexa o overlay de brilho.
+            public string OverlayKey { get; init; } = "";
+            // \\.\DISPLAYn — o único aceito pelas APIs de resolução.
+            public string GdiDevice { get; init; } = "";
             public int ScreenLeft { get; init; }
             public int ScreenTop { get; init; }
             public int ScreenWidth { get; init; }
@@ -649,7 +652,8 @@ namespace PCOptimizer.Views
             {
                 Index = entry.Index, IsWmi = entry.IsWmi,
                 IsSoftware   = entry.IsSoftware,
-                DeviceKey    = entry.DeviceKey,
+                OverlayKey   = entry.OverlayKey,
+                GdiDevice    = entry.GdiDevice,
                 HardwareId   = entry.HardwareId,
                 ScreenLeft   = entry.ScreenLeft,
                 ScreenTop    = entry.ScreenTop,
@@ -669,12 +673,13 @@ namespace PCOptimizer.Views
                 container.Children.Add(MakeHdrButton(mc));
 
             // Ultrawide (21:9 e mais largos): oferece o modo 16:9 com barras
-            // pretas, usado em CS/R6 e afins. A checagem é pela resolução NATIVA
-            // do painel — pela atual, o botão sumia assim que o 16:9 era aplicado
-            // (a tela deixa de ser "larga") e não dava mais para reverter.
-            if (DisplayResolutionService.IsUltrawidePanel(mc.DeviceKey)
-                || FindGameArKey(mc.HardwareId) != null)
-                container.Children.Add(MakeGameArButton(mc));
+            // pretas, usado em CS/R6 e afins. A regra mora em GameArPolicy — ela
+            // olha a resolução NATIVA do painel, porque pela atual o botão sumia
+            // assim que o 16:9 era aplicado e não dava mais para reverter.
+            var gameAr = DisplayResolutionService.DecideGameAr(
+                mc.GdiDevice, FindGameArKey(mc.HardwareId) != null);
+            if (GameArPolicy.ShouldOffer(gameAr))
+                container.Children.Add(MakeGameArButton(mc, gameAr));
 
             // Events — aplica o primeiro valor NA HORA; durante o arraste, envia
             // sempre o valor mais recente assim que o anterior termina (sem debounce)
@@ -703,7 +708,7 @@ namespace PCOptimizer.Views
                         else if (mc.IsSoftware)
                             // Overlay roda na thread de UI (operação instantânea)
                             SoftwareBrightnessService.SetBrightness(
-                                mc.DeviceKey, mc.ScreenLeft, mc.ScreenTop,
+                                mc.OverlayKey, mc.ScreenLeft, mc.ScreenTop,
                                 mc.ScreenWidth, mc.ScreenHeight, v);
                         else
                             await Task.Run(() => MonitorService.SetBrightnessForIndex(mc.Index, v));
@@ -1078,10 +1083,24 @@ namespace PCOptimizer.Views
             foreach (var k in d.Keys)
                 if (k.Split('#')[0].Equals(baseId, StringComparison.OrdinalIgnoreCase))
                     return k;
-            return null;
+
+            // Última tentativa: o discriminador dentro do id mudou de formato
+            // entre versões, então nem o prefixo antes do "#" bate. Compara pela
+            // base (modelo) e só aceita se UMA chave salva corresponder — com dois
+            // monitores iguais, um reivindicaria o estado do outro.
+            string wanted = MonitorIdentity.SavedStateBase(hardwareId);
+            if (wanted.Length == 0) return null;
+            string? only = null;
+            foreach (var k in d.Keys)
+                if (MonitorIdentity.SavedStateBase(k) == wanted)
+                {
+                    if (only != null) return null;   // ambíguo: melhor não adivinhar
+                    only = k;
+                }
+            return only;
         }
 
-        private Button MakeGameArButton(MonitorControl mc)
+        private Button MakeGameArButton(MonitorControl mc, GameArAction action)
         {
             var btn = new Button
             {
@@ -1095,8 +1114,7 @@ namespace PCOptimizer.Views
                 ToolTip = "Joga em 16:9 com barras pretas nas laterais (CS, R6…)"
             };
 
-            bool active = FindGameArKey(mc.HardwareId) != null;
-            ApplyGameArButtonStyle(btn, active);
+            ApplyGameArButtonStyle(btn, GameArPolicy.IsRevert(action));
 
             btn.Click += async (_, _) =>
             {
@@ -1111,20 +1129,48 @@ namespace PCOptimizer.Views
 
                     var s = SettingsService.Current;
                     string? savedKey = FindGameArKey(mc.HardwareId);
-                    if (savedKey == null)
+
+                    // Reavalia pela MESMA regra que montou o botão, para o rótulo
+                    // e a ação nunca divergirem — a tela pode ter mudado desde que
+                    // a janela abriu.
+                    var decision = DisplayResolutionService.DecideGameAr(
+                        mc.GdiDevice, savedKey != null);
+
+                    // Ultrawide já em 16:9 e sem registro salvo: o estado se perdeu
+                    // (o formato do id mudou entre versões). Aplicar de novo
+                    // gravaria o próprio 16:9 como "resolução anterior" e prenderia
+                    // o monitor nele — então a saída é voltar para a nativa.
+                    if (decision == GameArAction.OfferRevertToNative)
                     {
-                        var target = DisplayResolutionService.FindBest169(mc.DeviceKey);
+                        var nat0 = DisplayResolutionService.GetNative(mc.GdiDevice);
+                        if (nat0 == null)
+                        {
+                            TxtStatus.Text = "Não consegui ler a resolução nativa";
+                            return;
+                        }
+                        TxtStatus.Text = "Voltando ao ultrawide...";
+                        bool okNat = await Task.Run(() => DisplayResolutionService.SetFor(
+                            mc.GdiDevice, nat0.Value.W, nat0.Value.H));
+                        await Task.Run(() => MonitorService.SetAspectScaling(mc.Index, false));
+                        TxtStatus.Text = okNat
+                            ? "Resolução ultrawide restaurada"
+                            : "⚠ Não consegui restaurar — use Configurações → Vídeo";
+                        ApplyGameArButtonStyle(btn, false);
+                    }
+                    else if (decision == GameArAction.OfferApply)
+                    {
+                        var target = DisplayResolutionService.FindBest169(mc.GdiDevice);
                         if (target == null)
                         {
                             TxtStatus.Text = "Este monitor não oferece um modo 16:9";
                             return;
                         }
-                        var cur = DisplayResolutionService.GetCurrentFor(mc.DeviceKey);
+                        var cur = DisplayResolutionService.GetCurrentFor(mc.GdiDevice);
                         if (cur == null) { TxtStatus.Text = "Não consegui ler a resolução"; return; }
 
                         TxtStatus.Text = $"Aplicando {target.Value.W}×{target.Value.H}...";
                         bool ok = await Task.Run(() => DisplayResolutionService.SetFor(
-                            mc.DeviceKey, target.Value.W, target.Value.H, cur.Value.Hz));
+                            mc.GdiDevice, target.Value.W, target.Value.H, cur.Value.Hz));
                         if (!ok) { TxtStatus.Text = "O monitor não aceitou o modo 16:9"; return; }
 
                         s.GameArPrevMode[mc.HardwareId] = $"{cur.Value.W}x{cur.Value.H}x{cur.Value.Hz}";
@@ -1138,7 +1184,7 @@ namespace PCOptimizer.Views
                               "monitor ou no painel da placa de vídeo";
                         ApplyGameArButtonStyle(btn, true);
                     }
-                    else
+                    else if (savedKey != null)
                     {
                         string prev = s.GameArPrevMode[savedKey];
                         var p = prev.Split('x');
@@ -1147,16 +1193,16 @@ namespace PCOptimizer.Views
                             int.TryParse(p[1], out int h) && int.TryParse(p[2], out int hz))
                         {
                             TxtStatus.Text = "Voltando ao ultrawide...";
-                            ok = await Task.Run(() => DisplayResolutionService.SetFor(mc.DeviceKey, w, h, hz));
+                            ok = await Task.Run(() => DisplayResolutionService.SetFor(mc.GdiDevice, w, h, hz));
                             await Task.Run(() => MonitorService.SetAspectScaling(mc.Index, false));
                         }
                         else
                         {
                             // Registro corrompido: volta para a resolução NATIVA
-                            var nat = DisplayResolutionService.GetNative(mc.DeviceKey);
+                            var nat = DisplayResolutionService.GetNative(mc.GdiDevice);
                             if (nat != null)
                                 ok = await Task.Run(() => DisplayResolutionService.SetFor(
-                                    mc.DeviceKey, nat.Value.W, nat.Value.H));
+                                    mc.GdiDevice, nat.Value.W, nat.Value.H));
                         }
 
                         s.GameArPrevMode.Remove(savedKey);
@@ -1165,6 +1211,13 @@ namespace PCOptimizer.Views
                             ? "Resolução ultrawide restaurada"
                             : "⚠ Não consegui restaurar — use Configurações → Vídeo";
                         ApplyGameArButtonStyle(btn, false);
+                    }
+                    else
+                    {
+                        // Não dá para ler o painel (device GDI inválido) — o guard
+                        // do DisplayResolutionService já registrou o motivo no log.
+                        TxtStatus.Text = "Não consegui ler este monitor";
+                        return;
                     }
 
                     await Task.Delay(1500);

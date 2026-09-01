@@ -37,7 +37,15 @@ namespace PCOptimizer.Services
         public bool SupportsContrast { get; set; }
         public bool IsWmi { get; set; }
         public bool IsSoftware { get; set; }      // brilho via overlay (sem DDC/CI nem WMI)
-        public string DeviceKey { get; set; } = ""; // identidade p/ o overlay de software
+        // Identidade ESTÁVEL do monitor (== HardwareId). Sobrevive à renumeração
+        // de \\.\DISPLAYn quando a topologia muda — por isso é ela que indexa o
+        // overlay de brilho por software. NÃO serve para as APIs de resolução.
+        public string OverlayKey { get; set; } = "";
+        // Nome GDI do device (\\.\DISPLAYn), vindo de MONITORINFOEX.szDevice. É o
+        // ÚNICO valor aceito por EnumDisplaySettings/ChangeDisplaySettingsEx, ou
+        // seja, por tudo em DisplayResolutionService. Muda de número ao alterar a
+        // topologia — nunca persista este valor.
+        public string GdiDevice { get; set; } = "";
         public int ScreenLeft { get; set; }       // bounds em pixels físicos (PerMonitorV2)
         public int ScreenTop { get; set; }
         public int ScreenWidth { get; set; }
@@ -621,6 +629,17 @@ namespace PCOptimizer.Services
                     ? HdrService.GetSdrBrightness(hdr.AdapterIdLow, hdr.AdapterIdHigh, hdr.TargetId)
                     : -1;
 
+                // Sem monitores DDC não há como amarrar o painel a um device GDI
+                // com segurança, a não ser que exista UMA tela ativa. Com mais de
+                // uma, vazio é melhor que arriscar mexer na resolução da errada.
+                string wmiGdiDevice = "";
+                try
+                {
+                    var screens = System.Windows.Forms.Screen.AllScreens;
+                    if (screens.Length == 1) wmiGdiDevice = screens[0].DeviceName;
+                }
+                catch { }
+
                 return new List<MonitorEntry>
                 {
                     new MonitorEntry
@@ -633,6 +652,7 @@ namespace PCOptimizer.Services
                         SupportsBrightness = true,
                         SupportsContrast   = false,
                         IsWmi              = true,
+                        GdiDevice          = wmiGdiDevice,
                         SupportsHdr        = hdr?.IsSupported ?? false,
                         HdrEnabled         = hdr?.IsEnabled ?? false,
                         HdrAdapterIdLow    = hdr?.AdapterIdLow ?? 0,
@@ -705,7 +725,7 @@ namespace PCOptimizer.Services
                 // Também guarda os bounds em px físicos e o nome do device (\\.\DISPLAYn),
                 // usados para posicionar o overlay de brilho por software.
                 int srcX = 0, srcY = 0, scrW = 0, scrH = 0;
-                string deviceKey = "";
+                string gdiDevice = "";
                 var mInfoEx = new MONITORINFOEX { cbSize = (uint)Marshal.SizeOf<MONITORINFOEX>() };
                 if (GetMonitorInfo(m.LogicalHandle, ref mInfoEx))
                 {
@@ -713,7 +733,7 @@ namespace PCOptimizer.Services
                     srcY = mInfoEx.rcMonitor.top;
                     scrW = mInfoEx.rcMonitor.right - mInfoEx.rcMonitor.left;
                     scrH = mInfoEx.rcMonitor.bottom - mInfoEx.rcMonitor.top;
-                    deviceKey = mInfoEx.szDevice;
+                    gdiDevice = mInfoEx.szDevice;
                 }
                 // Correlação EXATA pelo caminho da interface do monitor; a posição
                 // na área de trabalho fica só como reserva (era ela que trocava os
@@ -789,7 +809,8 @@ namespace PCOptimizer.Services
                     SupportsContrast   = supportsContrast,
                     IsWmi              = isWmi,
                     IsSoftware         = isSoftware,
-                    DeviceKey          = swKey,
+                    OverlayKey         = swKey,
+                    GdiDevice          = gdiDevice,
                     ScreenLeft         = srcX,
                     ScreenTop          = srcY,
                     ScreenWidth        = scrW,
@@ -831,7 +852,7 @@ namespace PCOptimizer.Services
             // estável evita deixar overlays antigos na tela ou trocar o brilho
             // entre dois monitores iguais.
             foreach (var entry in entries)
-                if (entry.IsSoftware) entry.DeviceKey = entry.HardwareId;
+                if (entry.IsSoftware) entry.OverlayKey = entry.HardwareId;
 
             return entries;
         }
@@ -888,7 +909,8 @@ namespace PCOptimizer.Services
                     sb.AppendLine($"   modelo via DDC : {(ddc.Length > 0 ? ddc : "(monitor não informa)")}");
                     sb.AppendLine($"   descrição DDC  : {desc}");
                     sb.AppendLine($"   posição/tamanho: {e.ScreenLeft},{e.ScreenTop} {e.ScreenWidth}x{e.ScreenHeight}");
-                    sb.AppendLine($"   device         : {e.DeviceKey}");
+                    sb.AppendLine($"   device GDI     : {e.GdiDevice}");
+                    sb.AppendLine($"   chave overlay  : {e.OverlayKey}");
                     sb.AppendLine($"   id salvo       : {e.HardwareId}");
                     sb.AppendLine($"   brilho/contr.  : {e.SupportsBrightness}/{e.SupportsContrast}  HDR: {e.SupportsHdr}");
                 }

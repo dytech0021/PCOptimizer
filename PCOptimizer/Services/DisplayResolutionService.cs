@@ -69,9 +69,24 @@ namespace PCOptimizer.Services
             catch { return ""; }
         }
 
+        /// <summary>
+        /// Só \\.\DISPLAYn é aceito por EnumDisplaySettings/ChangeDisplaySettingsEx.
+        /// Chaves de identidade estável (ddc_MODELO_hash) já chegaram aqui por
+        /// engano e falhavam em silêncio — pior, o null ia parar no cache e o
+        /// erro grudava. Agora reclama no log em vez de sumir com o botão.
+        /// </summary>
+        public static bool IsGdiDeviceName(string? device) =>
+            !string.IsNullOrEmpty(device) &&
+            device.StartsWith(@"\\.\", StringComparison.Ordinal);
+
+        private static void WarnBadDevice(string caller, string? device) =>
+            Logger.Warn($"{caller}: \"{device}\" nao e um device GDI (\\\\.\\DISPLAYn) — " +
+                        "provavelmente passaram a chave de identidade no lugar de GdiDevice");
+
         /// <summary>Resolução atual de um monitor específico (\\.\DISPLAYn).</summary>
         public static (int W, int H, int Hz)? GetCurrentFor(string device)
         {
+            if (!IsGdiDeviceName(device)) { WarnBadDevice(nameof(GetCurrentFor), device); return null; }
             try
             {
                 if (string.IsNullOrEmpty(device)) return null;
@@ -88,6 +103,7 @@ namespace PCOptimizer.Services
         /// </summary>
         public static (int W, int H)? FindBest169(string device)
         {
+            if (!IsGdiDeviceName(device)) { WarnBadDevice(nameof(FindBest169), device); return null; }
             try
             {
                 var cur = GetCurrentFor(device);
@@ -127,6 +143,8 @@ namespace PCOptimizer.Services
         /// <summary>Resolução NATIVA (maior modo suportado) do monitor.</summary>
         public static (int W, int H)? GetNative(string device)
         {
+            // Antes do cache de propósito: chave inválida não pode ser memorizada.
+            if (!IsGdiDeviceName(device)) { WarnBadDevice(nameof(GetNative), device); return null; }
             if (!string.IsNullOrEmpty(device))
                 lock (_nativeCache)
                     if (_nativeCache.TryGetValue(device, out var hit)) return hit;
@@ -197,15 +215,15 @@ namespace PCOptimizer.Services
         }
 
         /// <summary>
-        /// true se o PAINEL é ultrawide (proporção nativa maior que 2:1), mesmo
-        /// que esteja num modo 16:9 no momento. Usar a resolução ATUAL aqui fazia
-        /// o botão de 16:9 sumir justamente depois de ativado — impedindo reverter.
+        /// Lê o painel e decide o que o botão de 16:9 deve oferecer neste monitor.
+        /// A regra em si mora em <see cref="GameArPolicy"/>, sem depender do
+        /// Windows, para poder ser coberta por teste — aqui só entram as leituras.
+        ///
+        /// <paramref name="device"/> tem que ser o GdiDevice (\\.\DISPLAYn); a
+        /// chave de identidade do monitor não funciona e o guard avisa no log.
         /// </summary>
-        public static bool IsUltrawidePanel(string device)
-        {
-            var n = GetNative(device);
-            return n != null && n.Value.H > 0 && n.Value.W / (double)n.Value.H > 2.0;
-        }
+        public static GameArAction DecideGameAr(string device, bool hasSavedState)
+            => GameArPolicy.Decide(GetNative(device), GetCurrentFor(device), hasSavedState);
 
         private static DEVMODE NewDevMode() =>
             new() { dmSize = (short)Marshal.SizeOf<DEVMODE>() };
@@ -274,7 +292,7 @@ namespace PCOptimizer.Services
 
         private static bool SetMode(string dev, int width, int height, int preferHz = 0)
         {
-            if (string.IsNullOrEmpty(dev)) return false;
+            if (!IsGdiDeviceName(dev)) { WarnBadDevice(nameof(SetMode), dev); return false; }
 
             // Enumera os modos suportados e escolhe o refresh certo — aplicar um
             // modo que o monitor não suporta faria a tela apagar até o timeout.

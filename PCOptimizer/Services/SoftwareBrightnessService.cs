@@ -133,7 +133,7 @@ namespace PCOptimizer.Services
             }
 
             var active = monitors.Where(m => m.IsSoftware)
-                                 .Select(m => m.DeviceKey)
+                                 .Select(m => m.OverlayKey)
                                  .ToHashSet(StringComparer.OrdinalIgnoreCase);
             List<Overlay> obsolete;
             lock (_lock)
@@ -148,7 +148,7 @@ namespace PCOptimizer.Services
 
             foreach (MonitorEntry monitor in monitors)
                 if (monitor.IsSoftware)
-                    SetBrightness(monitor.DeviceKey, monitor.ScreenLeft, monitor.ScreenTop,
+                    SetBrightness(monitor.OverlayKey, monitor.ScreenLeft, monitor.ScreenTop,
                         monitor.ScreenWidth, monitor.ScreenHeight, monitor.Brightness);
         }
 
