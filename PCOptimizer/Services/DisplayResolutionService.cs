@@ -223,7 +223,12 @@ namespace PCOptimizer.Services
         /// chave de identidade do monitor não funciona e o guard avisa no log.
         /// </summary>
         public static GameArAction DecideGameAr(string device, bool hasSavedState)
-            => GameArPolicy.Decide(GetNative(device), GetCurrentFor(device), hasSavedState);
+        {
+            var cur = GetCurrentFor(device);   // traz o Hz junto; a regra só quer W×H
+            (int W, int H)? size = null;
+            if (cur != null) size = (cur.Value.W, cur.Value.H);
+            return GameArPolicy.Decide(GetNative(device), size, hasSavedState);
+        }
 
         private static DEVMODE NewDevMode() =>
             new() { dmSize = (short)Marshal.SizeOf<DEVMODE>() };
