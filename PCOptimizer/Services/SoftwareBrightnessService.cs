@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -116,6 +117,39 @@ namespace PCOptimizer.Services
                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
             EnsureWatchdog();
             return true;
+        }
+
+        /// <summary>
+        /// Reposiciona overlays depois de uma troca de resolução/topologia e remove
+        /// os que pertenciam a monitores desconectados.
+        /// </summary>
+        public static void SynchronizeMonitors(IReadOnlyCollection<MonitorEntry> monitors)
+        {
+            if (Application.Current == null) return;
+            if (!Application.Current.Dispatcher.CheckAccess())
+            {
+                Application.Current.Dispatcher.Invoke(() => SynchronizeMonitors(monitors));
+                return;
+            }
+
+            var active = monitors.Where(m => m.IsSoftware)
+                                 .Select(m => m.DeviceKey)
+                                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            List<Overlay> obsolete;
+            lock (_lock)
+            {
+                obsolete = _overlays.Where(pair => !active.Contains(pair.Key))
+                                    .Select(pair => pair.Value)
+                                    .ToList();
+                foreach (string key in _overlays.Keys.Where(k => !active.Contains(k)).ToList())
+                    _overlays.Remove(key);
+            }
+            foreach (Overlay overlay in obsolete) overlay.Window.Close();
+
+            foreach (MonitorEntry monitor in monitors)
+                if (monitor.IsSoftware)
+                    SetBrightness(monitor.DeviceKey, monitor.ScreenLeft, monitor.ScreenTop,
+                        monitor.ScreenWidth, monitor.ScreenHeight, monitor.Brightness);
         }
 
         // ── Watchdog do topmost ───────────────────────────────────────────────

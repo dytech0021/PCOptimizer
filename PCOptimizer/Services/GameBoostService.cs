@@ -1,5 +1,6 @@
 using System;
-using System.Windows.Threading;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace PCOptimizer.Services
 {
@@ -12,9 +13,11 @@ namespace PCOptimizer.Services
     /// </summary>
     public static class GameBoostService
     {
-        private static DispatcherTimer? _timer;
+        private static Timer? _timer;
         private static GameTargetService.Target? _target;
         private static DateTime _startedAt;
+        private static readonly object OperationLock = new();
+        private static int _tickRunning;
 
         /// <summary>Um jogo virou zumbi: solta tudo em vez de segurar para sempre.</summary>
         private static readonly TimeSpan MaxDuration = TimeSpan.FromHours(6);
@@ -50,6 +53,20 @@ namespace PCOptimizer.Services
         /// <summary>Ativa o turbo para um jogo. Devolve o que aconteceu, para a UI.</summary>
         public static string ApplyTo(GameTargetService.Target target, bool manual)
         {
+            lock (OperationLock) return ApplyCore(target, manual);
+        }
+
+        private static string ApplyCore(GameTargetService.Target target, bool manual)
+        {
+            if (BoostStateStore.HasPendingRecovery)
+            {
+                BoostStateStore.RestoreOrphansFromPreviousRun();
+                if (BoostStateStore.HasPendingRecovery)
+                {
+                    target.Dispose();
+                    return "Há configurações anteriores pendentes de restauração";
+                }
+            }
             var topo = CpuTopologyService.Get();
             if (!topo.CanPark)
             {
@@ -69,7 +86,7 @@ namespace PCOptimizer.Services
                                                SettingsService.Current.GameBoostLowerPriority);
 
             EnsureTimer();
-            _timer!.Start();
+            _timer!.Change(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
             CompetitiveTelemetryService.Start(target.Pid, target.Name, "Turbo atual");
 
             Logger.Info($"Turbo ligado em {target.Name} (PID {target.Pid}) — {n} programa(s) movido(s)");
@@ -80,7 +97,12 @@ namespace PCOptimizer.Services
         /// <summary>Desliga o turbo e devolve todos os programas ao estado original.</summary>
         public static string ReleaseAll(string reason)
         {
-            _timer?.Stop();
+            lock (OperationLock) return ReleaseCore(reason);
+        }
+
+        private static string ReleaseCore(string reason)
+        {
+            _timer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
             int n = CoreParkingService.RestoreAll();
             CompetitiveTelemetryService.Stop(reason);
@@ -93,6 +115,8 @@ namespace PCOptimizer.Services
             }
 
             Notify();
+            if (BoostStateStore.HasPendingRecovery)
+                return $"Turbo desligado — {n} restaurado(s), restauração pendente preservada";
             return n > 0 ? $"Turbo desligado — {n} programa(s) restaurado(s)" : "Turbo desligado";
         }
 
@@ -107,7 +131,7 @@ namespace PCOptimizer.Services
                 if (_target != null) return;  // já ativo
                 var t = GameTargetService.FromForegroundWindow();
                 if (t == null) { Logger.Warn("Turbo: não consegui identificar o jogo"); return; }
-                ApplyTo(t, manual: false);
+                _ = Task.Run(() => ApplyTo(t, manual: false));
             }
             // Sair da tela cheia NÃO desliga: alt-tab no meio da partida é normal.
             // O turbo só sai quando o processo do jogo morre (visto no timer).
@@ -116,36 +140,39 @@ namespace PCOptimizer.Services
         private static void EnsureTimer()
         {
             if (_timer != null) return;
-            _timer = new DispatcherTimer(DispatcherPriority.Background)
-            {
-                Interval = TimeSpan.FromSeconds(3)
-            };
-            _timer.Tick += (_, _) => Tick();
+            _timer = new Timer(OnTimerTick, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         }
 
-        private static void Tick()
+        private static async void OnTimerTick(object? state)
         {
+            if (Interlocked.Exchange(ref _tickRunning, 1) != 0) return;
             try
             {
-                if (_target == null) { _timer?.Stop(); return; }
-
-                if (!_target.IsAlive) { ReleaseAll("jogo encerrado"); return; }
-
-                if (DateTime.Now - _startedAt > MaxDuration)
-                {
-                    Logger.Warn("Turbo: ativo há mais de 6 h — soltando por segurança");
-                    ReleaseAll("tempo limite");
-                    return;
-                }
-
-                // Programas abertos durante a partida também vão para os E-cores.
-                // ParkAll só olha PIDs novos, então isto é barato.
-                int added = CoreParkingService.ParkAll(_target.Pid, _target.ExePath,
-                                                       SettingsService.Current.GameBoostLowerPriority);
-                CompetitiveTelemetryService.Sample();
+                var (stopReason, added) = await Task.Run(TickBackground);
+                if (stopReason != null) ReleaseAll(stopReason);
                 if (added > 0) Notify();
             }
             catch (Exception ex) { Logger.Error(ex, "GameBoost.Tick"); }
+            finally { Volatile.Write(ref _tickRunning, 0); }
+        }
+
+        private static (string? StopReason, int Added) TickBackground()
+        {
+            lock (OperationLock)
+            {
+                if (_target == null) return ("alvo indisponível", 0);
+                if (!_target.IsAlive) return ("jogo encerrado", 0);
+                if (DateTime.Now - _startedAt > MaxDuration)
+                {
+                    Logger.Warn("Turbo: ativo há mais de 6 h — soltando por segurança");
+                    return ("tempo limite", 0);
+                }
+
+                int added = CoreParkingService.ParkAll(_target.Pid, _target.ExePath,
+                    SettingsService.Current.GameBoostLowerPriority);
+                CompetitiveTelemetryService.Sample();
+                return (null, added);
+            }
         }
     }
 }

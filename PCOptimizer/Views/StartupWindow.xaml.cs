@@ -8,8 +8,8 @@ namespace PCOptimizer.Views
 {
     public partial class StartupWindow : Window
     {
-        private List<StartupEntry> _allEntries;
-        private List<StartupEntry> _originalState;
+        private List<StartupEntry> _allEntries = new();
+        private List<StartupEntry> _originalState = new();
 
         public int ChangesApplied { get; private set; }
 

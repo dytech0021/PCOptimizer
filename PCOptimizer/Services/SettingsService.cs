@@ -15,7 +15,7 @@ namespace PCOptimizer.Services
 
     public class AppSettings
     {
-        public string Theme { get; set; } = "Light";
+        public string Theme { get; set; } = "Dark";
         public uint HotkeyModifiers { get; set; } = 0x0006; // MOD_CONTROL | MOD_SHIFT
         public uint HotkeyVk { get; set; } = 0x42;          // 'B'
         public string HotkeyDisplay { get; set; } = "Ctrl+Shift+B";
@@ -45,10 +45,14 @@ namespace PCOptimizer.Services
         public bool RemotePrevHdr { get; set; }
         // Posições (x,y;x,y) das telas que estavam com HDR ligado — religa só nelas
         public string RemoteHdrPositions { get; set; } = "";
+        // Caminhos de interface são a identidade primária; posições ficam como
+        // compatibilidade com configurações antigas e último fallback.
+        public string RemoteHdrDevicePaths { get; set; } = "";
         // Luz noturna NATIVA do Windows estava ligada ao entrar no modo remoto
         public bool RemotePrevWinNightLight { get; set; }
         // Telas que estavam com ACM/WCG ("cores automáticas") ligado
         public string RemoteWcgPositions { get; set; } = "";
+        public string RemoteWcgDevicePaths { get; set; } = "";
         // Vigia: manter HDR/ACM desligados enquanto o modo remoto estiver ativo
         // (o Windows os religa sozinho a cada reconfiguração de vídeo)
         public bool RemoteEnforceHdrOff { get; set; }

@@ -35,8 +35,11 @@ namespace PCOptimizer.Services
 
         private static Guid? _original;
 
+        public static bool HasPendingRecovery => File.Exists(StatePath);
+
         public static bool Apply(CompetitiveModeService.Profile profile)
         {
+            if (File.Exists(StatePath) && !Restore()) return false;
             if (!TryGetActiveScheme(out Guid original)) return false;
             _original = original;
             SaveRecovery(original);
@@ -77,15 +80,20 @@ namespace PCOptimizer.Services
                 $"/setacvalueindex {TemporaryScheme} SUB_PROCESSOR {setting} {value}", 10000)
                 ? 1 : 0;
 
-        public static void Restore()
+        public static bool Restore()
         {
             Guid? saved = _original ?? LoadRecovery();
-            if (saved == null) return;
+            if (saved == null) return true;
             Guid target = saved.Value == Guid.Empty ? BalancedScheme : saved.Value;
-            ProcessRunner.Run("powercfg.exe", $"/setactive {target}", 10000);
+            if (!ProcessRunner.Run("powercfg.exe", $"/setactive {target}", 10000))
+            {
+                Logger.Warn("Competitivo: não foi possível restaurar o plano de energia; recuperação preservada");
+                return false;
+            }
             ProcessRunner.Run("powercfg.exe", $"/delete {TemporaryScheme}", 10000);
             _original = null;
             ClearRecovery();
+            return true;
         }
 
         public static void RestoreOrphanFromPreviousRun()

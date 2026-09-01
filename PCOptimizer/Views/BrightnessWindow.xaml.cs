@@ -382,6 +382,7 @@ namespace PCOptimizer.Views
                     : entries.Count == 1 ? "1 monitor" : $"{entries.Count} monitores";
 
                 BuildMonitorPanels(entries);
+                SoftwareBrightnessService.SynchronizeMonitors(entries);
 
                 TxtStatus.Text = isWmi ? "Modo notebook — somente brilho disponível"
                                        : "Pronto — arraste os controles";
@@ -563,9 +564,7 @@ namespace PCOptimizer.Views
             // Com HDR ativo, o monitor ignora brilho DDC/CI e gamma ramp — o controle
             // real é o "brilho do conteúdo SDR" do Windows. Lê o valor atual para o
             // slider partir do ponto certo.
-            int hdrSdrPct = entry.HdrEnabled
-                ? HdrService.GetSdrBrightness(entry.HdrAdapterIdLow, entry.HdrAdapterIdHigh, entry.HdrTargetId)
-                : -1;
+            int hdrSdrPct = entry.HdrSdrBrightness;
 
             // Brightness slider
             var sliderB = new Slider
@@ -696,8 +695,8 @@ namespace PCOptimizer.Views
                         // HDR ativo: ajusta o brilho do conteúdo SDR (DDC/gamma são
                         // ignorados pelo monitor em HDR). Se a chamada falhar
                         // (Windows antigo), cai nos caminhos normais abaixo.
-                        if (mc.HdrEnabled && HdrService.SetSdrBrightness(
-                                mc.HdrAdapterIdLow, mc.HdrAdapterIdHigh, mc.HdrTargetId, v))
+                        if (mc.HdrEnabled && await Task.Run(() => HdrService.SetSdrBrightness(
+                                mc.HdrAdapterIdLow, mc.HdrAdapterIdHigh, mc.HdrTargetId, v)))
                             continue;
                         if (mc.IsWmi)
                             await Task.Run(() => MonitorService.SetWmiBrightness(v));
@@ -1030,8 +1029,14 @@ namespace PCOptimizer.Views
             btn.Click += async (_, _) =>
             {
                 bool newState = !mc.HdrEnabled;
-                bool ok = await Task.Run(() =>
-                    HdrService.SetHdrEnabled(mc.HdrAdapterIdLow, mc.HdrAdapterIdHigh, mc.HdrTargetId, newState));
+                btn.IsEnabled = false;
+                bool ok;
+                try
+                {
+                    ok = await HdrService.SetHdrEnabledVerifiedAsync(
+                        mc.HdrAdapterIdLow, mc.HdrAdapterIdHigh, mc.HdrTargetId, newState);
+                }
+                finally { btn.IsEnabled = true; }
                 if (ok)
                 {
                     mc.HdrEnabled = newState;
@@ -1041,7 +1046,6 @@ namespace PCOptimizer.Views
                     // O modo de controle de brilho muda junto com o HDR (SDR white
                     // level vs DDC) — espera a troca de modo assentar e reconstrói
                     // as linhas para o slider partir do valor certo.
-                    await Task.Delay(1500);
                     _ = ReloadMonitorsAsync();
                 }
                 else

@@ -1,519 +1,285 @@
 <Window x:Class="PCOptimizer.Views.BrightnessWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="310" Height="510"
-        SizeToContent="Height"
-        WindowStyle="None"
-        AllowsTransparency="True"
-        Background="Transparent"
-        Topmost="True"
-        ResizeMode="NoResize"
-        WindowStartupLocation="CenterScreen">
-
+        Width="356" SizeToContent="Height" MaxHeight="820"
+        WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" Topmost="True" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI Variable Text">
     <Window.Resources>
-        <Style x:Key="ScreenshotBtnStyle" TargetType="Button">
+        <Style x:Key="FloatButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="MinWidth" Value="32"/>
+            <Setter Property="Padding" Value="9,0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource ButtonSecondaryBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="8"
-                                Padding="{TemplateBinding Padding}">
+                        <Border x:Name="Shell" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.82"/>
+                                <Setter TargetName="Shell" Property="Background" Value="{DynamicResource ButtonSecondaryHover}"/>
+                                <Setter TargetName="Shell" Property="BorderBrush" Value="{DynamicResource BorderStrong}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.65"/>
+                                <Setter TargetName="Shell" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Shell" Property="Opacity" Value="0.42"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="PresetButtonStyle" TargetType="Button" BasedOn="{StaticResource FloatButtonStyle}">
+            <Setter Property="Height" Value="68"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="0,0,7,0"/>
+        </Style>
+
+        <Style x:Key="SectionShellStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+
+        <Style x:Key="SliderValueStyle" TargetType="TextBlock">
+            <Setter Property="Width" Value="50"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+            <Setter Property="FontFamily" Value="Cascadia Mono"/>
+            <Setter Property="FontSize" Value="10"/>
+        </Style>
+
+        <Style x:Key="SliderLabelStyle" TargetType="TextBlock">
+            <Setter Property="Width" Value="86"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
     </Window.Resources>
 
-    <Border Margin="12" CornerRadius="16"
-            Background="{DynamicResource WindowBg}"
-            BorderBrush="{DynamicResource BorderColor}"
-            BorderThickness="1">
-        <Border.Effect>
-            <DropShadowEffect Color="Black" BlurRadius="35" Opacity="0.65" ShadowDepth="0"/>
-        </Border.Effect>
-
-        <Grid Margin="16,14,16,14">
+    <Border Background="{DynamicResource NavBg}" BorderBrush="{DynamicResource BorderStrong}"
+            BorderThickness="1" CornerRadius="14" Padding="1">
+        <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="50"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Row 0: Header arrastável -->
-            <Grid Grid.Row="0" Margin="0,0,0,12"
-                  MouseLeftButtonDown="Header_MouseDown" Cursor="SizeAll">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🌞" FontSize="15" VerticalAlignment="Center"/>
-                    <StackPanel Margin="8,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="Brilho e Contraste" FontSize="13" FontWeight="Bold"
-                                   Foreground="{DynamicResource TextPrimary}"/>
-                        <TextBlock x:Name="TxtMonitorCount" FontSize="10"
-                                   Foreground="{DynamicResource TextSecondary}"
-                                   Text="Detectando monitores..."/>
+            <Border Grid.Row="0" Background="{DynamicResource NavBg}" CornerRadius="13,13,0,0"
+                    MouseLeftButtonDown="Header_MouseDown" Cursor="SizeAll">
+                <Grid Margin="12,0,8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="5" Height="26" CornerRadius="3" Background="{DynamicResource AccentBrush}"
+                            VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Tela" Foreground="{DynamicResource TextPrimary}"
+                                   FontFamily="Segoe UI Variable Display" FontSize="15" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="TxtMonitorCount" Text="Detectando monitores…"
+                                   Foreground="{DynamicResource TextMuted}" FontFamily="Cascadia Mono" FontSize="9"/>
                     </StackPanel>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button Content="🌑" Click="BtnMonitorsOff_Click" Cursor="Hand"
-                            Style="{StaticResource ScreenshotBtnStyle}"
-                            Background="{DynamicResource Card2Bg}"
-                            Width="32" Height="32" FontSize="15" Padding="0"
-                            BorderThickness="0" Margin="0,0,6,0"
-                            ToolTip="Desligar todos os monitores — religam ao mexer o mouse ou teclar"/>
-                    <Button Content="📸" Click="BtnScreenshot_Click" Cursor="Hand"
-                            Style="{StaticResource ScreenshotBtnStyle}"
-                            Background="{DynamicResource Card6Bg}"
-                            Width="32" Height="32" FontSize="15" Padding="0"
-                            BorderThickness="0" Margin="0,0,6,0"
-                            ToolTip="Capturar área da tela"/>
-                    <Button x:Name="BtnTimerToggle" Content="⏻" Click="BtnTimerToggle_Click" Cursor="Hand"
-                            Style="{StaticResource ScreenshotBtnStyle}"
-                            Background="{DynamicResource Card1Bg}"
-                            Width="32" Height="32" FontSize="15" Padding="0"
-                            BorderThickness="0" Margin="0,0,6,0"
-                            ToolTip="Timer para desligar o computador"/>
-                    <Button Content="✕" Click="BtnClose_Click" Cursor="Hand"
-                            Background="Transparent" BorderThickness="0"
-                            FontSize="13" Foreground="{DynamicResource TextSecondary}"
-                            Width="26" Height="26"/>
-                </StackPanel>
-            </Grid>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Apagar" Style="{StaticResource FloatButtonStyle}" Margin="0,0,5,0"
+                                ToolTip="Desligar monitores" Click="BtnMonitorsOff_Click"/>
+                        <Button Content="Capturar" Style="{StaticResource FloatButtonStyle}" Margin="0,0,5,0"
+                                ToolTip="Capturar todas as telas" Click="BtnScreenshot_Click"/>
+                        <Button x:Name="BtnTimerToggle" Content="Timer" Style="{StaticResource FloatButtonStyle}"
+                                Margin="0,0,5,0" ToolTip="Agendar desligamento" Click="BtnTimerToggle_Click"/>
+                        <Button Content="×" Style="{StaticResource FloatButtonStyle}" FontSize="16"
+                                ToolTip="Fechar" Click="BtnClose_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
 
-            <!-- Row 1: Painel dinâmico de monitores + modo acesso remoto -->
-            <StackPanel Grid.Row="1" Margin="0,0,0,12">
-                <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer Grid.Row="1" MaxHeight="760" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="12,10,12,12">
                     <StackPanel x:Name="PnlMonitors"/>
-                </ScrollViewer>
-            </StackPanel>
 
-            <!-- Row 2: Presets -->
-            <StackPanel Grid.Row="2" Margin="0,0,0,12">
-                <TextBlock Text="Presets (clique direito para editar)" FontSize="9"
-                           Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,6" Opacity="0.7"/>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button x:Name="BtnPreset1" Grid.Column="0" Cursor="Hand"
-                            Margin="0,0,4,0" Padding="0,8"
-                            Background="{DynamicResource Preset1Bg}"
-                            Foreground="{DynamicResource Preset1Fg}"
-                            BorderThickness="1"
-                            BorderBrush="{DynamicResource Preset1Border}"
-                            Click="Preset1_Click" MouseRightButtonUp="Preset1_Edit">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock x:Name="TxtPreset1Icon" FontSize="16" HorizontalAlignment="Center"/>
-                            <TextBlock x:Name="TxtPreset1Name" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                            <TextBlock x:Name="TxtPreset1Values" FontSize="9" Opacity="0.7" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                    <Button x:Name="BtnPreset2" Grid.Column="1" Cursor="Hand"
-                            Margin="2,0,2,0" Padding="0,8"
-                            Background="{DynamicResource Preset2Bg}"
-                            Foreground="{DynamicResource Preset2Fg}"
-                            BorderThickness="1"
-                            BorderBrush="{DynamicResource Preset2Border}"
-                            Click="Preset2_Click" MouseRightButtonUp="Preset2_Edit">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock x:Name="TxtPreset2Icon" FontSize="16" HorizontalAlignment="Center"/>
-                            <TextBlock x:Name="TxtPreset2Name" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                            <TextBlock x:Name="TxtPreset2Values" FontSize="9" Opacity="0.7" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                    <Button x:Name="BtnPreset3" Grid.Column="2" Cursor="Hand"
-                            Margin="4,0,0,0" Padding="0,8"
-                            Background="{DynamicResource Preset3Bg}"
-                            Foreground="{DynamicResource Preset3Fg}"
-                            BorderThickness="1"
-                            BorderBrush="{DynamicResource Preset3Border}"
-                            Click="Preset3_Click" MouseRightButtonUp="Preset3_Edit">
-                        <StackPanel HorizontalAlignment="Center">
-                            <TextBlock x:Name="TxtPreset3Icon" FontSize="16" HorizontalAlignment="Center"/>
-                            <TextBlock x:Name="TxtPreset3Name" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                            <TextBlock x:Name="TxtPreset3Values" FontSize="9" Opacity="0.7" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                </Grid>
-            </StackPanel>
+                    <TextBlock Text="PRESETS" Foreground="{DynamicResource TextMuted}"
+                               FontFamily="Cascadia Mono" FontSize="9" Margin="2,12,0,7"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="BtnPreset1" Grid.Column="0" Style="{StaticResource PresetButtonStyle}"
+                                Click="Preset1_Click" MouseRightButtonUp="Preset1_Edit">
+                            <StackPanel>
+                                <TextBlock x:Name="TxtPreset1Icon" HorizontalAlignment="Center" FontSize="15"/>
+                                <TextBlock x:Name="TxtPreset1Name" HorizontalAlignment="Center" FontSize="10" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="TxtPreset1Values" HorizontalAlignment="Center" FontFamily="Cascadia Mono" FontSize="8" Opacity="0.7"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnPreset2" Grid.Column="1" Style="{StaticResource PresetButtonStyle}"
+                                Click="Preset2_Click" MouseRightButtonUp="Preset2_Edit">
+                            <StackPanel>
+                                <TextBlock x:Name="TxtPreset2Icon" HorizontalAlignment="Center" FontSize="15"/>
+                                <TextBlock x:Name="TxtPreset2Name" HorizontalAlignment="Center" FontSize="10" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="TxtPreset2Values" HorizontalAlignment="Center" FontFamily="Cascadia Mono" FontSize="8" Opacity="0.7"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnPreset3" Grid.Column="2" Style="{StaticResource PresetButtonStyle}" Margin="0"
+                                Click="Preset3_Click" MouseRightButtonUp="Preset3_Edit">
+                            <StackPanel>
+                                <TextBlock x:Name="TxtPreset3Icon" HorizontalAlignment="Center" FontSize="15"/>
+                                <TextBlock x:Name="TxtPreset3Name" HorizontalAlignment="Center" FontSize="10" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="TxtPreset3Values" HorizontalAlignment="Center" FontFamily="Cascadia Mono" FontSize="8" Opacity="0.7"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
 
-            <!-- Row 3: Divider -->
-            <Border Grid.Row="3" Height="1"
-                    Background="{DynamicResource BorderColor}"
-                    Margin="0,0,0,10"/>
-
-            <!-- Row 4: Luz noturna — cabeçalho clicável -->
-            <Grid Grid.Row="4" Margin="0,0,0,6" Cursor="Hand" Background="Transparent"
-                  MouseLeftButtonDown="NightSection_Toggle">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="🌙" FontSize="15" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Luz noturna" FontSize="12" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                <TextBlock x:Name="TxtNightArrow" Grid.Column="2" Text="▸" FontSize="13"
-                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-            </Grid>
-
-            <!-- Row 5: Luz noturna — painel (app + Windows, recolhido) -->
-            <StackPanel Grid.Row="5" x:Name="NightSection" Visibility="Collapsed" Margin="0,0,0,12">
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Filtro do PC Optimizer" FontSize="11"
-                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
-                    <CheckBox x:Name="ChkNightLight" Grid.Column="1" VerticalAlignment="Center"
-                              Checked="ChkNightLight_Checked" Unchecked="ChkNightLight_Unchecked"/>
-                </Grid>
-                <Grid Margin="0,0,0,10" x:Name="NightLightPanel" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="40"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="🔥" FontSize="13" VerticalAlignment="Center" Opacity="0.7"/>
-                    <Slider x:Name="SliderNightLight" Grid.Column="1"
-                            Minimum="10" Maximum="100" Value="40"
-                            VerticalAlignment="Center"
-                            ValueChanged="SliderNightLight_ValueChanged"/>
-                    <TextBlock x:Name="TxtNightLightValue" Grid.Column="2"
-                               Text="40%" FontSize="12" FontWeight="Bold"
-                               Foreground="#F9E2AF"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                </Grid>
-
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Luz noturna do Windows" FontSize="11"
-                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
-                    <CheckBox x:Name="ChkWinNightLight" Grid.Column="1" VerticalAlignment="Center"
-                              Checked="ChkWinNightLight_Checked" Unchecked="ChkWinNightLight_Unchecked"/>
-                </Grid>
-                <Grid x:Name="WinNightLightPanel" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="40"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="🔆" FontSize="13" VerticalAlignment="Center" Opacity="0.7"/>
-                    <Slider x:Name="SliderWinNightLight" Grid.Column="1"
-                            Minimum="0" Maximum="100" Value="50"
-                            VerticalAlignment="Center"
-                            ValueChanged="SliderWinNightLight_ValueChanged"/>
-                    <TextBlock x:Name="TxtWinNightLightValue" Grid.Column="2"
-                               Text="50%" FontSize="12" FontWeight="Bold"
-                               Foreground="#F9E2AF"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                </Grid>
-            </StackPanel>
-
-            <!-- Row 6: Cor avançada — cabeçalho clicável (expande/recolhe) -->
-            <Grid Grid.Row="6" Margin="0,0,0,6" Cursor="Hand" Background="Transparent"
-                  MouseLeftButtonDown="AdvColor_Toggle">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="🎨" FontSize="15" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Cor avançada (gama, temperatura, RGB)"
-                           FontSize="12" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimary}"
-                           VerticalAlignment="Center" Margin="8,0,0,0"/>
-                <TextBlock x:Name="TxtAdvColorArrow" Grid.Column="2" Text="▸" FontSize="13"
-                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-            </Grid>
-
-            <!-- Row 7: Cor avançada — painel (recolhido por padrão) -->
-            <StackPanel Grid.Row="7" x:Name="AdvColorPanel" Visibility="Collapsed" Margin="0,0,0,12">
-                <!-- Gama -->
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="46"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="γ" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextSecondary}" ToolTip="Gama"/>
-                    <Slider x:Name="SliderGamma" Grid.Column="1"
-                            Minimum="0.5" Maximum="2.5" Value="1.0"
-                            VerticalAlignment="Center"
-                            ValueChanged="AdvColor_ValueChanged"/>
-                    <TextBlock x:Name="TxtGammaValue" Grid.Column="2" Text="1.00"
-                               FontSize="11" FontWeight="Bold"
-                               Foreground="{DynamicResource TextPrimary}"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                </Grid>
-                <!-- Temperatura de cor -->
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="46"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="🌡" FontSize="12" VerticalAlignment="Center" Opacity="0.8"
-                               ToolTip="Temperatura de cor (menos = mais quente/alaranjado)"/>
-                    <Slider x:Name="SliderColorTemp" Grid.Column="1"
-                            Minimum="2000" Maximum="10000" Value="6500"
-                            TickFrequency="100" IsSnapToTickEnabled="True"
-                            VerticalAlignment="Center"
-                            ValueChanged="AdvColor_ValueChanged"/>
-                    <TextBlock x:Name="TxtColorTempValue" Grid.Column="2" Text="6500K"
-                               FontSize="11" FontWeight="Bold"
-                               Foreground="{DynamicResource TextPrimary}"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                </Grid>
-                <!-- Saturação (Digital Vibrance — só NVIDIA) -->
-                <Grid x:Name="SaturationRow" Margin="0,0,0,4" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="46"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="🎨" FontSize="12" VerticalAlignment="Center" Opacity="0.8"
-                               ToolTip="Saturação das cores (vibração digital)"/>
-                    <Slider x:Name="SliderSaturation" Grid.Column="1"
-                            Minimum="0" Maximum="63" Value="0"
-                            VerticalAlignment="Center"
-                            ValueChanged="SliderSaturation_ValueChanged"/>
-                    <TextBlock x:Name="TxtSaturationValue" Grid.Column="2" Text="0%"
-                               FontSize="11" FontWeight="Bold"
-                               Foreground="{DynamicResource TextPrimary}"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                </Grid>
-
-                <!-- Ganho R / G / B -->
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="46"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="R" FontSize="12" FontWeight="Bold" VerticalAlignment="Center"
-                               Foreground="#F38BA8"/>
-                    <Slider x:Name="SliderGainR" Grid.Column="1"
-                            Minimum="25" Maximum="100" Value="100"
-                            VerticalAlignment="Center"
-                            ValueChanged="AdvColor_ValueChanged"/>
-                    <TextBlock x:Name="TxtGainRValue" Grid.Column="2" Text="100%"
-                               FontSize="11" FontWeight="Bold" Foreground="#F38BA8"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                </Grid>
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="46"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="G" FontSize="12" FontWeight="Bold" VerticalAlignment="Center"
-                               Foreground="#A6E3A1"/>
-                    <Slider x:Name="SliderGainG" Grid.Column="1"
-                            Minimum="25" Maximum="100" Value="100"
-                            VerticalAlignment="Center"
-                            ValueChanged="AdvColor_ValueChanged"/>
-                    <TextBlock x:Name="TxtGainGValue" Grid.Column="2" Text="100%"
-                               FontSize="11" FontWeight="Bold" Foreground="#A6E3A1"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                </Grid>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="46"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="B" FontSize="12" FontWeight="Bold" VerticalAlignment="Center"
-                               Foreground="#89B4FA"/>
-                    <Slider x:Name="SliderGainB" Grid.Column="1"
-                            Minimum="25" Maximum="100" Value="100"
-                            VerticalAlignment="Center"
-                            ValueChanged="AdvColor_ValueChanged"/>
-                    <TextBlock x:Name="TxtGainBValue" Grid.Column="2" Text="100%"
-                               FontSize="11" FontWeight="Bold" Foreground="#89B4FA"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                </Grid>
-                <!-- Rodapé: aviso + restaurar -->
-                <Grid>
-                    <TextBlock Text="Vale para todos os monitores" FontSize="9" Opacity="0.6"
-                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                    <Button Content="↩ Restaurar padrão" HorizontalAlignment="Right"
-                            Padding="10,4" FontSize="10" Cursor="Hand"
-                            Background="Transparent"
-                            Foreground="{DynamicResource TextSecondary}"
-                            BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
-                            Click="BtnAdvColorReset_Click"/>
-                </Grid>
-            </StackPanel>
-
-            <!-- Row 8: Telas — cabeçalho clicável -->
-            <Grid Grid.Row="8" Margin="0,0,0,6" Cursor="Hand" Background="Transparent"
-                  MouseLeftButtonDown="Displays_Toggle">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="🖥" FontSize="15" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Telas (ativar/desativar, acesso remoto)"
-                           FontSize="12" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimary}"
-                           VerticalAlignment="Center" Margin="8,0,0,0"/>
-                <TextBlock x:Name="TxtDisplaysArrow" Grid.Column="2" Text="▸" FontSize="13"
-                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-            </Grid>
-
-            <!-- Row 9: Telas — painel (recolhido por padrão) -->
-            <StackPanel Grid.Row="9" x:Name="DisplaysPanel" Visibility="Collapsed" Margin="0,0,0,12">
-                <TextBlock Text="Ligue e desligue cada tela. A desativada volta à mesma posição."
-                           FontSize="9" Opacity="0.65" TextWrapping="Wrap" Margin="0,0,0,6"
-                           Foreground="{DynamicResource TextSecondary}"/>
-                <StackPanel x:Name="PnlDisplayToggles"/>
-
-                <Grid x:Name="RemoteRow" Visibility="Collapsed" Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Button x:Name="BtnRemoteMode" Padding="0,8" FontSize="11" FontWeight="SemiBold"
-                            Cursor="Hand" BorderThickness="1"
-                            Background="{DynamicResource Preset2Bg}"
-                            Foreground="{DynamicResource Preset2Fg}"
-                            BorderBrush="{DynamicResource Preset2Border}"
-                            Click="BtnRemoteMode_Click"/>
-                    <Button x:Name="BtnRemoteTune" Grid.Column="1" Content="🔬"
-                            Margin="6,0,0,0" Padding="9,8" FontSize="12"
-                            Cursor="Hand" BorderThickness="1"
-                            Background="Transparent"
-                            Foreground="{DynamicResource TextSecondary}"
-                            BorderBrush="{DynamicResource BorderColor}"
-                            ToolTip="Ajustes finos — ligar cada etapa separadamente"
-                            Click="BtnRemoteTune_Click"/>
-                </Grid>
-            </StackPanel>
-
-            <!-- Row 10: Timer de desligamento (colapsável) -->
-            <StackPanel Grid.Row="10" x:Name="TimerPanel" Visibility="Collapsed" Margin="0,0,0,12">
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="⏻" FontSize="14" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Text="Desligar o PC" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                    <TextBlock x:Name="TxtTimerStatus" Grid.Column="2" FontSize="11" FontWeight="Bold"
-                               Foreground="#F38BA8" VerticalAlignment="Center"/>
-                </Grid>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="15min" Grid.Column="0" Tag="15" Click="TimerPreset_Click" Cursor="Hand"
-                            Margin="0,0,3,0" Padding="0,7" FontSize="11"
-                            Background="{DynamicResource Preset2Bg}"
-                            Foreground="{DynamicResource Preset2Fg}"
-                            BorderThickness="1" BorderBrush="{DynamicResource Preset2Border}"/>
-                    <Button Content="30min" Grid.Column="1" Tag="30" Click="TimerPreset_Click" Cursor="Hand"
-                            Margin="3,0,3,0" Padding="0,7" FontSize="11"
-                            Background="{DynamicResource Preset2Bg}"
-                            Foreground="{DynamicResource Preset2Fg}"
-                            BorderThickness="1" BorderBrush="{DynamicResource Preset2Border}"/>
-                    <Button Content="1h" Grid.Column="2" Tag="60" Click="TimerPreset_Click" Cursor="Hand"
-                            Margin="3,0,3,0" Padding="0,7" FontSize="11"
-                            Background="{DynamicResource Preset2Bg}"
-                            Foreground="{DynamicResource Preset2Fg}"
-                            BorderThickness="1" BorderBrush="{DynamicResource Preset2Border}"/>
-                    <Button Content="2h" Grid.Column="3" Tag="120" Click="TimerPreset_Click" Cursor="Hand"
-                            Margin="3,0,0,0" Padding="0,7" FontSize="11"
-                            Background="{DynamicResource Preset2Bg}"
-                            Foreground="{DynamicResource Preset2Fg}"
-                            BorderThickness="1" BorderBrush="{DynamicResource Preset2Border}"/>
-                </Grid>
-                <Grid Margin="0,6,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="⏱️" FontSize="12" VerticalAlignment="Center"/>
-                    <TextBox x:Name="TxtTimerCustom" Grid.Column="1" FontSize="11"
-                             VerticalAlignment="Center" VerticalContentAlignment="Center"
-                             Margin="6,0,6,0" Padding="6,4"
-                             Background="{DynamicResource SurfaceBg}"
-                             Foreground="{DynamicResource TextPrimary}"
-                             BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
-                             ToolTip="Minutos personalizados"/>
-                    <Button Content="OK" Grid.Column="2" Click="TimerCustom_Click" Cursor="Hand"
-                            Padding="12,5" FontSize="11" Margin="0,0,4,0"
-                            Background="{DynamicResource Preset3Bg}"
-                            Foreground="{DynamicResource Preset3Fg}"
-                            BorderThickness="1" BorderBrush="{DynamicResource Preset3Border}"/>
-                    <Button x:Name="BtnTimerCancel" Content="Cancelar" Grid.Column="3" Click="TimerCancel_Click" Cursor="Hand"
-                            Padding="10,5" FontSize="11" Visibility="Collapsed"
-                            Background="{DynamicResource Preset1Bg}"
-                            Foreground="{DynamicResource Preset1Fg}"
-                            BorderThickness="1" BorderBrush="{DynamicResource Preset1Border}"/>
-                </Grid>
-            </StackPanel>
-
-            <!-- Row 11: Divider -->
-            <Border Grid.Row="11" Height="1"
-                    Background="{DynamicResource BorderColor}"
-                    Margin="0,0,0,10" x:Name="Divider2"/>
-
-            <!-- Row 12: Atalho e status -->
-            <Grid Grid.Row="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="⌨️ " FontSize="11"/>
-                        <TextBlock x:Name="TxtHotkey" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextPrimary}"/>
+                    <StackPanel x:Name="TimerPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                        <Border Style="{StaticResource SectionShellStyle}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Desligamento agendado" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold"/>
+                                    <TextBlock Grid.Column="1" x:Name="TxtTimerStatus" Text="Inativo" Foreground="{DynamicResource AccentBrush}" FontFamily="Cascadia Mono" FontSize="10"/>
+                                </Grid>
+                                <UniformGrid Columns="4" Margin="0,0,0,8">
+                                    <Button Content="15 min" Tag="15" Style="{StaticResource FloatButtonStyle}" Margin="0,0,5,0" Click="TimerPreset_Click"/>
+                                    <Button Content="30 min" Tag="30" Style="{StaticResource FloatButtonStyle}" Margin="0,0,5,0" Click="TimerPreset_Click"/>
+                                    <Button Content="1 h" Tag="60" Style="{StaticResource FloatButtonStyle}" Margin="0,0,5,0" Click="TimerPreset_Click"/>
+                                    <Button Content="2 h" Tag="120" Style="{StaticResource FloatButtonStyle}" Click="TimerPreset_Click"/>
+                                </UniformGrid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtTimerCustom" Height="30" Padding="8,5" Text="45"
+                                             Foreground="{DynamicResource TextPrimary}" Background="{DynamicResource SurfaceRaised}"
+                                             BorderBrush="{DynamicResource BorderColor}"/>
+                                    <Button Grid.Column="1" Content="Aplicar" Style="{StaticResource FloatButtonStyle}" Margin="6,0,0,0" Click="TimerCustom_Click"/>
+                                    <Button Grid.Column="2" x:Name="BtnTimerCancel" Content="Cancelar" Style="{StaticResource FloatButtonStyle}" Margin="6,0,0,0" Click="TimerCancel_Click"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                    <TextBlock x:Name="TxtStatus" FontSize="10"
-                               Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
-                </StackPanel>
-                <Button x:Name="BtnSetHotkey" Grid.Column="1"
-                        Content="Alterar" Padding="10,5"
-                        Background="Transparent"
-                        Foreground="{DynamicResource TextPrimary}"
-                        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1"
-                        FontSize="11" Cursor="Hand" Click="BtnSetHotkey_Click"/>
-            </Grid>
 
+                    <Border Margin="0,10,0,0" Style="{StaticResource SectionShellStyle}"
+                            Cursor="Hand" MouseLeftButtonDown="NightSection_Toggle">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="5"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Border Background="{DynamicResource AccentBrush}" CornerRadius="3"/>
+                            <StackPanel Grid.Column="1" Margin="10,0">
+                                <TextBlock Text="Luz noturna" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold"/>
+                                <TextBlock Text="Temperatura e filtro quente" Foreground="{DynamicResource TextMuted}" FontSize="10"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" x:Name="TxtNightArrow" Text="▸" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel x:Name="NightSection" Visibility="Collapsed" Margin="0,7,0,0">
+                        <Border Style="{StaticResource SectionShellStyle}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Filtro do PC Optimizer" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <CheckBox Grid.Column="1" x:Name="ChkNightLight" Checked="ChkNightLight_Checked" Unchecked="ChkNightLight_Unchecked"/>
+                                </Grid>
+                                <Grid x:Name="NightLightPanel" Visibility="Collapsed" Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Intensidade" Style="{StaticResource SliderLabelStyle}"/>
+                                    <Slider Grid.Column="1" x:Name="SliderNightLight" Minimum="0" Maximum="100" Value="35" ValueChanged="SliderNightLight_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="TxtNightLightValue" Text="35%" Style="{StaticResource SliderValueStyle}"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Luz noturna do Windows" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <CheckBox Grid.Column="1" x:Name="ChkWinNightLight" Checked="ChkWinNightLight_Checked" Unchecked="ChkWinNightLight_Unchecked"/>
+                                </Grid>
+                                <Grid x:Name="WinNightLightPanel" Visibility="Collapsed">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Temperatura" Style="{StaticResource SliderLabelStyle}"/>
+                                    <Slider Grid.Column="1" x:Name="SliderWinNightLight" Minimum="0" Maximum="100" Value="50" ValueChanged="SliderWinNightLight_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="TxtWinNightLightValue" Text="50%" Style="{StaticResource SliderValueStyle}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <Border Margin="0,7,0,0" Style="{StaticResource SectionShellStyle}"
+                            Cursor="Hand" MouseLeftButtonDown="AdvColor_Toggle">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="5"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Border Background="{DynamicResource SignalCyan}" CornerRadius="3"/>
+                            <StackPanel Grid.Column="1" Margin="10,0">
+                                <TextBlock Text="Cor avançada" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold"/>
+                                <TextBlock Text="Gama, temperatura, saturação e RGB" Foreground="{DynamicResource TextMuted}" FontSize="10"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" x:Name="TxtAdvColorArrow" Text="▸" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel x:Name="AdvColorPanel" Visibility="Collapsed" Margin="0,7,0,0">
+                        <Border Style="{StaticResource SectionShellStyle}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,7"><Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions><TextBlock Text="Gama" Style="{StaticResource SliderLabelStyle}"/><Slider Grid.Column="1" x:Name="SliderGamma" Minimum="0.5" Maximum="2" Value="1" TickFrequency="0.05" ValueChanged="AdvColor_ValueChanged"/><TextBlock Grid.Column="2" x:Name="TxtGammaValue" Text="1.00" Style="{StaticResource SliderValueStyle}"/></Grid>
+                                <Grid Margin="0,0,0,7"><Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions><TextBlock Text="Temperatura" Style="{StaticResource SliderLabelStyle}"/><Slider Grid.Column="1" x:Name="SliderColorTemp" Minimum="3000" Maximum="9000" Value="6500" TickFrequency="100" ValueChanged="AdvColor_ValueChanged"/><TextBlock Grid.Column="2" x:Name="TxtColorTempValue" Text="6500K" Style="{StaticResource SliderValueStyle}"/></Grid>
+                                <Grid x:Name="SaturationRow" Visibility="Collapsed" Margin="0,0,0,7"><Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions><TextBlock Text="Saturação" Style="{StaticResource SliderLabelStyle}"/><Slider Grid.Column="1" x:Name="SliderSaturation" Minimum="-100" Maximum="100" Value="0" ValueChanged="SliderSaturation_ValueChanged"/><TextBlock Grid.Column="2" x:Name="TxtSaturationValue" Text="0%" Style="{StaticResource SliderValueStyle}"/></Grid>
+                                <Grid Margin="0,0,0,7"><Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions><TextBlock Text="Ganho R" Style="{StaticResource SliderLabelStyle}" Foreground="#FF6B6B"/><Slider Grid.Column="1" x:Name="SliderGainR" Minimum="50" Maximum="150" Value="100" ValueChanged="AdvColor_ValueChanged"/><TextBlock Grid.Column="2" x:Name="TxtGainRValue" Text="100%" Style="{StaticResource SliderValueStyle}"/></Grid>
+                                <Grid Margin="0,0,0,7"><Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions><TextBlock Text="Ganho G" Style="{StaticResource SliderLabelStyle}" Foreground="#5EEA88"/><Slider Grid.Column="1" x:Name="SliderGainG" Minimum="50" Maximum="150" Value="100" ValueChanged="AdvColor_ValueChanged"/><TextBlock Grid.Column="2" x:Name="TxtGainGValue" Text="100%" Style="{StaticResource SliderValueStyle}"/></Grid>
+                                <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions><TextBlock Text="Ganho B" Style="{StaticResource SliderLabelStyle}" Foreground="#6BA8FF"/><Slider Grid.Column="1" x:Name="SliderGainB" Minimum="50" Maximum="150" Value="100" ValueChanged="AdvColor_ValueChanged"/><TextBlock Grid.Column="2" x:Name="TxtGainBValue" Text="100%" Style="{StaticResource SliderValueStyle}"/></Grid>
+                                <Button Content="Restaurar cor padrão" Style="{StaticResource FloatButtonStyle}" HorizontalAlignment="Left" Click="BtnAdvColorReset_Click"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <Border Margin="0,7,0,0" Style="{StaticResource SectionShellStyle}"
+                            Cursor="Hand" MouseLeftButtonDown="Displays_Toggle">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="5"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Border Background="{DynamicResource WarningBrush}" CornerRadius="3"/>
+                            <StackPanel Grid.Column="1" Margin="10,0">
+                                <TextBlock Text="Modos de exibição" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold"/>
+                                <TextBlock Text="HDR, WCG e ajustes por monitor" Foreground="{DynamicResource TextMuted}" FontSize="10"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" x:Name="TxtDisplaysArrow" Text="▸" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel x:Name="DisplaysPanel" Visibility="Collapsed" Margin="0,7,0,0">
+                        <Border Style="{StaticResource SectionShellStyle}">
+                            <StackPanel>
+                                <StackPanel x:Name="PnlDisplayToggles"/>
+                                <Grid x:Name="RemoteRow" Visibility="Collapsed" Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <Button x:Name="BtnRemoteMode" Content="Modo remoto" Style="{StaticResource FloatButtonStyle}" Click="BtnRemoteMode_Click"/>
+                                    <Button Grid.Column="1" x:Name="BtnRemoteTune" Content="Calibrar" Style="{StaticResource FloatButtonStyle}" Margin="7,0,0,0" Click="BtnRemoteTune_Click"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <Border Margin="0,10,0,0" Style="{StaticResource SectionShellStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Atalho global" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="TxtHotkey" Text="Não definido" Foreground="{DynamicResource TextSecondary}" FontFamily="Cascadia Mono" FontSize="10" Margin="0,3,0,0"/>
+                                <TextBlock x:Name="TxtStatus" Foreground="{DynamicResource TextMuted}" FontSize="9" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" x:Name="BtnSetHotkey" Content="Definir" Style="{StaticResource FloatButtonStyle}" VerticalAlignment="Center" Click="BtnSetHotkey_Click"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Border>
 </Window>

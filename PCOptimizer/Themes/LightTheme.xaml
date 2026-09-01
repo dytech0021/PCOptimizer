@@ -1,99 +1,70 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
-    <!-- Backgrounds -->
-    <SolidColorBrush x:Key="WindowBg" Color="#F0F2F8"/>
-    <SolidColorBrush x:Key="SurfaceBg" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="BorderColor" Color="#E2E8F0"/>
+    <!-- Slate Control — light counterpart -->
+    <SolidColorBrush x:Key="WindowBg" Color="#EEF1F4"/>
+    <SolidColorBrush x:Key="NavBg" Color="#E5E9ED"/>
+    <SolidColorBrush x:Key="SurfaceBg" Color="#F8FAFB"/>
+    <SolidColorBrush x:Key="SurfaceRaised" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ListItemBg" Color="#F4F6F8"/>
+    <SolidColorBrush x:Key="BorderColor" Color="#CDD4DC"/>
+    <SolidColorBrush x:Key="BorderStrong" Color="#AEB8C4"/>
 
-    <!-- Faixa de destaque no topo -->
-    <LinearGradientBrush x:Key="AccentStripBg" StartPoint="0,0.5" EndPoint="1,0.5">
-        <GradientStop Color="#5568D4" Offset="0"/>
-        <GradientStop Color="#8860CC" Offset="1"/>
-    </LinearGradientBrush>
+    <SolidColorBrush x:Key="AccentStripBg" Color="#E5F0C8"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#6B8F14"/>
+    <SolidColorBrush x:Key="AccentMuted" Color="#E5F0C8"/>
+    <SolidColorBrush x:Key="SignalCyan" Color="#0F8B82"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="#C24141"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="#A16207"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="#19733A"/>
 
-    <!-- Text -->
-    <SolidColorBrush x:Key="TextPrimary" Color="#1A202C"/>
-    <SolidColorBrush x:Key="TextSecondary" Color="#718096"/>
-    <SolidColorBrush x:Key="TextTertiary" Color="#A0AEC0"/>
-    <SolidColorBrush x:Key="LogText" Color="#4A5568"/>
-    <SolidColorBrush x:Key="Placeholder" Color="#CBD5E0"/>
+    <SolidColorBrush x:Key="TextPrimary" Color="#171B21"/>
+    <SolidColorBrush x:Key="TextSecondary" Color="#4E5967"/>
+    <SolidColorBrush x:Key="TextTertiary" Color="#778493"/>
+    <SolidColorBrush x:Key="TextMuted" Color="#778493"/>
+    <SolidColorBrush x:Key="LogText" Color="#344050"/>
+    <SolidColorBrush x:Key="Placeholder" Color="#A4AEB9"/>
 
-    <!-- Buttons -->
-    <LinearGradientBrush x:Key="ButtonPrimaryBg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#5B8DEF" Offset="0"/>
-        <GradientStop Color="#7C3AED" Offset="1"/>
-    </LinearGradientBrush>
+    <SolidColorBrush x:Key="ButtonPrimaryBg" Color="#6B8F14"/>
     <SolidColorBrush x:Key="ButtonPrimaryFg" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="ButtonSecondaryBg" Color="#EDF2F7"/>
-    <SolidColorBrush x:Key="ButtonSecondaryFg" Color="#2D3748"/>
-    <SolidColorBrush x:Key="ButtonSuccessBg" Color="#38A169"/>
-    <SolidColorBrush x:Key="ButtonSuccessFg" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="ProgressBg" Color="#E2E8F0"/>
+    <SolidColorBrush x:Key="ButtonSecondaryBg" Color="#E8ECF0"/>
+    <SolidColorBrush x:Key="ButtonSecondaryHover" Color="#DCE2E8"/>
+    <SolidColorBrush x:Key="ButtonSecondaryFg" Color="#29313B"/>
+    <SolidColorBrush x:Key="ButtonSuccessBg" Color="#DDF3E4"/>
+    <SolidColorBrush x:Key="ButtonSuccessFg" Color="#155D31"/>
+    <SolidColorBrush x:Key="ProgressBg" Color="#D9DFE5"/>
+    <SolidColorBrush x:Key="BadgeBg" Color="#E5F0C8"/>
+    <SolidColorBrush x:Key="BadgeFg" Color="#536F11"/>
+    <SolidColorBrush x:Key="BadgeText" Color="#536F11"/>
 
-    <!-- Badge -->
-    <SolidColorBrush x:Key="BadgeBg" Color="#EBF4FF"/>
-    <SolidColorBrush x:Key="BadgeFg" Color="#4A6FA5"/>
-    <SolidColorBrush x:Key="ListItemBg" Color="#F7FAFC"/>
+    <SolidColorBrush x:Key="Card1Bg" Color="#F8ECEE"/>
+    <SolidColorBrush x:Key="Card2Bg" Color="#EAF1F6"/>
+    <SolidColorBrush x:Key="Card3Bg" Color="#F8F2DF"/>
+    <SolidColorBrush x:Key="Card4Bg" Color="#E8F3ED"/>
+    <SolidColorBrush x:Key="Card5Bg" Color="#EDF2E2"/>
+    <SolidColorBrush x:Key="Card6Bg" Color="#E5F2F4"/>
+    <SolidColorBrush x:Key="Card7Bg" Color="#E7F4EC"/>
+    <SolidColorBrush x:Key="Card1Border" Color="#D7A8AE"/>
+    <SolidColorBrush x:Key="Card2Border" Color="#AFC9DA"/>
+    <SolidColorBrush x:Key="Card3Border" Color="#D8C486"/>
+    <SolidColorBrush x:Key="Card4Border" Color="#9FC9B2"/>
+    <SolidColorBrush x:Key="Card5Border" Color="#BBCB91"/>
+    <SolidColorBrush x:Key="Card6Border" Color="#9BC7CF"/>
+    <SolidColorBrush x:Key="Card7Border" Color="#9BCBAD"/>
 
-    <!-- Icon card gradients (soft pastel) -->
-    <LinearGradientBrush x:Key="Card1Bg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#FFB8B8" Offset="0"/>
-        <GradientStop Color="#FFA07A" Offset="1"/>
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="Card2Bg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#B5C9F5" Offset="0"/>
-        <GradientStop Color="#C9B5F5" Offset="1"/>
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="Card3Bg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#FFE4A0" Offset="0"/>
-        <GradientStop Color="#FFB347" Offset="1"/>
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="Card4Bg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#B5EAD7" Offset="0"/>
-        <GradientStop Color="#82CFC2" Offset="1"/>
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="Card5Bg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#D4B5F5" Offset="0"/>
-        <GradientStop Color="#BCA0F0" Offset="1"/>
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="Card6Bg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#B5E8F5" Offset="0"/>
-        <GradientStop Color="#7BC8E8" Offset="1"/>
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="Card7Bg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#B5F5E4" Offset="0"/>
-        <GradientStop Color="#7ADED0" Offset="1"/>
-    </LinearGradientBrush>
-
-    <!-- Card borders -->
-    <SolidColorBrush x:Key="Card1Border" Color="#FFB8B8"/>
-    <SolidColorBrush x:Key="Card2Border" Color="#B5C9F5"/>
-    <SolidColorBrush x:Key="Card3Border" Color="#FFE4A0"/>
-    <SolidColorBrush x:Key="Card4Border" Color="#B5EAD7"/>
-    <SolidColorBrush x:Key="Card5Border" Color="#D4B5F5"/>
-    <SolidColorBrush x:Key="Card6Border" Color="#B5E8F5"/>
-    <SolidColorBrush x:Key="Card7Border" Color="#B5F5E4"/>
-
-    <!-- Run button gradient (azul-roxo, sem rosa) -->
-    <LinearGradientBrush x:Key="RunButtonBg" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#4E78D8" Offset="0"/>
-        <GradientStop Color="#6628D4" Offset="1"/>
-    </LinearGradientBrush>
+    <SolidColorBrush x:Key="RunButtonBg" Color="#6B8F14"/>
     <SolidColorBrush x:Key="RunButtonFg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="RunButtonText" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Preset1Bg" Color="#F4EFFA"/>
+    <SolidColorBrush x:Key="Preset1Fg" Color="#7145A0"/>
+    <SolidColorBrush x:Key="Preset1Border" Color="#D6C1E9"/>
+    <SolidColorBrush x:Key="Preset2Bg" Color="#E7F4F5"/>
+    <SolidColorBrush x:Key="Preset2Fg" Color="#0F716D"/>
+    <SolidColorBrush x:Key="Preset2Border" Color="#A7D4D3"/>
+    <SolidColorBrush x:Key="Preset3Bg" Color="#EDF4DF"/>
+    <SolidColorBrush x:Key="Preset3Fg" Color="#577615"/>
+    <SolidColorBrush x:Key="Preset3Border" Color="#C4D79A"/>
 
-    <!-- Preset buttons -->
-    <SolidColorBrush x:Key="Preset1Bg" Color="#F5F0FF"/>
-    <SolidColorBrush x:Key="Preset1Fg" Color="#7C3AED"/>
-    <SolidColorBrush x:Key="Preset1Border" Color="#D8B4FE"/>
-    <SolidColorBrush x:Key="Preset2Bg" Color="#EFF6FF"/>
-    <SolidColorBrush x:Key="Preset2Fg" Color="#3B82F6"/>
-    <SolidColorBrush x:Key="Preset2Border" Color="#BFDBFE"/>
-    <SolidColorBrush x:Key="Preset3Bg" Color="#F0FDF4"/>
-    <SolidColorBrush x:Key="Preset3Fg" Color="#16A34A"/>
-    <SolidColorBrush x:Key="Preset3Border" Color="#BBF7D0"/>
-
-    <!-- Theme toggle icon -->
-    <sys:String x:Key="ThemeToggleIcon" xmlns:sys="clr-namespace:System;assembly=mscorlib">🌙</sys:String>
-
+    <sys:String x:Key="ThemeToggleIcon">☾</sys:String>
 </ResourceDictionary>

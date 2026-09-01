@@ -47,6 +47,7 @@ namespace PCOptimizer.Services
         public uint HdrAdapterIdLow { get; set; }
         public int HdrAdapterIdHigh { get; set; }
         public uint HdrTargetId { get; set; }
+        public int HdrSdrBrightness { get; set; } = -1;
     }
 
     public static class MonitorService
@@ -448,13 +449,15 @@ namespace PCOptimizer.Services
         {
             try
             {
+                percent = Math.Clamp(percent, 0, 100);
                 using var s = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
                 using var results = s.Get();
                 foreach (ManagementObject obj in results)
                     using (obj)
                     {
-                        obj.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)percent });
-                        return true;
+                        object? returnValue = obj.InvokeMethod(
+                            "WmiSetBrightness", new object[] { 0u, (byte)percent });
+                        return returnValue != null && Convert.ToUInt32(returnValue) == 0;
                     }
             }
             catch { }
@@ -602,6 +605,7 @@ namespace PCOptimizer.Services
                 _displayDirty = false;
             }
             var monitors = GetCachedMonitors();
+            var hdrInfos = HdrService.GetAllHdrInfo();
 
             // Pure WMI path: no DDC monitors at all (notebook with no external display)
             if (monitors.Count == 0 && HasWmiMonitors())
@@ -610,6 +614,12 @@ namespace PCOptimizer.Services
                 string wmiName = !string.IsNullOrEmpty(ei.FriendlyName) ? ei.FriendlyName
                                : !string.IsNullOrEmpty(ei.Manufacturer) ? $"Painel {ei.Manufacturer}"
                                : "Painel do notebook";
+
+                HdrInfo? hdr = hdrInfos.Find(h => h.IsInternal)
+                            ?? (hdrInfos.Count == 1 ? hdrInfos[0] : null);
+                int hdrSdrBrightness = hdr?.IsEnabled == true
+                    ? HdrService.GetSdrBrightness(hdr.AdapterIdLow, hdr.AdapterIdHigh, hdr.TargetId)
+                    : -1;
 
                 return new List<MonitorEntry>
                 {
@@ -622,7 +632,13 @@ namespace PCOptimizer.Services
                         Contrast           = 50,
                         SupportsBrightness = true,
                         SupportsContrast   = false,
-                        IsWmi              = true
+                        IsWmi              = true,
+                        SupportsHdr        = hdr?.IsSupported ?? false,
+                        HdrEnabled         = hdr?.IsEnabled ?? false,
+                        HdrAdapterIdLow    = hdr?.AdapterIdLow ?? 0,
+                        HdrAdapterIdHigh   = hdr?.AdapterIdHigh ?? 0,
+                        HdrTargetId        = hdr?.TargetId ?? 0,
+                        HdrSdrBrightness   = hdrSdrBrightness
                     }
                 };
             }
@@ -631,7 +647,6 @@ namespace PCOptimizer.Services
             var edidByPnp     = GetEdidInfosByPnpId();
             bool wmiAvailable = HasWmiMonitors();
             int  wmiBrightness = wmiAvailable ? GetWmiBrightness() : 50;
-            var  hdrInfos      = HdrService.GetAllHdrInfo();
 
             var entries = new List<MonitorEntry>();
             for (int i = 0; i < monitors.Count; i++)
@@ -734,7 +749,7 @@ namespace PCOptimizer.Services
                     // valor quando o monitor troca de posição (a posição, sim) —
                     // assim os apelidos salvos continuam no monitor certo.
                     string disc = !string.IsNullOrEmpty(ifacePath)
-                        ? Math.Abs(ifacePath.GetHashCode()).ToString("x8")
+                        ? MonitorIdentity.StableDiscriminator(ifacePath)
                         : $"{srcX}x{srcY}";
                     hwId = $"ddc_{m.DdcModel}_{disc}";
                 }
@@ -742,7 +757,7 @@ namespace PCOptimizer.Services
                 // WMI fallback SÓ para o painel interno do notebook — WmiSetBrightness
                 // não controla monitores externos; aplicá-lo neles fazia a barra do
                 // monitor externo mudar o brilho do painel do notebook.
-                bool isInternalPanel = hdr?.IsInternal ?? (monitors.Count == 1);
+                bool isInternalPanel = hdr?.IsInternal == true;
                 if (!supportsBrightness && wmiAvailable && isInternalPanel)
                 {
                     brightness         = wmiBrightness;
@@ -753,7 +768,9 @@ namespace PCOptimizer.Services
                 // Sem DDC/CI e sem WMI (monitor simples por HDMI): brilho por software
                 // — escurece a imagem via overlay. Melhor que um controle morto.
                 bool isSoftware = false;
-                string swKey = !string.IsNullOrEmpty(deviceKey) ? deviceKey : hwId;
+                if (!supportsBrightness && !string.IsNullOrEmpty(ifacePath))
+                    hwId = $"{hwId}@{MonitorIdentity.StableDiscriminator(ifacePath)}";
+                string swKey = hwId;
                 if (!supportsBrightness)
                 {
                     brightness         = SoftwareBrightnessService.GetBrightness(swKey);
@@ -783,7 +800,11 @@ namespace PCOptimizer.Services
                     HdrEnabled         = hdr?.IsEnabled ?? false,
                     HdrAdapterIdLow    = hdr?.AdapterIdLow ?? 0,
                     HdrAdapterIdHigh   = hdr?.AdapterIdHigh ?? 0,
-                    HdrTargetId        = hdr?.TargetId ?? 0
+                    HdrTargetId        = hdr?.TargetId ?? 0,
+                    HdrSdrBrightness   = hdr?.IsEnabled == true
+                        ? HdrService.GetSdrBrightness(
+                            hdr.AdapterIdLow, hdr.AdapterIdHigh, hdr.TargetId)
+                        : -1
                 });
                 // Handle fica vivo no cache para os sets serem instantâneos
             }
@@ -805,6 +826,12 @@ namespace PCOptimizer.Services
                         e.HardwareId = e.HdrTargetId != 0
                             ? $"{e.HardwareId}#{e.HdrTargetId}"
                             : $"{e.HardwareId}#i{e.Index}";
+
+            // O device \\.\DISPLAYn pode mudar após alterar topologia. A chave
+            // estável evita deixar overlays antigos na tela ou trocar o brilho
+            // entre dois monitores iguais.
+            foreach (var entry in entries)
+                if (entry.IsSoftware) entry.DeviceKey = entry.HardwareId;
 
             return entries;
         }

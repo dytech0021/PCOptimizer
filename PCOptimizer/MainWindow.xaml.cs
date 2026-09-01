@@ -973,7 +973,8 @@ namespace PCOptimizer
                     return;
                 }
 
-                TxtGameBoostStatus.Text = GameBoostService.ApplyTo(target, manual: true);
+                TxtGameBoostStatus.Text = await Task.Run(
+                    () => GameBoostService.ApplyTo(target, manual: true));
             }
             catch (Exception ex)
             {
@@ -1049,7 +1050,8 @@ namespace PCOptimizer
                     return;
                 }
 
-                TxtCompetitiveStatus.Text = CompetitiveModeService.ApplyTo(target);
+                TxtCompetitiveStatus.Text = await Task.Run(
+                    () => CompetitiveModeService.ApplyTo(target));
                 RefreshGameBoostCard();
             }
             catch (Exception ex)

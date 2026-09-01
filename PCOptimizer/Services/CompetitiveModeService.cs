@@ -2,7 +2,8 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
-using System.Windows.Threading;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace PCOptimizer.Services
 {
@@ -40,12 +41,14 @@ namespace PCOptimizer.Services
 
         private static readonly Profile DefaultProfile = new();
         private static readonly TimeSpan MaxDuration = TimeSpan.FromHours(8);
-        private static DispatcherTimer? _timer;
+        private static Timer? _timer;
+        private static readonly object OperationLock = new();
         private static GameTargetService.Target? _target;
         private static DateTime _started;
         private static uint[] _targetPreviousCpuSets = Array.Empty<uint>();
         private static bool _targetCpuSetsChanged;
         private static int _ticks;
+        private static int _tickRunning;
         private static string _lastResult = "";
 
         private static string StatePath => Path.Combine(
@@ -71,6 +74,26 @@ namespace PCOptimizer.Services
 
         public static string ApplyTo(GameTargetService.Target target)
         {
+            lock (OperationLock) return ApplyCore(target);
+        }
+
+        private static string ApplyCore(GameTargetService.Target target)
+        {
+            if (CompetitivePowerProfileService.HasPendingRecovery
+                && !CompetitivePowerProfileService.Restore())
+            {
+                target.Dispose();
+                return "Há um plano de energia anterior pendente de restauração";
+            }
+            if (File.Exists(StatePath))
+            {
+                RestoreOrphansFromPreviousRun();
+                if (File.Exists(StatePath))
+                {
+                    target.Dispose();
+                    return "Há uma preferência de CPU anterior pendente de restauração";
+                }
+            }
             var topology = CpuTopologyService.Get();
             if (!topology.CanPark)
             {
@@ -109,7 +132,7 @@ namespace PCOptimizer.Services
             _lastResult = "";
             CompetitiveTelemetryService.Start(target.Pid, target.Name, "Competitivo");
             EnsureTimer();
-            _timer!.Start();
+            _timer!.Change(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
             Logger.Info($"Competitivo: {profile.Name} ativado em {target.Name} (PID {target.Pid})");
             Notify();
@@ -120,16 +143,25 @@ namespace PCOptimizer.Services
 
         public static string ReleaseAll(string reason)
         {
-            _timer?.Stop();
+            lock (OperationLock) return ReleaseCore(reason);
+        }
+
+        private static string ReleaseCore(string reason)
+        {
+            _timer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
             int restored = CompetitiveBackgroundService.RestoreAll();
 
+            bool targetRestored = true;
             if (_target != null && _targetCpuSetsChanged)
-                CpuSetService.Restore(_target.Pid, _targetPreviousCpuSets);
-            _targetCpuSetsChanged = false;
-            _targetPreviousCpuSets = Array.Empty<uint>();
-            ClearTargetRecovery();
+                targetRestored = CpuSetService.Restore(_target.Pid, _targetPreviousCpuSets);
+            if (RecoveryPolicy.CanClear(targetRestored))
+            {
+                _targetCpuSetsChanged = false;
+                _targetPreviousCpuSets = Array.Empty<uint>();
+                ClearTargetRecovery();
+            }
 
-            CompetitivePowerProfileService.Restore();
+            bool powerRestored = CompetitivePowerProfileService.Restore();
             string telemetry = CompetitiveTelemetryService.Stop(reason);
 
             if (_target != null)
@@ -141,6 +173,8 @@ namespace PCOptimizer.Services
             _lastResult = string.IsNullOrEmpty(telemetry)
                 ? "Modo Competitivo desligado"
                 : $"Modo desligado — {telemetry}";
+            if (!targetRestored || !powerRestored)
+                _lastResult += " — restauração pendente preservada";
             Notify();
             return _lastResult;
         }
@@ -153,42 +187,53 @@ namespace PCOptimizer.Services
                 if (!File.Exists(StatePath)) return;
                 var state = JsonSerializer.Deserialize<TargetRecovery>(File.ReadAllText(StatePath));
                 if (state == null) return;
-                using var process = Process.GetProcessById(state.Pid);
-                if (process.StartTime.ToUniversalTime().Ticks == state.StartUtcTicks)
-                    CpuSetService.Restore(state.Pid, state.OriginalCpuSets);
+                bool resolved;
+                try
+                {
+                    using var process = Process.GetProcessById(state.Pid);
+                    resolved = process.StartTime.ToUniversalTime().Ticks != state.StartUtcTicks
+                            || CpuSetService.Restore(state.Pid, state.OriginalCpuSets);
+                }
+                catch (ArgumentException) { resolved = true; }
+                catch (InvalidOperationException) { resolved = true; }
+                if (RecoveryPolicy.CanClear(resolved)) ClearTargetRecovery();
             }
-            catch { }
-            finally { ClearTargetRecovery(); }
+            catch (Exception ex) { Logger.Error(ex, "CompetitiveMode.RestoreOrphan"); }
         }
 
         private static void EnsureTimer()
         {
             if (_timer != null) return;
-            _timer = new DispatcherTimer(DispatcherPriority.Background)
-            {
-                Interval = TimeSpan.FromSeconds(1)
-            };
-            _timer.Tick += (_, _) => Tick();
+            _timer = new Timer(OnTimerTick, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         }
 
-        private static void Tick()
+        private static async void OnTimerTick(object? state)
         {
+            if (Interlocked.Exchange(ref _tickRunning, 1) != 0) return;
             try
             {
-                if (_target == null) { _timer?.Stop(); return; }
-                if (!_target.IsAlive) { ReleaseAll("jogo encerrado"); return; }
+                string? stopReason = await Task.Run(TickBackground);
+                if (stopReason != null) ReleaseAll(stopReason);
+                else if (_ticks % 3 == 0) Notify();
+            }
+            catch (Exception ex) { Logger.Error(ex, "CompetitiveMode.Tick"); }
+            finally { Volatile.Write(ref _tickRunning, 0); }
+        }
+
+        private static string? TickBackground()
+        {
+            lock (OperationLock)
+            {
+                if (_target == null) return "alvo indisponível";
+                if (!_target.IsAlive) return "jogo encerrado";
                 if (DateTime.Now - _started > MaxDuration)
-                {
-                    ReleaseAll("limite de segurança de 8 h");
-                    return;
-                }
+                    return "limite de segurança de 8 h";
 
                 _ticks++;
                 CompetitiveBackgroundService.Tick(scanNew: _ticks % 3 == 0);
                 CompetitiveTelemetryService.Sample();
-                if (_ticks % 3 == 0) Notify();
+                return null;
             }
-            catch (Exception ex) { Logger.Error(ex, "CompetitiveMode.Tick"); }
         }
 
         private static Profile GetProfile(string processName) =>

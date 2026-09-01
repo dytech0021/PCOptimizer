@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace PCOptimizer.Services
 {
@@ -9,6 +10,9 @@ namespace PCOptimizer.Services
         public int SourceX { get; set; }
         public int SourceY { get; set; }
         public bool IsSupported { get; set; }
+        // Preferência salva pelo usuário. Pode estar ligada sem o compositor estar
+        // realmente em HDR (por exemplo durante WCG/ACM ou após troca de topologia).
+        public bool IsUserEnabled { get; set; }
         public bool IsEnabled { get; set; }
         public uint AdapterIdLow { get; set; }
         public int AdapterIdHigh { get; set; }
@@ -17,6 +21,7 @@ namespace PCOptimizer.Services
         public bool IsInternal { get; set; }
         // ACM/WCG (Win11 24H2): "Gerenciar cores automaticamente para apps"
         public bool WcgSupported { get; set; }
+        public bool WcgUserEnabled { get; set; }
         public bool WcgEnabled { get; set; }
         // 0 = SDR, 1 = WCG (gamut largo), 2 = HDR — o modo em que a área de
         // trabalho é composta. WCG é o que faz a captura remota sair saturada.
@@ -312,10 +317,9 @@ namespace PCOptimizer.Services
                     // WCG. Quando disponível ela é a fonte da verdade: a antiga
                     // (tipo 9) reporta "advanced color" ligado tanto em HDR quanto
                     // em WCG, o que confundia o botão de HDR.
-                    bool wcgSup = false, wcgOn = false;
-                    bool hdrSup = hdrResult == 0 && (req.value & 1) != 0;
-                    bool hdrOn  = hdrResult == 0 && (req.value & 2) != 0;
-                    uint colorMode = 0;
+                    AdvancedColorState colorState = hdrResult == 0
+                        ? AdvancedColorState.DecodeLegacy(req.value)
+                        : default;
 
                     var req2 = new DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2
                     {
@@ -328,13 +332,7 @@ namespace PCOptimizer.Services
                         }
                     };
                     if (DisplayConfigGetDeviceInfo(ref req2) == 0)
-                    {
-                        hdrSup    = (req2.value & (1u << 4)) != 0; // highDynamicRangeSupported
-                        hdrOn     = (req2.value & (1u << 5)) != 0; // highDynamicRangeUserEnabled
-                        wcgSup    = (req2.value & (1u << 6)) != 0; // wideColorSupported
-                        wcgOn     = (req2.value & (1u << 7)) != 0; // wideColorUserEnabled
-                        colorMode = req2.activeColorMode;          // 0=SDR 1=WCG 2=HDR
-                    }
+                        colorState = AdvancedColorState.DecodeModern(req2.value, req2.activeColorMode);
 
                     // Nome do monitor pelo MESMO path — correlação exata
                     string friendly = "";
@@ -359,15 +357,17 @@ namespace PCOptimizer.Services
                     {
                         SourceX       = srcX,
                         SourceY       = srcY,
-                        IsSupported   = hdrSup,
-                        IsEnabled     = hdrOn,
+                        IsSupported   = colorState.HdrSupported,
+                        IsUserEnabled = colorState.HdrUserEnabled,
+                        IsEnabled     = colorState.HdrActive,
                         AdapterIdLow  = tAdapter.LowPart,
                         AdapterIdHigh = tAdapter.HighPart,
                         TargetId      = tId,
                         IsInternal      = isInternal,
-                        WcgSupported    = wcgSup,
-                        WcgEnabled      = wcgOn,
-                        ActiveColorMode = colorMode,
+                        WcgSupported    = colorState.WcgSupported,
+                        WcgUserEnabled  = colorState.WcgUserEnabled,
+                        WcgEnabled      = colorState.WcgActive,
+                        ActiveColorMode = colorState.ActiveColorMode,
                         FriendlyName    = friendly,
                         DevicePath      = devPath
                     });
@@ -473,6 +473,7 @@ namespace PCOptimizer.Services
         {
             var luid = new LUID { LowPart = adapterIdLow, HighPart = adapterIdHigh };
             int rcNew = -1, rcOld = -1;
+            bool modernApiAvailable = IsModernColorApiAvailable(luid, targetId);
 
             try
             {
@@ -491,6 +492,16 @@ namespace PCOptimizer.Services
                 if (rcNew == 0) { detail = "SET_HDR_STATE ok"; return true; }
             }
             catch (Exception ex) { Logger.Error(ex, "SET_HDR_STATE"); }
+
+            // Em 24H2+ a API antiga controla "Advanced Color" como um todo. Usá-la
+            // após uma falha da API específica de HDR pode desligar o WCG/ACM no
+            // lugar do HDR. O fallback só é seguro quando a API nova não existe.
+            if (modernApiAvailable)
+            {
+                detail = $"SET_HDR_STATE falhou ({rcNew})";
+                Logger.Warn(detail);
+                return false;
+            }
 
             try
             {
@@ -513,6 +524,54 @@ namespace PCOptimizer.Services
             detail = $"HDR API falhou (novo={rcNew}, antigo={rcOld})";
             Logger.Warn(detail);
             return false;
+        }
+
+        public static async Task<bool> SetHdrEnabledVerifiedAsync(
+            uint adapterIdLow, int adapterIdHigh, uint targetId, bool enabled,
+            int attempts = 3)
+        {
+            var key = new HdrTargetKey(adapterIdLow, adapterIdHigh, targetId);
+            for (int attempt = 0; attempt < Math.Max(1, attempts); attempt++)
+            {
+                HdrInfo? current = FindTarget(key);
+                if (current != null && current.IsEnabled == enabled) return true;
+                if (current == null || !current.IsSupported) return false;
+
+                SetHdrEnabled(adapterIdLow, adapterIdHigh, targetId, enabled);
+                await Task.Delay(900);
+            }
+
+            HdrInfo? final = FindTarget(key);
+            return final != null && final.IsEnabled == enabled;
+        }
+
+        private static HdrInfo? FindTarget(HdrTargetKey key)
+        {
+            foreach (HdrInfo info in GetAllHdrInfo())
+                if (info.AdapterIdLow == key.AdapterIdLow
+                    && info.AdapterIdHigh == key.AdapterIdHigh
+                    && info.TargetId == key.TargetId)
+                    return info;
+            return null;
+        }
+
+        private static bool IsModernColorApiAvailable(LUID adapterId, uint targetId)
+        {
+            try
+            {
+                var request = new DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2
+                {
+                    header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                    {
+                        type = GET_ADVANCED_COLOR_INFO_2,
+                        size = (uint)Marshal.SizeOf<DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2>(),
+                        adapterId = adapterId,
+                        id = targetId
+                    }
+                };
+                return DisplayConfigGetDeviceInfo(ref request) == 0;
+            }
+            catch { return false; }
         }
 
         // ── Atalho nativo do Windows (Win+Alt+B) ─────────────────────────────
@@ -549,28 +608,33 @@ namespace PCOptimizer.Services
         /// Windows reaplicar a configuração daquele modo, o que pode derrubar o
         /// HDR — guardar antes permite devolvê-lo depois.
         /// </summary>
-        public static List<uint> SnapshotHdrOnTargets()
+        public static List<HdrTargetKey> SnapshotHdrOnTargets()
         {
-            var list = new List<uint>();
+            var list = new List<HdrTargetKey>();
             try
             {
                 foreach (var h in GetAllHdrInfo())
-                    if (h.IsEnabled) list.Add(h.TargetId);
+                    if (h.IsEnabled)
+                        list.Add(new HdrTargetKey(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId));
             }
             catch { }
             return list;
         }
 
         /// <summary>Religa o HDR nas telas anotadas. Devolve quantas voltaram.</summary>
-        public static int RestoreHdrOnTargets(List<uint> targets)
+        public static int RestoreHdrOnTargets(IReadOnlyCollection<HdrTargetKey> targets)
         {
             if (targets == null || targets.Count == 0) return 0;
             int n = 0;
             try
             {
+                var wanted = new HashSet<HdrTargetKey>(targets);
                 foreach (var h in GetAllHdrInfo())
-                    if (h.IsSupported && !h.IsEnabled && targets.Contains(h.TargetId))
-                        if (SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, true)) n++;
+                    if (h.IsSupported && !h.IsEnabled && wanted.Contains(
+                            new HdrTargetKey(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId)))
+                        if (SetHdrEnabledVerifiedAsync(
+                                h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, true)
+                                .GetAwaiter().GetResult()) n++;
             }
             catch (Exception ex) { Logger.Error(ex, "RestoreHdrOnTargets"); }
             return n;

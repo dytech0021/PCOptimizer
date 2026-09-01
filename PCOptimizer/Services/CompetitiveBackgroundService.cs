@@ -108,6 +108,11 @@ namespace PCOptimizer.Services
 
         public static bool Start(int gamePid, string? gamePath, double thresholdPercent)
         {
+            if (File.Exists(StatePath))
+            {
+                RestoreOrphansFromPreviousRun();
+                if (File.Exists(StatePath)) return false;
+            }
             _eCoreIds = CpuSetService.GetIdsForMask(CpuTopologyService.Get().ECoreMask);
             if (_eCoreIds.Length == 0) return false;
             _gamePid = gamePid;
@@ -208,7 +213,9 @@ namespace PCOptimizer.Services
             if (ProcessIdToSessionId(pid, out int session) && session == 0) return true;
 
             string? path = GetPath(pid);
-            if (path == null) return false;
+            // Sem caminho não há como provar que o processo é seguro para limitar.
+            // Falhar fechado evita tocar em processos protegidos/de outro usuário.
+            if (path == null) return true;
             string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
             if (path.StartsWith(Path.Combine(windows, "System32"), StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith(Path.Combine(windows, "SysWOW64"), StringComparison.OrdinalIgnoreCase))
@@ -234,39 +241,56 @@ namespace PCOptimizer.Services
 
         private static void Restrain(Entry entry)
         {
-            if (!entry.EcoChanged && SetEco(entry.Pid, true)) entry.EcoChanged = true;
+            bool changed = false;
+            if (!entry.EcoChanged && SetEco(entry.Pid, true))
+            {
+                entry.EcoChanged = true;
+                changed = true;
+            }
             if (!entry.PriorityChanged && SetPriority(entry.Pid, BELOW_NORMAL_PRIORITY_CLASS))
+            {
                 entry.PriorityChanged = true;
-            SaveState();
+                changed = true;
+            }
+            if (changed) SaveState();
         }
 
         private static void Unrestrain(Entry entry)
         {
+            bool changed = false;
             if (entry.EcoChanged)
             {
-                SetEco(entry.Pid, (entry.OriginalEcoState & ExecutionSpeed) != 0);
-                entry.EcoChanged = false;
+                if (SetEco(entry.Pid, (entry.OriginalEcoState & ExecutionSpeed) != 0))
+                {
+                    entry.EcoChanged = false;
+                    changed = true;
+                }
             }
             if (entry.PriorityChanged && entry.OriginalPriority != 0)
             {
-                SetPriority(entry.Pid, entry.OriginalPriority);
-                entry.PriorityChanged = false;
+                if (SetPriority(entry.Pid, entry.OriginalPriority))
+                {
+                    entry.PriorityChanged = false;
+                    changed = true;
+                }
             }
-            SaveState();
+            if (changed) SaveState();
         }
 
         public static int RestoreAll()
         {
             List<Entry> snapshot;
             lock (Sync)
-            {
                 snapshot = Entries.Values.ToList();
+            int restored = 0;
+            var remaining = new List<Entry>();
+            foreach (var entry in snapshot)
+                if (RestoreEntry(entry)) restored++; else remaining.Add(entry);
+            lock (Sync)
+            {
                 Entries.Clear();
             }
-            int restored = 0;
-            foreach (var entry in snapshot)
-                if (RestoreEntry(entry)) restored++;
-            ClearState();
+            if (remaining.Count == 0) ClearState(); else WriteState(remaining);
             _gamePid = 0;
             _gameDir = null;
             return restored;
@@ -281,12 +305,14 @@ namespace PCOptimizer.Services
                 if (entries != null)
                 {
                     int n = 0;
-                    foreach (var entry in entries) if (RestoreEntry(entry)) n++;
+                    var remaining = new List<Entry>();
+                    foreach (var entry in entries)
+                        if (RestoreEntry(entry)) n++; else remaining.Add(entry);
                     if (n > 0) Logger.Warn($"Competitivo: {n} processo(s) restaurado(s) após interrupção");
+                    if (remaining.Count == 0) ClearState(); else WriteState(remaining);
                 }
             }
             catch (Exception ex) { Logger.Error(ex, "CompetitiveBackground.RestoreOrphans"); }
-            finally { ClearState(); }
         }
 
         private static bool RestoreEntry(Entry entry)
@@ -294,17 +320,19 @@ namespace PCOptimizer.Services
             try
             {
                 using var process = Process.GetProcessById(entry.Pid);
-                if (process.StartTime.ToUniversalTime().Ticks != entry.StartUtcTicks) return false;
+                if (process.StartTime.ToUniversalTime().Ticks != entry.StartUtcTicks) return true;
             }
+            catch (ArgumentException) { return true; } // processo terminou: não há estado a restaurar
+            catch (InvalidOperationException) { return true; }
             catch { return false; }
 
-            bool ok = false;
+            bool ok = true;
             if (entry.CpuSetsChanged)
-                ok |= CpuSetService.Restore(entry.Pid, entry.OriginalCpuSets);
+                ok &= CpuSetService.Restore(entry.Pid, entry.OriginalCpuSets);
             if (entry.EcoChanged)
-                ok |= SetEco(entry.Pid, (entry.OriginalEcoState & ExecutionSpeed) != 0);
+                ok &= SetEco(entry.Pid, (entry.OriginalEcoState & ExecutionSpeed) != 0);
             if (entry.PriorityChanged && entry.OriginalPriority != 0)
-                ok |= SetPriority(entry.Pid, entry.OriginalPriority);
+                ok &= SetPriority(entry.Pid, entry.OriginalPriority);
             return ok;
         }
 
@@ -372,12 +400,17 @@ namespace PCOptimizer.Services
             {
                 List<Entry> snapshot;
                 lock (Sync) snapshot = Entries.Values.ToList();
-                Directory.CreateDirectory(Path.GetDirectoryName(StatePath)!);
-                string tmp = StatePath + ".tmp";
-                File.WriteAllText(tmp, JsonSerializer.Serialize(snapshot));
-                File.Move(tmp, StatePath, true);
+                WriteState(snapshot);
             }
             catch { }
+        }
+
+        private static void WriteState(IReadOnlyCollection<Entry> snapshot)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(StatePath)!);
+            string tmp = StatePath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(snapshot));
+            File.Move(tmp, StatePath, true);
         }
 
         private static void ClearState()

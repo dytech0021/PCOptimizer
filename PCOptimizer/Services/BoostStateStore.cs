@@ -59,6 +59,11 @@ namespace PCOptimizer.Services
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PCOptimizer", "boost-state.json");
 
+        public static bool HasPendingRecovery
+        {
+            get { lock (_io) return File.Exists(StatePath) && LoadFile().Entries.Count > 0; }
+        }
+
         /// <summary>
         /// Identifica o boot atual. Prioridade e afinidade não sobrevivem a um
         /// reboot, e os PIDs são reciclados — um arquivo de outro boot tem que ser
@@ -152,10 +157,17 @@ namespace PCOptimizer.Services
                 }
 
                 int restored = 0;
+                var remaining = new List<Entry>();
                 foreach (var e in f.Entries)
-                    if (TryRestore(e)) restored++;
+                    if (TryRestore(e)) restored++; else remaining.Add(e);
 
-                ClearAllNoLock();
+                if (remaining.Count == 0) ClearAllNoLock();
+                else
+                {
+                    f.Entries = remaining;
+                    SaveFile(f);
+                    Logger.Warn($"Turbo: {remaining.Count} restauração(ões) pendente(s) preservada(s)");
+                }
                 if (restored > 0)
                     Logger.Info($"Turbo: {restored} processo(s) restaurado(s) de uma execução anterior");
                 return restored;
@@ -178,10 +190,12 @@ namespace PCOptimizer.Services
             {
                 using (var p = Process.GetProcessById(e.Pid))
                 {
-                    if (p.StartTime.ToUniversalTime().Ticks != e.StartUtcTicks) return false;
+                    if (p.StartTime.ToUniversalTime().Ticks != e.StartUtcTicks) return true;
                 }
             }
-            catch { return false; } // processo já morreu — nada a fazer
+            catch (ArgumentException) { return true; } // processo já morreu — nada a fazer
+            catch (InvalidOperationException) { return true; }
+            catch { return false; }
             return ApplyRestore(e);
         }
 
@@ -193,11 +207,11 @@ namespace PCOptimizer.Services
             if (h == IntPtr.Zero) return false;
             try
             {
-                bool ok = false;
+                bool ok = true;
                 if (e.AffinityChanged && e.PrevAffinity != 0)
-                    ok |= SetProcessAffinityMask(h, (UIntPtr)e.PrevAffinity);
+                    ok &= SetProcessAffinityMask(h, (UIntPtr)e.PrevAffinity);
                 if (e.PriorityChanged && e.PrevPriority != 0)
-                    ok |= SetPriorityClass(h, e.PrevPriority);
+                    ok &= SetPriorityClass(h, e.PrevPriority);
                 if (ok) Logger.Info($"Turbo: {e.Name} (PID {e.Pid}) restaurado");
                 return ok;
             }

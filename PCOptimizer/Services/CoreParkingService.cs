@@ -174,20 +174,19 @@ namespace PCOptimizer.Services
 
             // Caminho do executável: System32/SysWOW64 e a pasta do jogo
             string? path = GetExePath(pid);
-            if (path != null)
-            {
-                string sysRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-                if (path.StartsWith(Path.Combine(sysRoot, "System32"), StringComparison.OrdinalIgnoreCase) ||
-                    path.StartsWith(Path.Combine(sysRoot, "SysWOW64"), StringComparison.OrdinalIgnoreCase))
-                    return true;
+            if (path == null) return true;
 
-                // Auxiliares do próprio jogo (launcher, serviço do anticheat…)
-                if (gameDir != null)
-                {
-                    string? dir = Path.GetDirectoryName(path);
-                    if (dir != null && dir.StartsWith(gameDir, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
+            string sysRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            if (path.StartsWith(Path.Combine(sysRoot, "System32"), StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith(Path.Combine(sysRoot, "SysWOW64"), StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Auxiliares do próprio jogo (launcher, serviço do anticheat…)
+            if (gameDir != null)
+            {
+                string? dir = Path.GetDirectoryName(path);
+                if (dir != null && dir.StartsWith(gameDir, StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
 
             return false;
@@ -225,6 +224,14 @@ namespace PCOptimizer.Services
                 // Já estava só nos E-cores (ou já confinado por nós): não mexe
                 if (prev == target) return false;
 
+                long startTicks;
+                try
+                {
+                    using var proc = Process.GetProcessById(pid);
+                    startTicks = proc.StartTime.ToUniversalTime().Ticks;
+                }
+                catch { return false; }
+
                 uint prevPrio = GetPriorityClass(h);
                 bool affOk = SetProcessAffinityMask(h, (UIntPtr)target);
                 bool prioOk = false;
@@ -233,14 +240,6 @@ namespace PCOptimizer.Services
                     prioOk = SetPriorityClass(h, BELOW_NORMAL_PRIORITY_CLASS);
 
                 if (!affOk && !prioOk) return false;
-
-                long startTicks = 0;
-                try
-                {
-                    using var proc = Process.GetProcessById(pid);
-                    startTicks = proc.StartTime.ToUniversalTime().Ticks;
-                }
-                catch { }
 
                 var entry = new Parked
                 {
@@ -280,16 +279,18 @@ namespace PCOptimizer.Services
             int n = 0;
             foreach (var e in list)
             {
-                bool ok = BoostStateStore.ApplyRestore(new BoostStateStore.Entry
+                bool ok = BoostStateStore.TryRestore(new BoostStateStore.Entry
                 {
                     Pid = e.Pid, Name = e.Name, StartUtcTicks = e.StartUtcTicks,
                     PrevAffinity = e.PrevAffinity, PrevPriority = e.PrevPriority,
                     AffinityChanged = e.AffinityChanged, PriorityChanged = e.PriorityChanged
                 });
-                if (ok) n++;
+                if (ok)
+                {
+                    n++;
+                    BoostStateStore.Clear(e.Pid);
+                }
             }
-
-            BoostStateStore.ClearAll();
             return n;
         }
     }

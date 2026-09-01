@@ -66,7 +66,9 @@ namespace PCOptimizer.Services
             s.RemotePrevHdr      = !keepHdr && hdrOn.Count > 0;
             s.RemoteHdrPositions = keepHdr ? ""
                 : string.Join(";", hdrOn.Select(h => $"{h.SourceX},{h.SourceY}"));
+            s.RemoteHdrDevicePaths = keepHdr ? "" : EncodeDevicePaths(hdrOn);
             s.RemoteWcgPositions = string.Join(";", wcgOn.Select(h => $"{h.SourceX},{h.SourceY}"));
+            s.RemoteWcgDevicePaths = EncodeDevicePaths(wcgOn);
 
             // 1) Só a tela principal (topologia do Win+P — layout fica memorizado)
             bool topo = await Task.Run(MonitorTopologyService.UsePrimaryOnly);
@@ -275,19 +277,21 @@ namespace PCOptimizer.Services
         {
             try
             {
-                var targets = HdrService.GetAllHdrInfo().Where(h => h.IsSupported).ToList();
-                if (targets.Count == 0) return "Nenhuma tela com suporte a HDR";
+                var targets = HdrService.GetAllHdrInfo();
+                bool hasHdr = targets.Any(h => h.IsSupported);
+                bool hasWcg = targets.Any(h => h.WcgSupported);
+                if (!hasHdr && !hasWcg) return "Nenhuma tela com HDR ou gamut largo ativo";
 
                 // 1) Desliga o HDR (API e, se ela falhar, o atalho do Windows)
-                var (ok, detail) = await EnsureHdrOffAsync(allowHotkey: true);
+                var (ok, detail) = hasHdr
+                    ? await EnsureHdrOffAsync(allowHotkey: true)
+                    : (true, "HDR não se aplica");
 
                 // 2) Com o HDR fora do caminho, desliga o gamut largo
-                foreach (var h in HdrService.GetAllHdrInfo())
-                    if (h.WcgSupported && h.WcgEnabled)
-                        HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, false);
-                await Task.Delay(900);
+                bool wcgOk = await SetWcgVerifiedAsync(enable: false, _ => true, requireMatch: false);
 
                 if (!ok) return "⚠ " + detail;
+                if (!wcgOk) return $"⚠ HDR desligado, mas o gamut largo não desligou ({detail})";
 
                 uint mode = PrimaryColorMode();
                 return mode switch
@@ -455,31 +459,39 @@ namespace PCOptimizer.Services
             if (s.RemotePrevHdr)
             {
                 var wanted = ParsePositions(s.RemoteHdrPositions);
+                var wantedPaths = DecodeDevicePaths(s.RemoteHdrDevicePaths);
                 bool on = await SetHdrVerifiedAsync(enable: true, h =>
                     h.IsSupported &&
-                    (wanted.Count == 0
+                    (wantedPaths.Contains(h.DevicePath)
+                     || (wantedPaths.Count == 0 && wanted.Count == 0
                         ? h.SourceX == 0 && h.SourceY == 0        // fallback: principal
-                        : wanted.Contains((h.SourceX, h.SourceY))));
+                        : wanted.Contains((h.SourceX, h.SourceY)))),
+                    requireMatch: true);
                 steps.Add(on ? "✅ HDR on" : "⚠ HDR: religue manualmente");
-                s.RemotePrevHdr = false;
-                s.RemoteHdrPositions = "";
+                if (RecoveryPolicy.CanClear(on))
+                {
+                    s.RemotePrevHdr = false;
+                    s.RemoteHdrPositions = "";
+                    s.RemoteHdrDevicePaths = "";
+                }
                 await Task.Delay(1200);
             }
 
             // 4) ACM/WCG de volta nas telas onde estava ligado
             var wantWcg = ParsePositions(s.RemoteWcgPositions);
-            if (wantWcg.Count > 0)
+            var wantWcgPaths = DecodeDevicePaths(s.RemoteWcgDevicePaths);
+            if (wantWcg.Count > 0 || wantWcgPaths.Count > 0)
             {
-                try
+                bool wcgRestored = await SetWcgVerifiedAsync(enable: true, h =>
+                    wantWcgPaths.Contains(h.DevicePath)
+                    || (wantWcgPaths.Count == 0 && wantWcg.Contains((h.SourceX, h.SourceY))),
+                    requireMatch: true);
+                if (RecoveryPolicy.CanClear(wcgRestored))
                 {
-                    foreach (var h in HdrService.GetAllHdrInfo())
-                        if (h.WcgSupported && !h.WcgEnabled &&
-                            wantWcg.Contains((h.SourceX, h.SourceY)))
-                            HdrService.SetWcgEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, true);
+                    s.RemoteWcgPositions = "";
+                    s.RemoteWcgDevicePaths = "";
                 }
-                catch (Exception ex) { Logger.Error(ex, "RemoteAccess.WcgOn"); }
-                s.RemoteWcgPositions = "";
-                steps.Add("✅ cores automáticas on");
+                steps.Add(wcgRestored ? "✅ cores automáticas on" : "⚠ cores automáticas: tente novamente");
             }
 
             // 5) Filtros de cor de volta, exatamente como estavam
@@ -492,8 +504,14 @@ namespace PCOptimizer.Services
             if (!GammaRampService.IsDefault(s.GammaValue, s.ColorTempK, s.GainR, s.GainG, s.GainB))
                 GammaRampService.RestoreFromSettings();
 
-            s.RemoteModeActive = false;
+            bool recoveryPending = s.RemotePrevHdr
+                                || !string.IsNullOrEmpty(s.RemoteWcgPositions)
+                                || !string.IsNullOrEmpty(s.RemoteWcgDevicePaths)
+                                || s.MultiMonitorDisabled
+                                || s.RemoteResActive;
+            s.RemoteModeActive = recoveryPending;
             SettingsService.Save();
+            if (recoveryPending) steps.Add("⚠ restauração parcial preservada para nova tentativa");
             return string.Join(" · ", steps);
         }
 
@@ -570,16 +588,16 @@ namespace PCOptimizer.Services
         /// <summary>Liga/desliga o ACM em todas as telas que suportam.</summary>
         public static bool SetAcmAll(bool enable)
         {
-            bool any = false;
+            bool ok = true;
             try
             {
                 foreach (var h in HdrService.GetAllHdrInfo())
                     if (h.WcgSupported && h.WcgEnabled != enable)
-                        any |= HdrService.SetWcgEnabled(
+                        ok &= HdrService.SetWcgEnabled(
                             h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, enable);
             }
-            catch (Exception ex) { Logger.Error(ex, "SetAcmAll"); }
-            return any;
+            catch (Exception ex) { Logger.Error(ex, "SetAcmAll"); return false; }
+            return ok;
         }
 
         /// <summary>
@@ -587,31 +605,83 @@ namespace PCOptimizer.Services
         /// CONFERE relendo o estado; repete até 4 vezes com pausa — logo após uma
         /// troca de vídeo, a primeira ordem costuma ser ignorada pelo driver.
         /// </summary>
-        private static async Task<bool> SetHdrVerifiedAsync(bool enable, Func<HdrInfo, bool> match)
+        private static async Task<bool> SetHdrVerifiedAsync(
+            bool enable, Func<HdrInfo, bool> match, bool requireMatch = false)
         {
             for (int attempt = 0; attempt < 4; attempt++)
             {
                 bool pending = false;
+                bool matched = false;
                 try
                 {
                     foreach (var h in HdrService.GetAllHdrInfo())
-                        if (match(h) && h.IsSupported && h.IsEnabled != enable)
+                        if (match(h) && h.IsSupported)
                         {
-                            pending = true;
-                            HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, enable);
+                            matched = true;
+                            if (h.IsEnabled != enable)
+                            {
+                                pending = true;
+                                HdrService.SetHdrEnabled(h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, enable);
+                            }
                         }
                 }
                 catch (Exception ex) { Logger.Error(ex, "SetHdrVerifiedAsync"); }
 
-                if (!pending) return true; // tudo já no estado desejado
+                if (!pending) return matched || !requireMatch; // tudo já no estado desejado
                 await Task.Delay(1500);    // deixa o vídeo assentar e re-verifica
             }
 
             try
             {
+                bool matched = false;
                 foreach (var h in HdrService.GetAllHdrInfo())
-                    if (match(h) && h.IsSupported && h.IsEnabled != enable) return false;
-                return true;
+                    if (match(h) && h.IsSupported)
+                    {
+                        matched = true;
+                        if (h.IsEnabled != enable) return false;
+                    }
+                return matched || !requireMatch;
+            }
+            catch { return false; }
+        }
+
+        private static async Task<bool> SetWcgVerifiedAsync(
+            bool enable, Func<HdrInfo, bool> match, bool requireMatch)
+        {
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                bool pending = false;
+                bool matched = false;
+                try
+                {
+                    foreach (var h in HdrService.GetAllHdrInfo())
+                        if (match(h) && h.WcgSupported)
+                        {
+                            matched = true;
+                            if (h.WcgEnabled != enable)
+                            {
+                                pending = true;
+                                HdrService.SetWcgEnabled(
+                                    h.AdapterIdLow, h.AdapterIdHigh, h.TargetId, enable);
+                            }
+                        }
+                }
+                catch (Exception ex) { Logger.Error(ex, "SetWcgVerifiedAsync"); }
+
+                if (!pending) return matched || !requireMatch;
+                await Task.Delay(700);
+            }
+
+            try
+            {
+                bool matched = false;
+                foreach (var h in HdrService.GetAllHdrInfo())
+                    if (match(h) && h.WcgSupported)
+                    {
+                        matched = true;
+                        if (h.WcgEnabled != enable) return false;
+                    }
+                return matched || !requireMatch;
             }
             catch { return false; }
         }
@@ -625,6 +695,23 @@ namespace PCOptimizer.Services
                 if (xy.Length == 2 && int.TryParse(xy[0], out int x) && int.TryParse(xy[1], out int y))
                     set.Add((x, y));
             }
+            return set;
+        }
+
+        private static string EncodeDevicePaths(IEnumerable<HdrInfo> displays) => string.Join(
+            ";", displays.Select(h => h.DevicePath)
+                         .Where(p => !string.IsNullOrWhiteSpace(p))
+                         .Select(p => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(p))));
+
+        private static HashSet<string> DecodeDevicePaths(string? raw)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string part in (raw ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+                try
+                {
+                    set.Add(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(part)));
+                }
+                catch (FormatException) { }
             return set;
         }
     }
