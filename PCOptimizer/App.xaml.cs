@@ -30,8 +30,11 @@ namespace PCOptimizer
             // ANTES de qualquer outra coisa: se o app foi morto com o Turbo de
             // Jogo ativo, há processos presos nos E-cores esperando restauração.
             BoostStateStore.RestoreOrphansFromPreviousRun();
-            CompetitiveModeService.RestoreOrphansFromPreviousRun();
-            CompetitivePowerProfileService.RestoreOrphanFromPreviousRun();
+
+            // O perfil de CPU é PERSISTENTE por escolha do usuário: não se
+            // desfaz ao fechar. Aqui só descobrimos se ele ficou ativo da
+            // sessão anterior, para o painel avisar — nada é revertido.
+            CpuTuningService.DetectActiveFromPreviousRun();
 
             ThemeManager.Initialize();
             TrayService.Initialize();
@@ -302,10 +305,8 @@ namespace PCOptimizer
 
         protected override void OnExit(ExitEventArgs e)
         {
-            // O modo competitivo também altera preferências de CPU e usa um plano
-            // temporário. Restaura antes de qualquer outro serviço encerrar.
-            try { CompetitiveModeService.ReleaseAll("app encerrando"); }
-            catch (Exception ex) { Logger.Error(ex, "OnExit/CompetitiveMode"); }
+            // O perfil de CPU NÃO é desfeito aqui de propósito: ele vale até o
+            // usuário desativar no painel, mesmo com o programa fechado.
 
             // PRIMEIRO: devolve os programas confinados nos E-cores. Se isto não
             // rodar, eles ficariam lentos até o próximo reboot.

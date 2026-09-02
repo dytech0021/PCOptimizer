@@ -75,9 +75,14 @@ namespace PCOptimizer.Services
         public bool GameBoostEnabled { get; set; } = true;        // liga sozinho ao detectar jogo
         public bool GameBoostLowerPriority { get; set; } = true;  // além dos E-cores, prioridade baixa
         public bool GameBoostWarningShown { get; set; }
-        public bool CompetitiveModeWarningShown { get; set; }
         // Programas que o usuário quer manter fora do confinamento
         public List<string> GameBoostUserProtected { get; set; } = new();
+
+        // Painel de CPU: perfil aplicado num plano de energia próprio do app.
+        // Persistente de propósito — continua valendo com o programa fechado,
+        // até o usuário desativar.
+        public CpuTuningProfile CpuTuning { get; set; } = CpuTuningProfile.Default();
+        public bool CpuTuningWarningShown { get; set; }
 
         // Sai da frente dos jogos: com um jogo em tela cheia, pausa os timers de
         // segundo plano e baixa a prioridade do processo. Ligado por padrão —

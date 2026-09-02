@@ -334,13 +334,81 @@
                             </Border>
                             <Border Grid.Column="1" Style="{StaticResource ActionCardStyle}" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="Modo competitivo" Style="{StaticResource SectionTitleStyle}"/>
-                                    <TextBlock Text="Aplica um perfil agressivo e reversível para jogos." Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
-                                    <TextBlock x:Name="TxtCompetitiveStatus" Text="Inativo" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" Margin="0,8,0,12"/>
-                                    <Button x:Name="BtnCompetitive" Content="Ativar competitivo" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Left" Click="BtnCompetitive_Click"/>
+                                    <TextBlock Text="Controle de CPU" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock Text="Frequência, turbo e estacionamento dos núcleos." Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="TxtCpuTuningStatus" Text="Inativo" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" Margin="0,8,0,12"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="BtnCpuTuning" Content="Aplicar perfil" Style="{StaticResource PrimaryButtonStyle}" Click="BtnCpuTuning_Click"/>
+                                        <Button x:Name="BtnCpuTuningDefaults" Content="Padrões" Style="{StaticResource ActionButtonStyle}" Margin="8,0,0,0" Click="BtnCpuTuningDefaults_Click"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </Grid>
+                        <Expander x:Name="ExpCpuTuning" Header="Ajustes de CPU" IsExpanded="False" Margin="0,0,0,14"
+                                  Foreground="{DynamicResource TextPrimary}">
+                            <Border Style="{StaticResource PanelStyle}">
+                                <StackPanel>
+                                    <TextBlock x:Name="TxtCpuTuningTopology" Text="Detectando processador..."
+                                               Foreground="{DynamicResource TextSecondary}" FontFamily="Cascadia Mono" FontSize="10"
+                                               Margin="0,0,0,14"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="190"/>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="30"/>
+                                            <RowDefinition Height="38"/>
+                                            <RowDefinition Height="38"/>
+                                            <RowDefinition Height="38"/>
+                                            <RowDefinition Height="38"/>
+                                            <RowDefinition Height="38"/>
+                                            <RowDefinition Height="38"/>
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Column="1" x:Name="TxtCpuClass1" Text="P-cores" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" x:Name="TxtCpuClass0" Text="E-cores" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Center"/>
+
+                                        <TextBlock Grid.Row="1" Text="Frequência mínima" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="1" Grid.Column="1" x:Name="SldPMinState" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="1" Grid.Column="2" x:Name="SldEMinState" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+
+                                        <TextBlock Grid.Row="2" Text="Frequência máxima" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="2" Grid.Column="1" x:Name="SldPMaxState" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="2" Grid.Column="2" x:Name="SldEMaxState" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+
+                                        <TextBlock Grid.Row="3" Text="Modo de turbo" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Row="3" Grid.Column="1" x:Name="CmbPBoost" Margin="12,0" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Row="3" Grid.Column="2" x:Name="CmbEBoost" Margin="12,0" VerticalAlignment="Center"/>
+
+                                        <TextBlock Grid.Row="4" Text="Preferência de energia" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="4" Grid.Column="1" x:Name="SldPEpp" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="4" Grid.Column="2" x:Name="SldEEpp" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+
+                                        <TextBlock Grid.Row="5" Text="Núcleos ativos (mín.)" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="5" Grid.Column="1" x:Name="SldPMinCores" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="5" Grid.Column="2" x:Name="SldEMinCores" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+
+                                        <TextBlock Grid.Row="6" Text="Núcleos ativos (máx.)" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="6" Grid.Column="1" x:Name="SldPMaxCores" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+                                        <Slider Grid.Row="6" Grid.Column="2" x:Name="SldEMaxCores" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
+                                    </Grid>
+
+                                    <TextBlock x:Name="TxtCpuTuningValues" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+
+                                    <CheckBox x:Name="ChkCpuIdleDisable" Content="Desativar estados de ociosidade (C-states)" Style="{StaticResource OptionCheckStyle}" Margin="0,14,0,0"/>
+                                    <TextBlock Text="Corta a latência de acordar, mas esquenta e pode reduzir o turbo sustentado. Ligue e meça." Foreground="{DynamicResource WarningBrush}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+
+                                    <CheckBox x:Name="ChkCpuTimer" Content="Timer do sistema em 0,5 ms" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
+                                    <TextBlock Text="Vale só enquanto o PC Optimizer estiver aberto — diferente do resto do perfil." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+
+                                    <CheckBox x:Name="ChkCpuResponsiveness" Content="Reservar menos CPU para segundo plano (MMCSS)" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
+
+                                    <Button x:Name="BtnCpuTuningOff" Content="Desativar e devolver o plano" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Left" Margin="0,16,0,0" Click="BtnCpuTuningOff_Click"/>
+                                </StackPanel>
+                            </Border>
+                        </Expander>
                         <TextBlock Text="Ajustes selecionáveis" Style="{StaticResource SectionTitleStyle}"/>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
@@ -495,8 +563,6 @@
                             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="Ajustes avançados" Style="{StaticResource SectionTitleStyle}"/>
-                                <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkExpertCpuMax" Content="CPU em desempenho máximo" IsChecked="False" Style="{StaticResource OptionCheckStyle}" Checked="ExpertCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusExpertCpuMax" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
-                                <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkExpertTimer" Content="Timer de baixa latência" IsChecked="False" Style="{StaticResource OptionCheckStyle}" Checked="ExpertCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusExpertTimer" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
                                 <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkExpertMsi" Content="MSI mode para dispositivos" IsChecked="False" Style="{StaticResource OptionCheckStyle}" Checked="ExpertCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusExpertMsi" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
                             </StackPanel>
                             <Border Grid.Column="1" Style="{StaticResource PanelStyle}" Margin="0,27,8,8">

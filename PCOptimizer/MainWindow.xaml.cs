@@ -45,17 +45,15 @@ namespace PCOptimizer
                 TaskbarTransparencyService.RestoreFromSettings();
                 RefreshTaskbarStatus();
                 RefreshGameBoostCard();
-                RefreshCompetitiveCard();
+                LoadCpuTuningControls();
+                WireCpuTuningEvents();
+                RefreshCpuTuningCard();
                 // O turbo pode ligar/desligar sozinho (jogo abriu ou fechou) —
                 // o card se atualiza pelo evento, sem precisar de timer próprio.
                 GameBoostService.StatusChanged += () =>
                     Dispatcher.BeginInvoke(new Action(RefreshGameBoostCard));
-                CompetitiveModeService.StatusChanged += () =>
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        RefreshCompetitiveCard();
-                        RefreshGameBoostCard();
-                    }));
+                CpuTuningService.StatusChanged += () =>
+                    Dispatcher.BeginInvoke(new Action(RefreshCpuTuningCard));
             };
         }
 
@@ -232,8 +230,6 @@ namespace PCOptimizer
             if (chk == ChkMousePrecision) return 1;
             if (chk == ChkCoreIsolation) return 1;
             if (chk == ChkBootProcessors) return 2;
-            if (chk == ChkExpertCpuMax) return 4;
-            if (chk == ChkExpertTimer) return 1;
             if (chk == ChkExpertMsi) return 3;
             return 5;
         }
@@ -301,7 +297,7 @@ namespace PCOptimizer
                 ChkHibernation, ChkSystemRepair, ChkFixDate, ChkBloatware,
                 ChkGameMode, ChkGamePriority, ChkGameNetwork, ChkPowerThrottling,
                 ChkFullscreenOpt, ChkMousePrecision, ChkCoreIsolation, ChkBootProcessors,
-                ChkExpertCpuMax, ChkExpertTimer, ChkExpertMsi
+                ChkExpertMsi
             };
 
             int total = boxes.Length;
@@ -367,8 +363,6 @@ namespace PCOptimizer
                 ChkFullscreenOpt.IsChecked = false;
                 ChkMousePrecision.IsChecked = false;
                 ChkCoreIsolation.IsChecked = false;
-                ChkExpertCpuMax.IsChecked = false;
-                ChkExpertTimer.IsChecked = false;
                 ChkExpertMsi.IsChecked = false;
             }
             UpdateSelectedCount();
@@ -384,8 +378,7 @@ namespace PCOptimizer
                 ChkSsdTrim, ChkWinUpdateCache, ChkThumbnails, ChkShaderCache, ChkFastStartup,
                 ChkHibernation, ChkSystemRepair, ChkFixDate, ChkBloatware, ChkGameMode, ChkGamePriority,
                 ChkGameNetwork, ChkPowerThrottling, ChkFullscreenOpt, ChkMousePrecision,
-                ChkCoreIsolation, ChkBootProcessors, ChkExpertCpuMax, ChkExpertTimer,
-                ChkExpertMsi };
+                ChkCoreIsolation, ChkBootProcessors, ChkExpertMsi };
 
             // Congela a seleção no início: marcar/desmarcar caixas ou clicar num
             // preset DURANTE a execução não altera mais o que roda nem estraga a
@@ -533,7 +526,15 @@ namespace PCOptimizer
                 StepDone(ChkDefrag);
             }
 
-            if (sel.Contains(ChkPowerPlan))
+            if (sel.Contains(ChkPowerPlan) && CpuTuningService.IsActive)
+            {
+                // Trocar o plano aqui derrubaria o perfil do painel de CPU em
+                // silêncio. O painel manda: este passo sai de cena e avisa.
+                Log("↷ Plano de energia: pulado — o Controle de CPU está no comando");
+                SetStatus(StatusPowerPlan, "↷", true);
+                StepDone(ChkPowerPlan);
+            }
+            else if (sel.Contains(ChkPowerPlan))
             {
                 Log("Ativando plano de energia de desempenho...");
                 StatusPowerPlan.Text = "⏳";
@@ -802,29 +803,7 @@ namespace PCOptimizer
                 StepDone(ChkBootProcessors);
             }
 
-            if (sel.Contains(ChkExpertCpuMax))
-            {
-                Log("⚠️ Expert: travando CPU no clock máximo (C-States off)...");
-                StatusExpertCpuMax.Text = "⏳";
-                bool ok = await Task.Run(() => CpuMaxPerformanceService.Apply());
-                totalSteps++;
-                SetStatus(StatusExpertCpuMax, ok ? "✅" : "⚠️", ok);
-                Log(ok ? "✅ CPU travada no clock máximo — consumo/temperatura ficarão altos"
-                       : "⚠️ CPU clock máximo: requer admin");
-                StepDone(ChkExpertCpuMax);
-            }
 
-            if (sel.Contains(ChkExpertTimer))
-            {
-                Log("⚠️ Expert: aplicando Timer Resolution 0.5ms...");
-                StatusExpertTimer.Text = "⏳";
-                bool ok = await Task.Run(() => TimerResolutionService.Apply());
-                totalSteps++;
-                SetStatus(StatusExpertTimer, ok ? "✅" : "⚠️", ok);
-                Log(ok ? "✅ Timer em 0.5ms — válido enquanto o PC Optimizer estiver aberto"
-                       : "⚠️ Timer Resolution: falhou");
-                StepDone(ChkExpertTimer);
-            }
 
             if (sel.Contains(ChkExpertMsi))
             {
@@ -938,9 +917,6 @@ namespace PCOptimizer
                     return;
                 }
 
-                if (CompetitiveModeService.IsActive)
-                    CompetitiveModeService.ReleaseAll("troca para Turbo de Jogo");
-
                 if (!SettingsService.Current.GameBoostWarningShown)
                 {
                     var r = MessageBox.Show(
@@ -988,82 +964,223 @@ namespace PCOptimizer
             }
         }
 
-        private void RefreshCompetitiveCard()
+        // ── Controle de CPU ───────────────────────────────────────────────────
+
+        /// <summary>Os controles estão sendo preenchidos; ignora os eventos deles.</summary>
+        private bool _cpuTuningLoading;
+
+        private static readonly (string Label, int Value)[] BoostModes =
+        {
+            ("Desligado", 0), ("Ativado", 1), ("Agressivo", 2),
+            ("Eficiente", 3), ("Eficiente agressivo", 4),
+        };
+
+        /// <summary>
+        /// Liga os controles ao rótulo de valores. Feito em código, e não no
+        /// XAML, para não espalhar oito nomes de handler pela marcação.
+        /// </summary>
+        private void WireCpuTuningEvents()
+        {
+            foreach (var sld in new[] { SldPMinState, SldPMaxState, SldPEpp, SldPMinCores,
+                         SldPMaxCores, SldEMinState, SldEMaxState, SldEEpp, SldEMinCores, SldEMaxCores })
+            {
+                sld.IsSnapToTickEnabled = true;
+                sld.TickFrequency = 1;
+                sld.ValueChanged += (_, _) => UpdateCpuTuningValues();
+            }
+            foreach (var cmb in new[] { CmbPBoost, CmbEBoost })
+                cmb.SelectionChanged += (_, _) => UpdateCpuTuningValues();
+        }
+
+        private void RefreshCpuTuningCard()
         {
             try
             {
-                TxtCompetitiveStatus.Text = CompetitiveModeService.StatusText();
-                BtnCompetitive.IsEnabled = CpuTopologyService.Get().CanPark;
-                BtnCompetitive.Content = CompetitiveModeService.IsActive ? "Desativar" : "Ativar competitivo";
+                var topo = CpuTopologyService.Get();
+                TxtCpuTuningStatus.Text = CpuTuningService.StatusText();
+                BtnCpuTuning.Content = CpuTuningService.IsActive ? "Reaplicar perfil" : "Aplicar perfil";
+                BtnCpuTuningOff.IsEnabled = CpuTuningService.IsActive;
+                TxtCpuTuningTopology.Text = CpuTopologyService.Describe();
+
+                // Numa CPU sem P/E existe uma classe só: a segunda coluna some
+                // em vez de mostrar controles que não vão a lugar nenhum.
+                var second = topo.IsHybrid ? Visibility.Visible : Visibility.Collapsed;
+                foreach (var el in new UIElement[] { TxtCpuClass0, SldEMinState, SldEMaxState,
+                             CmbEBoost, SldEEpp, SldEMinCores, SldEMaxCores })
+                    el.Visibility = second;
+
+                if (topo.IsHybrid)
+                {
+                    TxtCpuClass1.Text = $"P-cores ({topo.PCoreCount})";
+                    TxtCpuClass0.Text = $"E-cores ({topo.ECoreCount})";
+                }
+                else
+                {
+                    TxtCpuClass1.Text = $"Todos os núcleos ({topo.LogicalCount})";
+                }
+
+                if (CpuTuningService.FromPreviousRun)
+                    Log("ℹ️ O perfil de CPU continua ativo desde a sessão anterior");
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "RefreshCompetitiveCard");
-                TxtCompetitiveStatus.Text = "Não consegui preparar o perfil competitivo";
+                Logger.Error(ex, "RefreshCpuTuningCard");
+                TxtCpuTuningStatus.Text = "Não consegui ler o processador";
             }
         }
 
-        private async void BtnCompetitive_Click(object sender, RoutedEventArgs e)
+        /// <summary>Joga o perfil salvo nos controles da tela.</summary>
+        private void LoadCpuTuningControls()
         {
-            if (_isRunning) return;
-            BtnCompetitive.IsEnabled = false;
+            _cpuTuningLoading = true;
             try
             {
-                if (CompetitiveModeService.IsActive)
+                foreach (var cmb in new[] { CmbPBoost, CmbEBoost })
                 {
-                    TxtCompetitiveStatus.Text = await Task.Run(
-                        () => CompetitiveModeService.ReleaseAll("botão manual"));
-                    return;
+                    cmb.ItemsSource = null;
+                    cmb.ItemsSource = BoostModes.Select(m => m.Label).ToList();
                 }
 
-                if (!SettingsService.Current.CompetitiveModeWarningShown)
-                {
-                    var answer = MessageBox.Show(
-                        "🏆 Modo Competitivo — Dota 2\n\n" +
-                        "Este modo é separado do Turbo atual para permitir comparação. " +
-                        "Ele orienta o Dota 2 a preferir os P-cores, coloca programas de " +
-                        "fundo nos E-cores com CPU Sets e reduz dinamicamente somente os " +
-                        "que estiverem disputando CPU.\n\n" +
-                        "Também ativa um plano temporário de baixa latência. Tudo é " +
-                        "restaurado ao fechar o jogo ou desativar o botão.\n\nContinuar?",
-                        "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Information);
-                    if (answer != MessageBoxResult.Yes) return;
-                    SettingsService.Current.CompetitiveModeWarningShown = true;
-                    SettingsService.Save();
-                }
+                var p = SettingsService.Current.CpuTuning ?? CpuTuningProfile.Default();
 
-                // Para Dota 2 não exige alt-tab: encontra dota2.exe diretamente.
-                var target = GameTargetService.FromProcessName("dota2");
-                if (target == null)
-                {
-                    for (int i = 5; i > 0; i--)
-                    {
-                        TxtCompetitiveStatus.Text = $"Dota 2 não encontrado — clique no jogo… {i}";
-                        await Task.Delay(1000);
-                    }
-                    target = GameTargetService.FromForegroundWindow();
-                }
+                // Classe 1 = P-cores, classe 0 = E-cores (ordem do Windows).
+                Bind(p.Class1, SldPMinState, SldPMaxState, CmbPBoost, SldPEpp, SldPMinCores, SldPMaxCores);
+                Bind(p.Class0, SldEMinState, SldEMaxState, CmbEBoost, SldEEpp, SldEMinCores, SldEMaxCores);
 
-                if (target == null)
-                {
-                    TxtCompetitiveStatus.Text = "Não encontrei o Dota 2 nem outro jogo em primeiro plano";
-                    return;
-                }
+                ChkCpuIdleDisable.IsChecked    = p.DisableIdle;
+                ChkCpuTimer.IsChecked          = p.LowLatencyTimer;
+                ChkCpuResponsiveness.IsChecked = p.GamingResponsiveness;
+            }
+            finally { _cpuTuningLoading = false; }
 
-                TxtCompetitiveStatus.Text = await Task.Run(
-                    () => CompetitiveModeService.ApplyTo(target));
-                RefreshGameBoostCard();
+            UpdateCpuTuningValues();
+
+            static void Bind(CoreClassTuning c, System.Windows.Controls.Slider min, System.Windows.Controls.Slider max, System.Windows.Controls.ComboBox boost,
+                             System.Windows.Controls.Slider epp, System.Windows.Controls.Slider minCores, System.Windows.Controls.Slider maxCores)
+            {
+                min.Value = c.MinState;
+                max.Value = c.MaxState;
+                epp.Value = c.Epp;
+                minCores.Value = c.MinCores;
+                maxCores.Value = c.MaxCores;
+                int i = Array.FindIndex(BoostModes, m => m.Value == c.BoostMode);
+                boost.SelectedIndex = i >= 0 ? i : 2;
+            }
+        }
+
+        /// <summary>Lê os controles de volta para um perfil.</summary>
+        private CpuTuningProfile ReadCpuTuningControls()
+        {
+            var p = new CpuTuningProfile
+            {
+                Class1 = Read(SldPMinState, SldPMaxState, CmbPBoost, SldPEpp, SldPMinCores, SldPMaxCores),
+                Class0 = Read(SldEMinState, SldEMaxState, CmbEBoost, SldEEpp, SldEMinCores, SldEMaxCores),
+                DisableIdle          = ChkCpuIdleDisable.IsChecked == true,
+                LowLatencyTimer      = ChkCpuTimer.IsChecked == true,
+                GamingResponsiveness = ChkCpuResponsiveness.IsChecked == true
+            };
+            p.Clamp();
+            return p;
+
+            static CoreClassTuning Read(System.Windows.Controls.Slider min, System.Windows.Controls.Slider max, System.Windows.Controls.ComboBox boost,
+                                        System.Windows.Controls.Slider epp, System.Windows.Controls.Slider minCores, System.Windows.Controls.Slider maxCores) => new()
+            {
+                MinState  = (int)min.Value,
+                MaxState  = (int)max.Value,
+                Epp       = (int)epp.Value,
+                MinCores  = (int)minCores.Value,
+                MaxCores  = (int)maxCores.Value,
+                BoostMode = boost.SelectedIndex >= 0 && boost.SelectedIndex < BoostModes.Length
+                    ? BoostModes[boost.SelectedIndex].Value : 2
+            };
+        }
+
+        private void UpdateCpuTuningValues()
+        {
+            if (_cpuTuningLoading) return;
+            try
+            {
+                var p = ReadCpuTuningControls();
+                TxtCpuTuningValues.Text = CpuTopologyService.Get().IsHybrid
+                    ? $"P: {p.Class1.MinState}–{p.Class1.MaxState}%  EPP {p.Class1.Epp}  " +
+                      $"núcleos {p.Class1.MinCores}–{p.Class1.MaxCores}%   |   " +
+                      $"E: {p.Class0.MinState}–{p.Class0.MaxState}%  EPP {p.Class0.Epp}  " +
+                      $"núcleos {p.Class0.MinCores}–{p.Class0.MaxCores}%"
+                    : $"{p.Class1.MinState}–{p.Class1.MaxState}%  EPP {p.Class1.Epp}  " +
+                      $"núcleos {p.Class1.MinCores}–{p.Class1.MaxCores}%";
+            }
+            catch (Exception ex) { Logger.Error(ex, "UpdateCpuTuningValues"); }
+        }
+
+        private async void BtnCpuTuning_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isRunning) return;
+
+            if (!SettingsService.Current.CpuTuningWarningShown)
+            {
+                var answer = MessageBox.Show(
+                    "⚙️ Controle de CPU\n\n" +
+                    "Os ajustes vão para um plano de energia CRIADO pelo aplicativo. " +
+                    "O seu plano não é alterado — desativar devolve ele e apaga a cópia.\n\n" +
+                    "Diferente do resto do programa, este perfil CONTINUA VALENDO com o " +
+                    "PC Optimizer fechado, até você desativar.\n\nContinuar?",
+                    "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                if (answer != MessageBoxResult.Yes) return;
+                SettingsService.Current.CpuTuningWarningShown = true;
+                SettingsService.Save();
+            }
+
+            BtnCpuTuning.IsEnabled = false;
+            try
+            {
+                var profile = ReadCpuTuningControls();
+                SettingsService.Current.CpuTuning = profile;
+                SettingsService.Save();
+
+                TxtCpuTuningStatus.Text = "Aplicando...";
+                string result = await Task.Run(() => CpuTuningService.Apply(profile));
+                TxtCpuTuningStatus.Text = result;
+                Log($"⚙️ Controle de CPU: {result}");
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "BtnCompetitive_Click");
-                TxtCompetitiveStatus.Text = "Erro: " + ex.Message;
+                Logger.Error(ex, "BtnCpuTuning_Click");
+                TxtCpuTuningStatus.Text = "Erro: " + ex.Message;
             }
             finally
             {
-                BtnCompetitive.IsEnabled = CpuTopologyService.Get().CanPark;
-                BtnCompetitive.Content = CompetitiveModeService.IsActive ? "Desativar" : "Ativar competitivo";
+                BtnCpuTuning.IsEnabled = true;
+                RefreshCpuTuningCard();
             }
+        }
+
+        private async void BtnCpuTuningOff_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isRunning) return;
+            BtnCpuTuningOff.IsEnabled = false;
+            try
+            {
+                TxtCpuTuningStatus.Text = "Devolvendo o plano de energia...";
+                string result = await Task.Run(CpuTuningService.Restore);
+                TxtCpuTuningStatus.Text = result;
+                Log($"⚙️ Controle de CPU: {result}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "BtnCpuTuningOff_Click");
+                TxtCpuTuningStatus.Text = "Erro: " + ex.Message;
+            }
+            finally { RefreshCpuTuningCard(); }
+        }
+
+        private void BtnCpuTuningDefaults_Click(object sender, RoutedEventArgs e)
+        {
+            SettingsService.Current.CpuTuning = CpuTuningProfile.Default();
+            SettingsService.Save();
+            LoadCpuTuningControls();
+            TxtCpuTuningStatus.Text = CpuTuningService.IsActive
+                ? "Padrões carregados — clique em Aplicar perfil"
+                : "Padrões carregados";
         }
 
         private async void BtnMaximizeDisplay_Click(object sender, RoutedEventArgs e)

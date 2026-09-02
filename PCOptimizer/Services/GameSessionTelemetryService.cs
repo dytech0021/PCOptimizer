@@ -10,7 +10,7 @@ namespace PCOptimizer.Services
     /// FPS/frametime continuam sendo medidos pelo overlay escolhido pelo usuário;
     /// aqui ficam duração, CPU e memória sob o mesmo perfil para auditoria.
     /// </summary>
-    internal static class CompetitiveTelemetryService
+    internal static class GameSessionTelemetryService
     {
         private static int _pid;
         private static string _game = "";
@@ -85,7 +85,7 @@ namespace PCOptimizer.Services
                     peakMb.ToString("F1", CultureInfo.InvariantCulture), Escape(reason));
                 File.AppendAllText(CsvPath, line + "\r\n");
             }
-            catch (Exception ex) { Logger.Error(ex, "CompetitiveTelemetry.Stop"); }
+            catch (Exception ex) { Logger.Error(ex, "GameSessionTelemetry.Stop"); }
 
             string summary = $"sessão {(end - _start):hh\\:mm\\:ss} salva";
             _pid = 0;
