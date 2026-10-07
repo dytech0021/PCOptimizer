@@ -89,6 +89,15 @@ namespace PCOptimizer.Services
         // nada do que esses timers fazem é visível durante um jogo em tela cheia.
         public bool GameAwareMode { get; set; } = true;
 
+        // Memória RAM (card em Desempenho). A limpeza nunca roda com jogo aberto
+        // e nunca toca no processo do jogo. O automático vem DESLIGADO: o Windows
+        // já gerencia a RAM sozinho — isto é para quem tem pouca memória.
+        public MemoryOperation MemoryOps { get; set; } = MemoryOptimizerPolicy.DefaultOps;
+        public bool MemoryAutoOptimize { get; set; }
+        public int  MemoryAutoThresholdPercent { get; set; } = MemoryOptimizerPolicy.ThresholdDefault;
+        public bool MemoryAutoOnlyWhenIdle { get; set; }
+        public bool MemoryAutoNotify { get; set; } = true;
+
         // Monitores desativados pelo app: device (\\.\DISPLAYn) →
         // "LARGURAxALTURAxHZxPOSXxPOSY" de antes, para a reativação devolver a
         // tela ao mesmo lugar

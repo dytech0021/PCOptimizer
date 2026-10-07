@@ -127,6 +127,26 @@
             <Setter Property="Text" Value="—"/>
         </Style>
 
+        <!-- Barra de uso da RAM. A barra global "Progress" é da otimização em
+             lote e não pode ser reaproveitada aqui. -->
+        <Style x:Key="MemGaugeStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="8"/>
+            <Setter Property="Minimum" Value="0"/>
+            <Setter Property="Maximum" Value="100"/>
+            <Setter Property="Background" Value="{DynamicResource ProgressBg}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid>
+                            <Border x:Name="PART_Track" CornerRadius="4" Background="{TemplateBinding Background}"/>
+                            <Border x:Name="PART_Indicator" CornerRadius="4" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="PageTitleStyle" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Segoe UI Variable Display"/>
             <Setter Property="FontSize" Value="26"/>
@@ -316,7 +336,7 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="Desempenho">
+            <TabItem Header="Desempenho" x:Name="TabDesempenho">
                 <ScrollViewer Style="{StaticResource PageScrollStyle}">
                     <StackPanel>
                         <TextBlock Text="Desempenho" Style="{StaticResource PageTitleStyle}"/>
@@ -409,6 +429,66 @@
                                 </StackPanel>
                             </Border>
                         </Expander>
+
+                        <!-- Memória RAM: card em largura total, abaixo do Controle de CPU -->
+                        <Border Style="{StaticResource ActionCardStyle}" Margin="0,0,0,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,24,0">
+                                    <TextBlock Text="Memória RAM" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock Text="Devolve ao Windows a memória que está parada. Nunca roda com jogo aberto." Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="TxtMemUsage" Text="Lendo memória…" Foreground="{DynamicResource TextPrimary}" FontSize="13" FontWeight="SemiBold" Margin="0,12,0,6"/>
+                                    <ProgressBar x:Name="BarMemUsage" Style="{StaticResource MemGaugeStyle}"/>
+                                    <TextBlock x:Name="TxtMemDetail" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               ToolTip="Disponível = livre + cache em espera. O Windows guarda arquivos recentes na RAM que sobra para abrir tudo mais rápido, e devolve essa memória na hora em que um programa precisa."/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="200">
+                                    <Button x:Name="BtnMemOptimize" Content="Otimizar agora" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Left" Click="BtnMemOptimize_Click"/>
+                                    <TextBlock x:Name="TxtMemResult" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" MaxWidth="300" Margin="0,8,0,0"/>
+                                    <TextBlock x:Name="TxtMemStatus" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" MaxWidth="300" Margin="0,4,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Expander x:Name="ExpMemory" Header="Ajustes de memória" IsExpanded="False" Margin="0,0,0,14"
+                                  Foreground="{DynamicResource TextPrimary}">
+                            <Border Style="{StaticResource PanelStyle}">
+                                <StackPanel>
+                                    <TextBlock x:Name="TxtMemAdmin" Visibility="Collapsed" Foreground="{DynamicResource WarningBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"
+                                               Text="Sem permissão de administrador: as limpezas de cache ficam indisponíveis e a limpeza de programas só alcança os do seu usuário."/>
+                                    <TextBlock Text="O que o “Otimizar agora” limpa" Foreground="{DynamicResource TextSecondary}" FontFamily="Cascadia Mono" FontSize="10" Margin="0,0,0,8"/>
+
+                                    <CheckBox x:Name="ChkMemTrimPrograms" Content="Liberar RAM de programas abertos" Style="{StaticResource OptionCheckStyle}"/>
+                                    <TextBlock Text="Tira da RAM o que navegador e launchers não estão usando agora. Jogo, janela em uso, voz e música (Discord, Spotify…), áudio, anticheat e máquinas virtuais ficam de fora. Ao voltar para um desses programas, ele pode levar um instante para recarregar." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+
+                                    <CheckBox x:Name="ChkMemFileCache" Content="Cache de arquivos do sistema" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
+                                    <TextBlock Text="Os arquivos continuam em cache (viram cache em espera); só deixam de contar como “em uso”." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+
+                                    <CheckBox x:Name="ChkMemStandbyLow" Content="Cache em espera de baixa prioridade" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
+                                    <TextBlock Text="Só o cache que o próprio Windows já marcou como descartável. Efeito pequeno e sem risco." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+
+                                    <CheckBox x:Name="ChkMemStandbyFull" Content="Cache em espera completo" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
+                                    <TextBlock Text="Joga fora todo o cache de arquivos: programas e fases de jogo vão ler do disco de novo. Só ajuda com pouca RAM livre. Roda apenas no botão “Otimizar agora”." Foreground="{DynamicResource WarningBrush}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+
+                                    <CheckBox x:Name="ChkMemModified" Content="Memória modificada (grava no disco)" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
+                                    <TextBlock Text="Grava no disco o que estava esperando para ser salvo e devolve ao cache. Pode travar o PC por um instante com disco lento. Roda apenas no botão “Otimizar agora”." Foreground="{DynamicResource WarningBrush}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+
+                                    <TextBlock Text="Automático" Foreground="{DynamicResource TextSecondary}" FontFamily="Cascadia Mono" FontSize="10" Margin="0,18,0,8"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <CheckBox x:Name="ChkMemAuto" Content="Otimizar quando a RAM em uso passar de" Style="{StaticResource OptionCheckStyle}" VerticalAlignment="Center"/>
+                                        <Slider x:Name="SldMemThreshold" Minimum="70" Maximum="95" Width="160" Margin="12,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtMemThreshold" Text="85%" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                    <CheckBox x:Name="ChkMemAutoIdle" Content="Só com o PC ocioso (CPU abaixo de 10% por 5 minutos)" Style="{StaticResource OptionCheckStyle}" Margin="26,8,0,0"/>
+                                    <CheckBox x:Name="ChkMemAutoNotify" Content="Avisar na bandeja depois de otimizar" Style="{StaticResource OptionCheckStyle}" Margin="26,6,0,0"/>
+                                    <TextBlock Text="Nunca roda com jogo aberto (tela cheia, sem borda, minimizado ou com Game Boost ativo) e no máximo uma vez a cada 30 minutos — se o ganho não se sustentar, espera mais. Confere a memória a cada 60 s com uma leitura leve, só com o PC Optimizer aberto. Cache completo e memória modificada nunca entram no automático." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,6,0,0"/>
+
+                                    <TextBlock Text="Ficam de fora de propósito: esvaziar a memória do jogo, “desfragmentar” a RAM e limpar a área de transferência — é isso que faz otimizadores de memória causarem travadas ou perderem o que você copiou." Foreground="{DynamicResource TextMuted}" FontSize="10" TextWrapping="Wrap" Margin="0,16,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Expander>
                         <TextBlock Text="Ajustes selecionáveis" Style="{StaticResource SectionTitleStyle}"/>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
@@ -416,7 +496,7 @@
                                 <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkPowerPlan" Content="Plano de energia" IsChecked="True" Style="{StaticResource OptionCheckStyle}" Checked="OptCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusPowerPlan" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
                                 <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkVisualEffects" Content="Efeitos visuais" IsChecked="True" Style="{StaticResource OptionCheckStyle}" Checked="OptCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusVisualEffects" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
                                 <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkBackgroundApps" Content="Apps em segundo plano" IsChecked="True" Style="{StaticResource OptionCheckStyle}" Checked="OptCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusBackgroundApps" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
-                                <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkStandbyRam" Content="Memória standby" IsChecked="True" Style="{StaticResource OptionCheckStyle}" Checked="OptCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusStandbyRam" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
+                                <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkStandbyRam" Content="Liberar memória RAM (leve)" IsChecked="True" Style="{StaticResource OptionCheckStyle}" Checked="OptCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusStandbyRam" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
                                 <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkBootProcessors" Content="Processadores no boot" IsChecked="True" Style="{StaticResource OptionCheckStyle}" Checked="OptCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusBootProcessors" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
                                 <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkGameMode" Content="Modo de Jogo" IsChecked="True" Style="{StaticResource OptionCheckStyle}" Checked="OptCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusGameMode" Style="{StaticResource StatusTextStyle}"/></Grid></Border>
                                 <Border Style="{StaticResource OptionRowStyle}"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><CheckBox x:Name="ChkGpuScheduling" Content="Agendamento de GPU" IsChecked="True" Style="{StaticResource OptionCheckStyle}" Checked="OptCheckChanged" Unchecked="OptCheckChanged"/><TextBlock Grid.Column="1" x:Name="StatusGpuScheduling" Style="{StaticResource StatusTextStyle}"/></Grid></Border>

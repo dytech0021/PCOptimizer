@@ -54,6 +54,11 @@ namespace PCOptimizer
                     Dispatcher.BeginInvoke(new Action(RefreshGameBoostCard));
                 CpuTuningService.StatusChanged += () =>
                     Dispatcher.BeginInvoke(new Action(RefreshCpuTuningCard));
+
+                LoadMemoryControls();
+                WireMemoryEvents();
+                RefreshMemoryCard();
+                UpdateMemPollState();
             };
         }
 
@@ -209,7 +214,7 @@ namespace PCOptimizer
             if (chk == ChkPowerPlan) return 5;
             if (chk == ChkVisualEffects) return 2;
             if (chk == ChkBackgroundApps) return 2;
-            if (chk == ChkStandbyRam) return 6;
+            if (chk == ChkStandbyRam) return 3;
             if (chk == ChkGpuScheduling) return 1;
             if (chk == ChkTelemetry) return 4;
             if (chk == ChkGameBar) return 1;
@@ -394,6 +399,7 @@ namespace PCOptimizer
             }
 
             _isRunning = true;
+            RefreshMemoryCard();
             // O Content do XAML é um StackPanel estilizado — guarda para restaurar
             // no final (uma string fixa descartaria o visual original para sempre).
             object originalRunContent = BtnRun.Content;
@@ -570,13 +576,26 @@ namespace PCOptimizer
 
             if (sel.Contains(ChkStandbyRam))
             {
-                Log("Liberando memória RAM...");
+                // Nome histórico: roda o otimizador de memória com as áreas do card,
+                // sem as manuais (cache completo e memória modificada) e nunca com
+                // jogo aberto.
+                Log("Liberando memória RAM (leve)...");
                 StatusStandbyRam.Text = "⏳";
-                int count = await Task.Run(() => MemoryService.ClearStandby());
+                var mem = await MemoryOptimizerService.OptimizeAsync(
+                    SettingsService.Current.MemoryOps, MemoryTrigger.Batch);
                 totalSteps++;
-                SetStatus(StatusStandbyRam, "✅", true);
-                Log($"✅ Memória liberada em {count} processos");
+                bool memOk = mem.Outcome is MemoryRunOutcome.Done or MemoryRunOutcome.NothingToDo;
+                SetStatus(StatusStandbyRam, mem.Outcome switch
+                {
+                    MemoryRunOutcome.Done        => "✅",
+                    MemoryRunOutcome.NothingToDo => "—",
+                    MemoryRunOutcome.Paused      => "⏸️",
+                    MemoryRunOutcome.NeedsAdmin  => "🔒",
+                    _                            => "⚠️",
+                }, memOk);
+                Log((memOk ? "✅ Memória: " : "⚠️ Memória: ") + mem.Text);
                 StepDone(ChkStandbyRam);
+                RefreshMemoryReadout();
             }
 
             if (sel.Contains(ChkGpuScheduling))
@@ -843,6 +862,7 @@ namespace PCOptimizer
                 BtnRun.Content = originalRunContent;
                 BtnRun.IsEnabled = true;
                 _isRunning = false;
+                RefreshMemoryCard();
             }
         }
 
@@ -1181,6 +1201,238 @@ namespace PCOptimizer
             TxtCpuTuningStatus.Text = CpuTuningService.IsActive
                 ? "Padrões carregados — clique em Aplicar perfil"
                 : "Padrões carregados";
+        }
+
+        // ── Memória RAM ───────────────────────────────────────────────────────
+
+        /// <summary>Os controles estão sendo preenchidos; ignora os eventos deles.</summary>
+        private bool _memLoading;
+        private System.Windows.Threading.DispatcherTimer? _memPoll;
+        private MemoryGaugeLevel? _memLevel;
+
+        private (System.Windows.Controls.CheckBox Box, MemoryOperation Op)[] MemoryOpBoxes() => new[]
+        {
+            (ChkMemTrimPrograms, MemoryOperation.TrimPrograms),
+            (ChkMemFileCache,    MemoryOperation.SystemFileCache),
+            (ChkMemStandbyLow,   MemoryOperation.StandbyLowPriority),
+            (ChkMemStandbyFull,  MemoryOperation.StandbyFull),
+            (ChkMemModified,     MemoryOperation.ModifiedList),
+        };
+
+        /// <summary>Joga as configurações salvas nos controles do Expander.</summary>
+        private void LoadMemoryControls()
+        {
+            _memLoading = true;
+            try
+            {
+                var s = SettingsService.Current;
+                foreach (var (box, op) in MemoryOpBoxes())
+                    box.IsChecked = (s.MemoryOps & op) != 0;
+
+                ChkMemAuto.IsChecked       = s.MemoryAutoOptimize;
+                ChkMemAutoIdle.IsChecked   = s.MemoryAutoOnlyWhenIdle;
+                ChkMemAutoNotify.IsChecked = s.MemoryAutoNotify;
+
+                SldMemThreshold.IsSnapToTickEnabled = true;
+                SldMemThreshold.TickFrequency = MemoryOptimizerPolicy.ThresholdStep;
+                SldMemThreshold.Value = MemoryOptimizerPolicy.ClampThreshold(s.MemoryAutoThresholdPercent);
+                TxtMemThreshold.Text = $"{(int)SldMemThreshold.Value}%";
+
+                bool auto = s.MemoryAutoOptimize;
+                ChkMemAutoIdle.IsEnabled = ChkMemAutoNotify.IsEnabled = SldMemThreshold.IsEnabled = auto;
+
+                // Habilita os privilégios de administrador já aqui: sem isso a tela
+                // diria "requer administrador" mesmo rodando como administrador.
+                TxtMemAdmin.Visibility = MemoryOptimizerService.CacheOpsAvailable
+                    ? Visibility.Collapsed : Visibility.Visible;
+            }
+            catch (Exception ex) { Logger.Error(ex, "LoadMemoryControls"); }
+            finally { _memLoading = false; }
+        }
+
+        /// <summary>
+        /// Liga os controles às configurações e o leitor de memória ao estado da
+        /// janela. Feito em código, no mesmo padrão do Controle de CPU. As
+        /// assinaturas nos eventos do Game Boost e do detector de jogo só LEEM o
+        /// estado — nada neles muda.
+        /// </summary>
+        private void WireMemoryEvents()
+        {
+            foreach (var (box, _) in MemoryOpBoxes())
+            {
+                box.Checked   += (_, _) => SaveMemorySettings();
+                box.Unchecked += (_, _) => SaveMemorySettings();
+            }
+            foreach (var box in new[] { ChkMemAutoIdle, ChkMemAutoNotify })
+            {
+                box.Checked   += (_, _) => SaveMemorySettings();
+                box.Unchecked += (_, _) => SaveMemorySettings();
+            }
+
+            ChkMemAuto.Checked   += (_, _) => OnMemoryAutoToggled();
+            ChkMemAuto.Unchecked += (_, _) => OnMemoryAutoToggled();
+
+            SldMemThreshold.ValueChanged += (_, _) =>
+            {
+                TxtMemThreshold.Text = $"{(int)SldMemThreshold.Value}%";
+                SaveMemorySettings();
+            };
+
+            // O SelectionChanged das ComboBoxes da mesma aba sobe até aqui: só
+            // interessa a troca de aba do próprio menu.
+            OptList.SelectionChanged += (_, e) =>
+            {
+                if (ReferenceEquals(e.OriginalSource, OptList)) UpdateMemPollState();
+            };
+            StateChanged      += (_, _) => UpdateMemPollState();
+            IsVisibleChanged  += (_, _) => UpdateMemPollState();
+
+            MemoryOptimizerService.StatusChanged += () =>
+                Dispatcher.BeginInvoke(new Action(RefreshMemoryCard));
+            GameBoostService.StatusChanged += () =>
+                Dispatcher.BeginInvoke(new Action(() => { UpdateMemPollState(); RefreshMemoryCard(); }));
+            GameAwarenessService.GameStateChanged += _ =>
+                Dispatcher.BeginInvoke(new Action(() => { UpdateMemPollState(); RefreshMemoryCard(); }));
+        }
+
+        private void SaveMemorySettings()
+        {
+            if (_memLoading) return;
+            try
+            {
+                var s = SettingsService.Current;
+                var ops = MemoryOperation.None;
+                foreach (var (box, op) in MemoryOpBoxes())
+                    if (box.IsChecked == true) ops |= op;
+
+                s.MemoryOps = ops;
+                s.MemoryAutoOptimize = ChkMemAuto.IsChecked == true;
+                s.MemoryAutoOnlyWhenIdle = ChkMemAutoIdle.IsChecked == true;
+                s.MemoryAutoNotify = ChkMemAutoNotify.IsChecked == true;
+                s.MemoryAutoThresholdPercent = MemoryOptimizerPolicy.ClampThreshold((int)SldMemThreshold.Value);
+                SettingsService.Save();
+            }
+            catch (Exception ex) { Logger.Error(ex, "SaveMemorySettings"); }
+            RefreshMemoryCard();
+        }
+
+        private void OnMemoryAutoToggled()
+        {
+            if (_memLoading) return;
+            bool auto = ChkMemAuto.IsChecked == true;
+            ChkMemAutoIdle.IsEnabled = ChkMemAutoNotify.IsEnabled = SldMemThreshold.IsEnabled = auto;
+            SaveMemorySettings();
+            MemoryOptimizerService.ApplyAutoSetting();
+            Log(auto
+                ? $"🧠 Memória: automático ligado — acima de {(int)SldMemThreshold.Value}% de uso"
+                : "🧠 Memória: automático desligado");
+        }
+
+        /// <summary>
+        /// O leitor de 2 s só roda com a janela visível, na aba Desempenho e sem
+        /// jogo — fora disso, nenhuma leitura acontece.
+        /// </summary>
+        private void UpdateMemPollState()
+        {
+            bool want = IsVisible
+                        && WindowState != WindowState.Minimized
+                        && ReferenceEquals(OptList.SelectedItem, TabDesempenho)
+                        && !GameAwarenessService.IsGameRunning
+                        && !GameBoostService.IsActive;
+
+            if (want)
+            {
+                if (_memPoll == null)
+                {
+                    _memPoll = new System.Windows.Threading.DispatcherTimer(
+                        System.Windows.Threading.DispatcherPriority.Background)
+                    {
+                        Interval = TimeSpan.FromSeconds(2)
+                    };
+                    _memPoll.Tick += (_, _) => RefreshMemoryReadout();
+                }
+                if (!_memPoll.IsEnabled)
+                {
+                    RefreshMemoryReadout();
+                    _memPoll.Start();
+                }
+            }
+            else
+            {
+                _memPoll?.Stop();
+            }
+        }
+
+        private void RefreshMemoryReadout()
+        {
+            try
+            {
+                var snap = MemoryOptimizerService.ReadSnapshot();
+                var (usage, detail) = MemoryOptimizerPolicy.DescribeSnapshot(snap, MemoryOptimizerService.ListsNeedAdmin);
+                TxtMemUsage.Text = usage;
+                TxtMemDetail.Text = detail;
+                BarMemUsage.Value = snap.IsValid ? snap.InUsePercent : 0;
+
+                var level = MemoryOptimizerPolicy.Level(snap.InUsePercent);
+                if (level != _memLevel)
+                {
+                    _memLevel = level;
+                    BarMemUsage.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, level switch
+                    {
+                        MemoryGaugeLevel.Danger  => "DangerBrush",
+                        MemoryGaugeLevel.Warning => "WarningBrush",
+                        _                        => "AccentBrush",
+                    });
+                }
+            }
+            catch (Exception ex) { Logger.Error(ex, "RefreshMemoryReadout"); }
+        }
+
+        private void RefreshMemoryCard()
+        {
+            try
+            {
+                bool game = GameAwarenessService.IsGameRunning || GameBoostService.IsActive;
+                bool anyOp = (SettingsService.Current.MemoryOps & MemoryOptimizerPolicy.All) != MemoryOperation.None;
+
+                BtnMemOptimize.IsEnabled = !_isRunning && !MemoryOptimizerService.IsRunning && !game && anyOp;
+                BtnMemOptimize.Content = MemoryOptimizerService.IsRunning ? "Otimizando…" : "Otimizar agora";
+
+                string result = game
+                    ? MemoryOptimizerPolicy.GamePausedText.Replace(" — nada foi alterado", "")
+                    : !anyOp ? "Nenhuma área marcada em Ajustes de memória"
+                    : MemoryOptimizerService.LastResultText ?? "";
+                TxtMemResult.Text = result;
+
+                string auto = MemoryOptimizerService.AutoStatusText();
+                TxtMemStatus.Text = auto;
+                TxtMemStatus.Visibility = auto.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+            catch (Exception ex) { Logger.Error(ex, "RefreshMemoryCard"); }
+        }
+
+        private async void BtnMemOptimize_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isRunning) return;
+            BtnMemOptimize.IsEnabled = false;
+            TxtMemResult.Text = "Otimizando…";
+            try
+            {
+                var r = await MemoryOptimizerService.OptimizeAsync(
+                    SettingsService.Current.MemoryOps, MemoryTrigger.Manual);
+                TxtMemResult.Text = r.Text;
+                Log("🧠 Memória: " + r.Text);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "BtnMemOptimize_Click");
+                TxtMemResult.Text = "Erro: " + ex.Message;
+            }
+            finally
+            {
+                RefreshMemoryCard();
+                RefreshMemoryReadout();
+            }
         }
 
         private async void BtnMaximizeDisplay_Click(object sender, RoutedEventArgs e)

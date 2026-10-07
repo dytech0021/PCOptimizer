@@ -40,6 +40,10 @@ public sealed class VisualStructureTests
             "BtnWoL", "TxtWoLStatus", "BtnMalware", "BtnTaskbar", "TxtTaskbarStatus",
             "BtnGameBoost", "TxtGameBoostStatus", "BtnCpuTuning", "TxtCpuTuningStatus",
             "BtnCpuTuningOff", "BtnCpuTuningDefaults", "TxtCpuTuningTopology",
+            "TabDesempenho", "TxtMemUsage", "BarMemUsage", "TxtMemDetail", "BtnMemOptimize",
+            "TxtMemResult", "TxtMemStatus", "ExpMemory", "TxtMemAdmin", "ChkMemTrimPrograms",
+            "ChkMemFileCache", "ChkMemStandbyLow", "ChkMemStandbyFull", "ChkMemModified",
+            "ChkMemAuto", "SldMemThreshold", "TxtMemThreshold", "ChkMemAutoIdle", "ChkMemAutoNotify",
             "BtnMaximizeDisplay", "TxtMaximizeStatus", "BtnDeepRepair",
             "ChkTemp", "StatusTemp", "ChkDisk", "StatusDisk", "ChkRecycleBin",
             "StatusRecycleBin", "ChkWinUpdateCache", "StatusWinUpdateCache",
@@ -60,7 +64,6 @@ public sealed class VisualStructureTests
             "ChkCoreIsolation", "StatusCoreIsolation", "TxtGpuName", "SldGpuCore",
             "SldGpuMem", "BtnGpuOcApply", "BtnGpuPowerMax", "TxtGpuOcStatus",
             "BtnUvLeve", "BtnUvMedio", "BtnUvAgressivo", "BtnGpuRevert", "TxtGpuUvStatus",
-            "ChkExpertCpuMax", "StatusExpertCpuMax", "ChkExpertTimer", "StatusExpertTimer",
             "ChkExpertMsi", "StatusExpertMsi", "TxtCpuUvStatus", "BtnCpuUvTool",
             "LogScroller", "TxtLog", "Progress", "TxtProgress", "BtnRun"
         ];

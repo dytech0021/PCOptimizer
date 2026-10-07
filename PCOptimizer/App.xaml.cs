@@ -76,6 +76,10 @@ namespace PCOptimizer
                 GameAwarenessService.Start();
             }
 
+            // Otimizador de memória: o automático só cria timer se estiver ligado.
+            MemoryOptimizerService.ApplyAutoSetting();
+            TrayService.OptimizeMemoryRequested += OnTrayOptimizeMemory;
+
             TrayService.ShowBrightnessRequested += ToggleBrightnessWindow;
             TrayService.ExitRequested += Shutdown;
             HotkeyService.HotkeyPressed += ToggleBrightnessWindow;
@@ -303,6 +307,21 @@ namespace PCOptimizer
             }
         }
 
+        /// <summary>
+        /// "Otimizar memória" pela bandeja: mesmas áreas do card, sem as manuais
+        /// (cache completo e memória modificada), e o resultado num balão.
+        /// </summary>
+        private static async void OnTrayOptimizeMemory()
+        {
+            try
+            {
+                var r = await MemoryOptimizerService.OptimizeAsync(
+                    SettingsService.Current.MemoryOps, MemoryTrigger.Tray);
+                TrayService.ShowBalloonTip("Memória", r.Text);
+            }
+            catch (Exception ex) { Logger.Error(ex, "OnTrayOptimizeMemory"); }
+        }
+
         protected override void OnExit(ExitEventArgs e)
         {
             // O perfil de CPU NÃO é desfeito aqui de propósito: ele vale até o
@@ -312,6 +331,10 @@ namespace PCOptimizer
             // rodar, eles ficariam lentos até o próximo reboot.
             try { GameBoostService.ReleaseAll("app encerrando"); }
             catch (Exception ex) { Logger.Error(ex, "OnExit/GameBoost"); }
+
+            // O automático da memória não deve disparar no meio do encerramento.
+            try { MemoryOptimizerService.Stop(); }
+            catch (Exception ex) { Logger.Error(ex, "OnExit/MemoryOptimizer"); }
 
             // Restaura a barra de tarefas ao padrão (o efeito só vale com o app aberto).
             TaskbarTransparencyService.Stop();

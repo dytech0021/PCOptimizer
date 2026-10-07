@@ -11,6 +11,7 @@ namespace PCOptimizer.Services
 
         public static event Action? ShowBrightnessRequested;
         public static event Action? ExitRequested;
+        public static event Action? OptimizeMemoryRequested;
 
         public static void Initialize()
         {
@@ -25,6 +26,8 @@ namespace PCOptimizer.Services
             var menu = new ContextMenuStrip();
             menu.Items.Add("Brilho e Contraste", null, (_, _) =>
                 System.Windows.Application.Current.Dispatcher.Invoke(() => ShowBrightnessRequested?.Invoke()));
+            menu.Items.Add("Otimizar memória", null, (_, _) =>
+                System.Windows.Application.Current.Dispatcher.Invoke(() => OptimizeMemoryRequested?.Invoke()));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Fechar PC Optimizer", null, (_, _) =>
                 System.Windows.Application.Current.Dispatcher.Invoke(() => ExitRequested?.Invoke()));
