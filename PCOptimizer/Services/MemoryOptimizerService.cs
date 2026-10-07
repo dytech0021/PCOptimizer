@@ -131,7 +131,22 @@ namespace PCOptimizer.Services
         private static bool QuickGameCheck()
         {
             if (GameBoostService.IsActive || GameAwarenessService.IsGameRunning) return true;
-            if (ShellSaysFullscreen()) return true;
+            if (ShellSaysFullscreen())
+            {
+                // Lembra quem está em tela cheia, mesmo com o detector de jogo
+                // desligado — o Latch já ignora navegador, player e acesso remoto.
+                try
+                {
+                    IntPtr fgw = MemoryNative.GetForegroundWindow();
+                    if (fgw != IntPtr.Zero)
+                    {
+                        MemoryNative.GetWindowThreadProcessId(fgw, out int fgPid);
+                        Latch(fgPid, ProcessNameOf(fgPid));
+                    }
+                }
+                catch { }
+                return true;
+            }
             if (LatchedGameAlive() != null) return true;
 
             IntPtr prev = TrySetPerMonitorDpi();

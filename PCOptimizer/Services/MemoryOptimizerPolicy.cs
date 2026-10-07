@@ -152,7 +152,7 @@ namespace PCOptimizer.Services
         public const MemoryOperation ListOps =
             MemoryOperation.StandbyLowPriority | MemoryOperation.StandbyFull | MemoryOperation.ModifiedList;
 
-        public const string GamePausedText = "Pausado: há um jogo aberto — nada foi alterado";
+        public const string GamePausedText = "Pausado: há um jogo ou app em tela cheia aberto — nada foi alterado";
 
         /// <summary>Texto da pausa nomeando quem bloqueou, para o usuário saber o porquê.</summary>
         public static string PausedText(string? blocker) =>
