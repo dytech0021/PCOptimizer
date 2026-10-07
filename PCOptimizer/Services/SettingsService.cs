@@ -97,6 +97,9 @@ namespace PCOptimizer.Services
         public int  MemoryAutoThresholdPercent { get; set; } = MemoryOptimizerPolicy.ThresholdDefault;
         public bool MemoryAutoOnlyWhenIdle { get; set; }
         public bool MemoryAutoNotify { get; set; } = true;
+        // Modo agressivo: soma todas as áreas que não afetam jogos e limpa todo
+        // programa elegível a partir de 16 MB. O cache completo nunca entra.
+        public bool MemoryAggressive { get; set; }
 
         // Monitores desativados pelo app: device (\\.\DISPLAYn) →
         // "LARGURAxALTURAxHZxPOSXxPOSY" de antes, para a reativação devolver a

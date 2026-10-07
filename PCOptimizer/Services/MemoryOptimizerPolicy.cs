@@ -29,7 +29,7 @@ namespace PCOptimizer.Services
 
     public enum MemoryGaugeLevel { Normal, Warning, Danger }
 
-    public enum AutoSkipReason { None, Disabled, Game, NoReading, Cooldown, BelowThreshold, NotIdle, NothingToDo }
+    public enum AutoSkipReason { None, Disabled, Game, NoReading, Cooldown, BelowThreshold, NotIdle, NothingToDo, ManualOnlyChecked }
 
     /// <summary>
     /// Foto da memória. Os campos das listas são null quando não dá para lê-las
@@ -80,7 +80,7 @@ namespace PCOptimizer.Services
     public sealed record AutoInputs(
         bool Enabled, int ThresholdPercent, MemorySnapshot Snapshot, bool GameOpen,
         bool RequireIdle, bool IsIdle, DateTime NowUtc, DateTime? LastRunUtc,
-        TimeSpan Cooldown, MemoryOperation Configured);
+        TimeSpan Cooldown, MemoryOperation Configured, bool Aggressive = false);
 
     public readonly record struct AutoDecision(bool Run, AutoSkipReason Reason);
 
@@ -109,15 +109,21 @@ namespace PCOptimizer.Services
     public static class MemoryOptimizerPolicy
     {
         // ── Limites ────────────────────────────────────────────────────────────
-        public const int   ThresholdMin = 70, ThresholdMax = 95, ThresholdStep = 5, ThresholdDefault = 85;
+        public const int   ThresholdMin = 50, ThresholdMax = 95, ThresholdStep = 5, ThresholdDefault = 85;
         public const long  MinTrimWorkingSetBytes = 64L << 20;   // 64 MB
         public const int   MaxTrimProcesses = 40;
+        /// <summary>Modo agressivo: todo programa elegível a partir de 16 MB.</summary>
+        public const long  AggressiveMinTrimWorkingSetBytes = 16L << 20;
+        public const int   AggressiveMaxTrimProcesses = 400;
         public const ulong SmallGainBytes = 150UL << 20;         // abaixo disso = "pouco a liberar"
 
         public static readonly TimeSpan AutoPollInterval  = TimeSpan.FromSeconds(60);
-        public static readonly TimeSpan BaseCooldown      = TimeSpan.FromMinutes(30);
-        public static readonly TimeSpan MaxCooldown       = TimeSpan.FromHours(4);
-        public static readonly TimeSpan PersistCheckDelay = TimeSpan.FromMinutes(10);
+        public static readonly TimeSpan BaseCooldown      = TimeSpan.FromMinutes(10);
+        public static readonly TimeSpan MaxCooldown       = TimeSpan.FromHours(2);
+        /// <summary>Menor que a espera: a checagem do ganho sempre acontece antes da próxima execução.</summary>
+        public static readonly TimeSpan PersistCheckDelay = TimeSpan.FromMinutes(8);
+        /// <summary>Jogo achado pela varredura completa: não varre de novo por esse tempo.</summary>
+        public static readonly TimeSpan GamePauseBackoff  = TimeSpan.FromMinutes(5);
 
         public const int IdleCpuPercent = 10;
         public static readonly TimeSpan IdleRequired = TimeSpan.FromMinutes(5);
@@ -133,11 +139,26 @@ namespace PCOptimizer.Services
         public const MemoryOperation DefaultOps =
             MemoryOperation.TrimPrograms | MemoryOperation.SystemFileCache | MemoryOperation.StandbyLowPriority;
 
+        /// <summary>
+        /// O que o modo agressivo soma às áreas marcadas. O cache em espera
+        /// completo fica de fora de propósito: ele faz o próximo jogo carregar
+        /// tudo do disco de novo — e a regra é não afetar jogos.
+        /// </summary>
+        public const MemoryOperation AggressiveOps =
+            MemoryOperation.TrimPrograms | MemoryOperation.SystemFileCache |
+            MemoryOperation.StandbyLowPriority | MemoryOperation.ModifiedList;
+
         /// <summary>Áreas que dependem de privilégio de administrador habilitado.</summary>
         public const MemoryOperation ListOps =
             MemoryOperation.StandbyLowPriority | MemoryOperation.StandbyFull | MemoryOperation.ModifiedList;
 
         public const string GamePausedText = "Pausado: há um jogo aberto — nada foi alterado";
+
+        /// <summary>Texto da pausa nomeando quem bloqueou, para o usuário saber o porquê.</summary>
+        public static string PausedText(string? blocker) =>
+            string.IsNullOrWhiteSpace(blocker)
+                ? GamePausedText
+                : $"Pausado: {StripExe(blocker)} aberto (jogo ou tela cheia) — nada foi alterado";
 
         // ── Processos que a limpeza nunca toca ────────────────────────────────
 
@@ -207,6 +228,84 @@ namespace PCOptimizer.Services
             "ApplicationFrameHost", "SystemSettings", "AMDRSServ", "RadeonSoftware",
         };
 
+        /// <summary>
+        /// Processos que nunca viram RAIZ de árvore protegida. O explorer é pai de
+        /// quase tudo que se abre pelo menu Iniciar, área de trabalho ou barra de
+        /// tarefas: usá-lo como raiz protegia praticamente todos os programas e a
+        /// limpeza não fazia nada. Eles continuam protegidos, só que sozinhos.
+        /// </summary>
+        public static readonly IReadOnlySet<string> NeverTreeRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "explorer", "dwm", "sihost", "svchost", "RuntimeBroker", "ApplicationFrameHost",
+            "ShellExperienceHost", "StartMenuExperienceHost", "SearchHost", "SearchApp",
+            "TextInputHost", "LockApp", "ctfmon", "winlogon", "csrss", "services", "wininit",
+        };
+
+        /// <summary>
+        /// Classes de janela que denunciam o motor do jogo, em qualquer tamanho —
+        /// em janela, sem borda, em tela cheia ou minimizado.
+        /// </summary>
+        public static readonly IReadOnlySet<string> GameWindowClasses = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "UnityWndClass",                 // Unity
+            "UnrealWindow",                  // Unreal Engine
+            "LaunchUnrealUWindowsClient",    // Unreal (antigo)
+            "SDL_app",                       // SDL — Source 2 (CS2, Dota 2) e muitos outros
+            "Valve001",                      // Source 1
+            "GLFW30",                        // GLFW — Minecraft Java (1.13+)
+            "LWJGL",                         // LWJGL 2 — Minecraft Java antigo
+            "YYGameMakerYY",                 // GameMaker
+            "CryENGINE",
+        };
+
+        /// <summary>Executáveis de jogos conhecidos (sem extensão).</summary>
+        public static readonly IReadOnlySet<string> KnownGameProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "RobloxPlayerBeta", "Minecraft.Windows", "osu!", "League of Legends", "dota2", "cs2", "csgo",
+            "r5apex", "r5apex_dx12", "GTA5", "GTA5_Enhanced", "RDR2", "eldenring", "RainbowSix", "RainbowSix_Vulkan",
+            "Overwatch", "TslGame", "destiny2", "bf2042", "cod", "Warframe.x64", "PathOfExile", "PathOfExile_x64",
+            "PathOfExileSteam", "GenshinImpact", "StarRail", "ZenlessZoneZero", "witcher3", "Cyberpunk2077",
+            "RustClient", "EscapeFromTarkov", "Wow", "WowClassic", "Hearthstone", "Diablo IV", "SC2_x64",
+            "TheFinals",
+        };
+
+        /// <summary>Sufixos de executável de jogos em Unreal Engine.</summary>
+        public static readonly IReadOnlyList<string> GameProcessSuffixes = new[]
+        {
+            "-Win64-Shipping", "-Win32-Shipping", "-WinGDK-Shipping",
+        };
+
+        /// <summary>
+        /// Pastas onde só ficam jogos instalados. Os launchers (Epic, Riot) e
+        /// ferramentas vendidas na Steam ficam de fora — eles abrem o dia todo
+        /// e travariam a otimização à toa.
+        /// </summary>
+        public static readonly IReadOnlyList<string> GameInstallMarkers = new[]
+        {
+            @"\steamapps\common\", @"\XboxGames\", @"\GOG Galaxy\Games\", @"\GOG Games\",
+            @"\Epic Games\", @"\Riot Games\", @"\Ubisoft Game Launcher\games\", @"\EA Games\",
+        };
+
+        public static readonly IReadOnlyList<string> GameInstallExceptions = new[]
+        {
+            @"\Epic Games\Launcher\", @"\Riot Games\Riot Client\", @"\steamapps\common\wallpaper_engine\",
+            @"\steamapps\common\Steamworks Shared\", @"\steamapps\common\Blender\",
+            @"\steamapps\common\Aseprite\", @"\steamapps\common\Soundpad\",
+        };
+
+        /// <summary>
+        /// Donos de tela cheia que NÃO são jogo e não devem ser "lembrados" como
+        /// jogo depois que saem da tela cheia (navegador, player, acesso remoto).
+        /// Enquanto estão em tela cheia, ainda pausam — mas só enquanto durar.
+        /// </summary>
+        public static readonly IReadOnlySet<string> NeverLatchOwners = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "chrome", "msedge", "firefox", "opera", "opera_gx", "brave", "vivaldi", "iexplore",
+            "vlc", "mpc-hc64", "mpc-hc", "mpc-be64", "PotPlayerMini64", "PotPlayer", "Netflix",
+            "mstsc", "AnyDesk", "TeamViewer", "rustdesk", "parsecd", "obs64", "Discord", "Spotify",
+            "Teams", "ms-teams", "Zoom", "POWERPNT", "Acrobat", "AcroRd32",
+        };
+
         // ── Leitura ───────────────────────────────────────────────────────────
 
         /// <summary>
@@ -238,16 +337,17 @@ namespace PCOptimizer.Services
         /// - Sem privilégio, a área vira "pulada", não "falhou".
         /// </summary>
         public static MemoryPlan BuildPlan(MemoryOperation configured, MemoryTrigger trigger,
-                                           bool canPurgeLists, bool canTrimFileCache)
+                                           bool canPurgeLists, bool canTrimFileCache, bool aggressive = false)
         {
-            var ops = configured & All;
+            var ops = EffectiveOps(configured, aggressive);
             var byPolicy = MemoryOperation.None;
             var noAdmin = MemoryOperation.None;
 
             if (trigger != MemoryTrigger.Manual)
             {
-                byPolicy |= ops & ManualOnly;
-                ops &= ~ManualOnly;
+                var manualOnly = ManualOnlyFor(aggressive);
+                byPolicy |= ops & manualOnly;
+                ops &= ~manualOnly;
             }
 
             if ((ops & MemoryOperation.StandbyFull) != 0)
@@ -265,6 +365,18 @@ namespace PCOptimizer.Services
             }
             return new MemoryPlan(ops, noAdmin, byPolicy);
         }
+
+        /// <summary>Áreas marcadas, somadas às do modo agressivo quando ligado.</summary>
+        public static MemoryOperation EffectiveOps(MemoryOperation configured, bool aggressive) =>
+            (aggressive ? configured | AggressiveOps : configured) & All;
+
+        /// <summary>
+        /// Áreas que só rodam no botão. No modo agressivo a memória modificada
+        /// pode rodar sozinha (só grava no disco; o cache continua); o cache
+        /// completo nunca, porque faz o próximo jogo carregar do disco.
+        /// </summary>
+        public static MemoryOperation ManualOnlyFor(bool aggressive) =>
+            aggressive ? MemoryOperation.StandbyFull : ManualOnly;
 
         /// <summary>
         /// Ordem de execução. Os caches vêm ANTES dos programas: as páginas tiradas
@@ -305,8 +417,10 @@ namespace PCOptimizer.Services
             if (i.Snapshot.InUsePercent < ClampThreshold(i.ThresholdPercent))
                 return new(false, AutoSkipReason.BelowThreshold);
             if (i.RequireIdle && !i.IsIdle) return new(false, AutoSkipReason.NotIdle);
-            if (BuildPlan(i.Configured, MemoryTrigger.Auto, true, true).Ops == MemoryOperation.None)
-                return new(false, AutoSkipReason.NothingToDo);
+            if (BuildPlan(i.Configured, MemoryTrigger.Auto, true, true, i.Aggressive).Ops == MemoryOperation.None)
+                return new(false, EffectiveOps(i.Configured, i.Aggressive) == MemoryOperation.None
+                    ? AutoSkipReason.NothingToDo
+                    : AutoSkipReason.ManualOnlyChecked);
             return new(true, AutoSkipReason.None);
         }
 
@@ -338,12 +452,15 @@ namespace PCOptimizer.Services
         // ── Processos ─────────────────────────────────────────────────────────
 
         /// <summary>Filtro ANTES de abrir qualquer processo.</summary>
-        public static bool ShouldTrim(ProcessCandidate c, TrimContext ctx)
+        public static bool ShouldTrim(ProcessCandidate c, TrimContext ctx) =>
+            ShouldTrim(c, ctx, MinTrimWorkingSetBytes);
+
+        public static bool ShouldTrim(ProcessCandidate c, TrimContext ctx, long minWorkingSetBytes)
         {
             if (c.Pid <= 4 || c.Pid == ctx.MyPid) return false;
             if (c.SessionId == 0) return false;
             if (ctx.ProtectedPids.Contains(c.Pid)) return false;
-            if (c.WorkingSetBytes < MinTrimWorkingSetBytes) return false;
+            if (c.WorkingSetBytes < minWorkingSetBytes) return false;
             if (string.IsNullOrWhiteSpace(c.Name)) return false;
             if (IsProtectedName(c.Name, ctx.ExtraProtectedNames, ctx.UserProtected)) return false;
             return true;
@@ -393,11 +510,38 @@ namespace PCOptimizer.Services
 
         /// <summary>Filtra, ordena do maior para o menor e limita a 40.</summary>
         public static IReadOnlyList<ProcessCandidate> PickTrimTargets(
-            IEnumerable<ProcessCandidate> all, TrimContext ctx)
-            => all.Where(c => ShouldTrim(c, ctx))
-                  .OrderByDescending(c => c.WorkingSetBytes)
-                  .Take(MaxTrimProcesses)
-                  .ToList();
+            IEnumerable<ProcessCandidate> all, TrimContext ctx, bool aggressive = false)
+        {
+            long minWs = aggressive ? AggressiveMinTrimWorkingSetBytes : MinTrimWorkingSetBytes;
+            int max = aggressive ? AggressiveMaxTrimProcesses : MaxTrimProcesses;
+            return all.Where(c => ShouldTrim(c, ctx, minWs))
+                      .OrderByDescending(c => c.WorkingSetBytes)
+                      .Take(max)
+                      .ToList();
+        }
+
+        /// <summary>
+        /// Separa quem pode ser raiz de árvore protegida de quem só protege a si
+        /// mesmo. Shell e serviços do Windows nunca viram raiz — ver
+        /// <see cref="NeverTreeRoots"/>.
+        /// </summary>
+        public static (HashSet<int> TreeRoots, HashSet<int> Leaves) SplitRoots(
+            IEnumerable<int> roots, IReadOnlyDictionary<int, string> namesByPid)
+        {
+            var tree = new HashSet<int>();
+            var leaves = new HashSet<int>();
+            foreach (int pid in roots)
+            {
+                if (pid <= 4) continue;
+                namesByPid.TryGetValue(pid, out string? name);
+                if (name != null && (NeverTreeRoots.Contains(StripExe(name)) ||
+                                     NonGameWindowOwners.Contains(StripExe(name))))
+                    leaves.Add(pid);
+                else
+                    tree.Add(pid);
+            }
+            return (tree, leaves);
+        }
 
         /// <summary>
         /// Raízes mais todos os descendentes. Jogos e navegadores rodam em vários
@@ -432,6 +576,7 @@ namespace PCOptimizer.Services
 
         // ── Janelas ───────────────────────────────────────────────────────────
 
+        public const long WS_POPUP         = 0x80000000;
         public const long WS_CAPTION       = 0x00C00000;
         public const long WS_THICKFRAME    = 0x00040000;
         public const long WS_EX_TRANSPARENT = 0x00000020;
@@ -456,12 +601,72 @@ namespace PCOptimizer.Services
             if (IsShellClass(w.ClassName)) return false;
             if (NonGameWindowOwners.Contains(StripExe(w.OwnerName))) return false;
             if ((w.ExStyle & (WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)) != 0) return false;
+
+            // Sinais fortes, em qualquer tamanho ou estado (em janela, minimizado):
+            // a classe da janela do motor do jogo, ou o executável de um jogo.
+            if (GameWindowClasses.Contains(w.ClassName ?? "")) return true;
+            if (IsKnownGameProcess(w.OwnerName)) return true;
+
             if ((w.Style & WS_CAPTION) == WS_CAPTION) return false;
             if (w.Zoomed && (w.Style & WS_THICKFRAME) != 0) return false;
             if (w.Monitor.Width <= 0 || w.Monitor.Height <= 0) return false;
 
+            // Minimizado: o tamanho restaurado de um jogo em tela cheia exclusiva
+            // é a resolução DELE, que pode ser menor que a do monitor (1280×960
+            // esticado num monitor 1920×1080). Janela pop-up sem moldura de
+            // redimensionar e de tamanho de jogo conta — apps sem borda comuns
+            // (Discord, Spotify, Steam) são redimensionáveis e ficam de fora.
+            if (w.Minimized)
+                return (w.Style & WS_POPUP) != 0 && (w.Style & WS_THICKFRAME) == 0
+                       && w.Rect.Width >= 640 && w.Rect.Height >= 480;
+
             // Tolerância de 2 px: arredondamento de DPI e bordas invisíveis
             return w.Rect.Width >= w.Monitor.Width - 2 && w.Rect.Height >= w.Monitor.Height - 2;
+        }
+
+        /// <summary>O executável é de um jogo conhecido (lista ou padrão do Unreal)?</summary>
+        public static bool IsKnownGameProcess(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            string n = StripExe(name);
+            if (KnownGameProcesses.Contains(n)) return true;
+            foreach (var suffix in GameProcessSuffixes)
+                if (n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        /// <summary>O executável está instalado numa pasta de jogos (fora dos launchers)?</summary>
+        public static bool IsGameInstallPath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return false;
+            string p = path.Replace('/', '\\');
+            foreach (var ex in GameInstallExceptions)
+                if (p.Contains(ex, StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (var marker in GameInstallMarkers)
+                if (p.Contains(marker, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Um processo visto como jogo pode ser "lembrado" como jogo aberto até
+        /// fechar? Navegador, player e acesso remoto em tela cheia, não — eles
+        /// ficam abertos o dia todo e travariam a otimização.
+        /// </summary>
+        public static bool CanLatchAsGame(string? ownerName) =>
+            !string.IsNullOrWhiteSpace(ownerName) && !NeverLatchOwners.Contains(StripExe(ownerName))
+            && !NonGameWindowOwners.Contains(StripExe(ownerName));
+
+        /// <summary>
+        /// Janela de programa visível na tela (não minimizada, não oculta, não
+        /// sobreposição): o usuário está vendo, então o dono e os filhos não são
+        /// esvaziados — inclusive um jogo em janela pequena que não se denunciou.
+        /// </summary>
+        public static bool IsVisibleUserWindow(WindowFacts w)
+        {
+            if (!w.Visible || w.Minimized || w.Cloaked || w.OwnerIsSelf) return false;
+            if (IsShellClass(w.ClassName)) return false;
+            if ((w.ExStyle & (WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW)) != 0) return false;
+            return w.Rect.Width >= 120 && w.Rect.Height >= 80;   // ignora janelinhas utilitárias
         }
 
         /// <summary>
@@ -531,6 +736,11 @@ namespace PCOptimizer.Services
         /// </summary>
         public static string DescribeResult(MemoryRunOutcome outcome, MemorySnapshot before, MemorySnapshot after,
                                             MemoryOperation failed, MemoryOperation skippedNoAdmin, DateTime localTime)
+            => DescribeResult(outcome, before, after, failed, skippedNoAdmin, MemoryOperation.None, localTime);
+
+        public static string DescribeResult(MemoryRunOutcome outcome, MemorySnapshot before, MemorySnapshot after,
+                                            MemoryOperation failed, MemoryOperation skippedNoAdmin,
+                                            MemoryOperation skippedByPolicy, DateTime localTime)
         {
             string when = " · " + localTime.ToString("HH:mm", CultureInfo.InvariantCulture);
             switch (outcome)
@@ -539,7 +749,10 @@ namespace PCOptimizer.Services
                 case MemoryRunOutcome.Paused:      return GamePausedText;
                 case MemoryRunOutcome.NeedsAdmin:  return "Requer administrador — nada foi alterado";
                 case MemoryRunOutcome.Failed:      return "Não consegui otimizar — detalhes no log" + when;
-                case MemoryRunOutcome.NothingToDo: return "Nenhuma área para limpar agora" + when;
+                case MemoryRunOutcome.NothingToDo:
+                    return (skippedByPolicy != MemoryOperation.None
+                        ? "As áreas marcadas só rodam no botão “Otimizar agora”"
+                        : "Nenhuma área para limpar agora") + when;
             }
 
             string text;
@@ -567,6 +780,8 @@ namespace PCOptimizer.Services
             if (noAdmin > 0) text += $" · {noAdmin} limpeza(s) pulada(s): requer administrador";
             int fails = PopCount(failed);
             if (fails > 0) text += $" · {fails} falha(s) — veja o log";
+            if (skippedByPolicy != MemoryOperation.None)
+                text += " · " + string.Join(" e ", OrderedSteps(skippedByPolicy).Select(LabelOf)) + ": só no botão";
             return text + when;
         }
 

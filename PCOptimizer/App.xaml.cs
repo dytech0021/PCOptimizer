@@ -76,7 +76,9 @@ namespace PCOptimizer
                 GameAwarenessService.Start();
             }
 
-            // Otimizador de memória: o automático só cria timer se estiver ligado.
+            // Otimizador de memória: lembra jogos vistos em tela cheia (só lê o
+            // detector) e o automático só cria timer se estiver ligado.
+            MemoryOptimizerService.Initialize();
             MemoryOptimizerService.ApplyAutoSetting();
             TrayService.OptimizeMemoryRequested += OnTrayOptimizeMemory;
 

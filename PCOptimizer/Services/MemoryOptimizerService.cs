@@ -132,6 +132,7 @@ namespace PCOptimizer.Services
         {
             if (GameBoostService.IsActive || GameAwarenessService.IsGameRunning) return true;
             if (ShellSaysFullscreen()) return true;
+            if (LatchedGameAlive() != null) return true;
 
             IntPtr prev = TrySetPerMonitorDpi();
             try
@@ -139,11 +140,92 @@ namespace PCOptimizer.Services
                 IntPtr fg = MemoryNative.GetForegroundWindow();
                 if (fg == IntPtr.Zero) return false;
                 MemoryNative.GetWindowThreadProcessId(fg, out int pid);
-                var facts = ReadWindowFacts(fg, pid, name: ProcessNameOf(pid));
-                return facts is WindowFacts f && MemoryOptimizerPolicy.IsGameLikeWindow(f);
+                string name = ProcessNameOf(pid);
+                if (ReadWindowFacts(fg, pid, name) is not WindowFacts f || !MemoryOptimizerPolicy.IsGameLikeWindow(f))
+                    return false;
+                Latch(pid, name);
+                return true;
             }
             finally { RestoreDpi(prev); }
         }
+
+        // ── Jogos "lembrados" ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// Processos vistos como jogo continuam contando como "jogo aberto" até
+        /// FECHAREM — mesmo depois de um alt-tab que minimiza o jogo e devolve a
+        /// resolução da área de trabalho. Guarda um handle só de LEITURA
+        /// (consulta + espera), os mesmos direitos que o Game Boost usa.
+        /// </summary>
+        private sealed record LatchedGame(int Pid, string Name, IntPtr Handle);
+        private static readonly object LatchLock = new();
+        private static readonly List<LatchedGame> Latched = new();
+        private const int MaxLatched = 8;
+
+        private static void Latch(int pid, string name)
+        {
+            if (pid <= 4 || pid == Environment.ProcessId || !MemoryOptimizerPolicy.CanLatchAsGame(name)) return;
+            lock (LatchLock)
+            {
+                if (Latched.Exists(l => l.Pid == pid)) return;
+                IntPtr h = MemoryNative.OpenProcess(
+                    MemoryNative.PROCESS_QUERY_LIMITED_INFORMATION | MemoryNative.SYNCHRONIZE, false, pid);
+                if (h == IntPtr.Zero) return;
+                if (Latched.Count >= MaxLatched)
+                {
+                    MemoryNative.CloseHandle(Latched[0].Handle);
+                    Latched.RemoveAt(0);
+                }
+                Latched.Add(new LatchedGame(pid, name, h));
+                Logger.Info($"Memória: {name} visto como jogo — conta como aberto até fechar");
+            }
+        }
+
+        /// <summary>Nome do primeiro jogo lembrado que ainda está rodando, ou null.</summary>
+        private static string? LatchedGameAlive()
+        {
+            lock (LatchLock)
+            {
+                for (int i = Latched.Count - 1; i >= 0; i--)
+                {
+                    if (MemoryNative.WaitForSingleObject(Latched[i].Handle, 0) == MemoryNative.WAIT_TIMEOUT) continue;
+                    MemoryNative.CloseHandle(Latched[i].Handle);   // fechou: esquece
+                    Latched.RemoveAt(i);
+                }
+                return Latched.Count > 0 ? Latched[0].Name : null;
+            }
+        }
+
+        private static List<int> LatchedPids()
+        {
+            LatchedGameAlive();
+            lock (LatchLock) return Latched.ConvertAll(l => l.Pid);
+        }
+
+        /// <summary>
+        /// Liga a "memória" de jogo ao detector de tela cheia: quando ele vê um
+        /// jogo, o processo da frente é lembrado. Só ASSINA o evento — nada no
+        /// detector muda — e nunca deixa exceção voltar para ele.
+        /// </summary>
+        public static void Initialize()
+        {
+            GameAwarenessService.GameStateChanged += running =>
+            {
+                if (!running) return;
+                try
+                {
+                    IntPtr fg = MemoryNative.GetForegroundWindow();
+                    if (fg == IntPtr.Zero) return;
+                    MemoryNative.GetWindowThreadProcessId(fg, out int pid);
+                    Latch(pid, ProcessNameOf(pid));
+                }
+                catch (Exception ex) { Logger.Error(ex, "MemoryOptimizer.GameStateChanged"); }
+            };
+        }
+
+        /// <summary>Checagem baratíssima (uma chamada) para a interface pausar a leitura.</summary>
+        public static bool IsFullscreenAppActive() =>
+            GameBoostService.IsActive || GameAwarenessService.IsGameRunning || ShellSaysFullscreen();
 
         /// <summary>QUNS 2/3/4: um app em tela cheia (inclusive sem borda) está na frente.</summary>
         private static bool ShellSaysFullscreen()
@@ -161,22 +243,28 @@ namespace PCOptimizer.Services
         /// minimizado ou em outro monitor? Devolve também o retrato das janelas,
         /// reaproveitado para proteger quem o usuário está usando.
         /// </summary>
-        private static bool IsGameOpen(WindowScan scan)
+        private static bool IsGameOpen(WindowScan scan, out string? blocker)
         {
-            if (GameBoostService.IsActive || GameAwarenessService.IsGameRunning) return true;
+            blocker = null;
+            if (GameBoostService.IsActive) { blocker = GameBoostService.TargetName; return true; }
+            if (GameAwarenessService.IsGameRunning) return true;
+            if (LatchedGameAlive() is string latched) { blocker = latched; return true; }
+            if (scan.GamePids.Count > 0) { blocker = scan.Blocker; return true; }
             if (ShellSaysFullscreen()) return true;
-            return scan.GamePids.Count > 0;
+            return false;
         }
 
         private sealed class WindowScan
         {
             public readonly HashSet<int> GamePids = new();
             public readonly HashSet<int> BigWindowPids = new();
+            public string? Blocker;
         }
 
         private static WindowScan ScanWindows(IReadOnlyDictionary<int, string> namesByPid)
         {
             var scan = new WindowScan();
+            var windowOwners = new HashSet<int>();
             IntPtr prev = TrySetPerMonitorDpi();
             MemoryNative.EnumWindowsProc cb = (hwnd, _) =>
             {
@@ -185,11 +273,20 @@ namespace PCOptimizer.Services
                 {
                     if (!MemoryNative.IsWindowVisible(hwnd)) return true;
                     MemoryNative.GetWindowThreadProcessId(hwnd, out int pid);
-                    if (pid <= 4) return true;
+                    if (pid <= 4 || pid == Environment.ProcessId) return true;
                     namesByPid.TryGetValue(pid, out string? name);
                     if (ReadWindowFacts(hwnd, pid, name ?? "") is not WindowFacts f) return true;
-                    if (MemoryOptimizerPolicy.IsGameLikeWindow(f)) scan.GamePids.Add(pid);
-                    else if (!f.Minimized && MemoryOptimizerPolicy.IsBigVisibleWindow(f)) scan.BigWindowPids.Add(pid);
+                    if (MemoryOptimizerPolicy.IsGameLikeWindow(f))
+                    {
+                        if (scan.GamePids.Add(pid)) scan.Blocker ??= name;
+                    }
+                    else
+                    {
+                        if (MemoryOptimizerPolicy.IsVisibleUserWindow(f)) scan.BigWindowPids.Add(pid);
+                        if (!f.Cloaked && !MemoryOptimizerPolicy.IsShellClass(f.ClassName)
+                            && (f.ExStyle & (MemoryOptimizerPolicy.WS_EX_TOOLWINDOW | MemoryOptimizerPolicy.WS_EX_TRANSPARENT)) == 0)
+                            windowOwners.Add(pid);
+                    }
                 }
                 catch { }
                 return true;
@@ -201,6 +298,26 @@ namespace PCOptimizer.Services
                 GC.KeepAlive(cb);
                 RestoreDpi(prev);
             }
+
+            // Jogo em janela comum (com barra de título) não se denuncia pelo
+            // formato: olha onde o executável está instalado. Só leitura, e só
+            // para quem tem janela aberta.
+            foreach (int pid in windowOwners)
+            {
+                if (scan.GamePids.Contains(pid)) continue;
+                if (MemoryOptimizerPolicy.IsGameInstallPath(MemoryNative.ImagePathReadOnly(pid)))
+                {
+                    scan.GamePids.Add(pid);
+                    namesByPid.TryGetValue(pid, out string? name);
+                    scan.Blocker ??= name;
+                }
+            }
+
+            foreach (int pid in scan.GamePids)
+            {
+                namesByPid.TryGetValue(pid, out string? name);
+                if (name != null) Latch(pid, name);
+            }
             return scan;
         }
 
@@ -208,6 +325,7 @@ namespace PCOptimizer.Services
         private static WindowFacts? ReadWindowFacts(IntPtr hwnd, int pid, string name)
         {
             bool minimized = MemoryNative.IsIconic(hwnd);
+            bool restoreMaximized = false;
             MemoryNative.RECT r;
             if (minimized)
             {
@@ -219,6 +337,7 @@ namespace PCOptimizer.Services
                 };
                 if (!MemoryNative.GetWindowPlacement(hwnd, ref wp)) return null;
                 r = wp.rcNormalPosition;
+                restoreMaximized = (wp.flags & MemoryNative.WPF_RESTORETOMAXIMIZED) != 0;
             }
             else if (!MemoryNative.GetWindowRect(hwnd, out r)) return null;
 
@@ -228,6 +347,10 @@ namespace PCOptimizer.Services
                 cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<MemoryNative.MONITORINFO>()
             };
             if (mon == IntPtr.Zero || !MemoryNative.GetMonitorInfo(mon, ref mi)) return null;
+
+            // Minimizada que volta MAXIMIZADA: o tamanho restaurado guardado é o
+            // de antes de maximizar; o que vale é o monitor inteiro.
+            if (restoreMaximized) r = mi.rcMonitor;
 
             bool cloaked = false;
             try
@@ -291,6 +414,7 @@ namespace PCOptimizer.Services
 
         private static MemoryRunResult OptimizeCore(MemoryOperation configured, MemoryTrigger trigger)
         {
+            bool aggressive = SettingsService.Current.MemoryAggressive;
             if (Interlocked.Exchange(ref _running, 1) != 0)
             {
                 string busy = MemoryOptimizerPolicy.DescribeResult(MemoryRunOutcome.Busy, default, default,
@@ -309,15 +433,22 @@ namespace PCOptimizer.Services
                 foreach (var p in processes) namesByPid[p.Pid] = p.Name;
                 var scan = ScanWindows(namesByPid);
 
-                if (IsGameOpen(scan))
+                if (IsGameOpen(scan, out string? blocker))
                 {
-                    LastResultText = MemoryOptimizerPolicy.GamePausedText;
-                    Logger.Info($"Memória ({trigger}): pausado — jogo aberto");
+                    string paused = MemoryOptimizerPolicy.PausedText(blocker);
+                    if (trigger != MemoryTrigger.Auto) paused += " · " + DateTime.Now.ToString("HH:mm");
+                    // Pausa do automático não sobrescreve o último resultado da tela
+                    // nem enche o log a cada minuto — quem avisa é a linha de status.
+                    if (trigger != MemoryTrigger.Auto)
+                    {
+                        LastResultText = paused;
+                        Logger.Info($"Memória ({trigger}): {paused}");
+                    }
                     return new MemoryRunResult(MemoryRunOutcome.Paused, default, default,
-                        MemoryOperation.None, MemoryOperation.None, MemoryOperation.None, 0, LastResultText);
+                        MemoryOperation.None, MemoryOperation.None, MemoryOperation.None, 0, paused);
                 }
 
-                var plan = MemoryOptimizerPolicy.BuildPlan(configured, trigger, _canPurgeLists, _canTrimFileCache);
+                var plan = MemoryOptimizerPolicy.BuildPlan(configured, trigger, _canPurgeLists, _canTrimFileCache, aggressive);
                 var before = ReadSnapshot();
 
                 var done = MemoryOperation.None;
@@ -335,7 +466,7 @@ namespace PCOptimizer.Services
                             MemoryOperation.StandbyFull        => ListCommand(MemoryNative.MemoryPurgeStandbyList),
                             MemoryOperation.StandbyLowPriority => ListCommand(MemoryNative.MemoryPurgeLowPriorityStandbyList),
                             MemoryOperation.SystemFileCache    => TrimFileCache(),
-                            MemoryOperation.TrimPrograms       => TrimPrograms(processes, scan, out trimmed),
+                            MemoryOperation.TrimPrograms       => TrimPrograms(processes, scan, aggressive, out trimmed),
                             _ => MemoryNative.STATUS_SUCCESS,
                         };
 
@@ -360,7 +491,8 @@ namespace PCOptimizer.Services
                 var after = ReadSnapshot();
 
                 var outcome = MemoryOptimizerPolicy.Classify(done, failed, noAdmin, paused: false, busy: false);
-                string text = MemoryOptimizerPolicy.DescribeResult(outcome, before, after, failed, noAdmin, DateTime.Now);
+                string text = MemoryOptimizerPolicy.DescribeResult(outcome, before, after, failed, noAdmin,
+                    plan.SkippedByPolicy, DateTime.Now);
                 LastResultText = text;
                 if (outcome == MemoryRunOutcome.Done) _lastRunUtc = DateTime.UtcNow;
 
@@ -443,7 +575,7 @@ namespace PCOptimizer.Services
         /// Esvazia o working set dos maiores programas abertos — com tudo que o
         /// usuário está usando, e os filhos desses processos, de fora.
         /// </summary>
-        private static int TrimPrograms(List<ProcInfo> processes, WindowScan scan, out int trimmed)
+        private static int TrimPrograms(List<ProcInfo> processes, WindowScan scan, bool aggressive, out int trimmed)
         {
             trimmed = 0;
             int myPid = Environment.ProcessId;
@@ -452,6 +584,7 @@ namespace PCOptimizer.Services
             // e (por segurança) qualquer janela com cara de jogo — com os filhos.
             var roots = new HashSet<int>(scan.GamePids);
             roots.UnionWith(scan.BigWindowPids);
+            roots.UnionWith(LatchedPids());
             try
             {
                 IntPtr fg = MemoryNative.GetForegroundWindow();
@@ -463,8 +596,15 @@ namespace PCOptimizer.Services
             }
             catch { }
 
+            // Shell e serviços do Windows protegem só a si mesmos: o explorer é pai
+            // de quase todo programa, e usá-lo como raiz anulava a limpeza.
+            var namesByPid = new Dictionary<int, string>();
+            foreach (var p in processes) namesByPid[p.Pid] = p.Name;
+            var (treeRoots, leaves) = MemoryOptimizerPolicy.SplitRoots(roots, namesByPid);
+
             var protectedPids = MemoryOptimizerPolicy.ExpandProcessTree(
-                processes.Select(p => (p.Pid, p.ParentPid)), roots);
+                processes.Select(p => (p.Pid, p.ParentPid)), treeRoots);
+            protectedPids.UnionWith(leaves);
             protectedPids.Add(myPid);
 
             // Pastas protegidas: a do jogo e a do app da frente (launchers e
@@ -485,7 +625,7 @@ namespace PCOptimizer.Services
 
             var candidates = processes.Select(p => new ProcessCandidate(p.Pid, p.Name, p.SessionId, p.WorkingSet));
             int count = 0;
-            foreach (var target in MemoryOptimizerPolicy.PickTrimTargets(candidates, ctx))
+            foreach (var target in MemoryOptimizerPolicy.PickTrimTargets(candidates, ctx, aggressive))
             {
                 IntPtr h = MemoryNative.OpenProcess(
                     MemoryNative.PROCESS_SET_QUOTA | MemoryNative.PROCESS_QUERY_LIMITED_INFORMATION, false, target.Pid);
@@ -513,6 +653,7 @@ namespace PCOptimizer.Services
         private static Timer? _timer;
         private static int _tickRunning;
         private static TimeSpan _cooldown = MemoryOptimizerPolicy.BaseCooldown;
+        private static DateTime? _gamePauseUntilUtc;
         private static (DateTime AtUtc, ulong Before, ulong After)? _pendingCheck;
         private static bool? _lastAutoHeld;
         private static readonly CpuIdleTracker Idle =
@@ -566,7 +707,8 @@ namespace PCOptimizer.Services
             if (!s.MemoryAutoOptimize || IsRunning) return;
 
             var before = LastAutoSkip;
-            if (QuickGameCheck())
+            var nowUtc = DateTime.UtcNow;
+            if (QuickGameCheck() || (_gamePauseUntilUtc is DateTime until && nowUtc < until))
             {
                 Idle.Reset();
                 SetSkip(AutoSkipReason.Game, before);
@@ -601,12 +743,30 @@ namespace PCOptimizer.Services
                 NowUtc: now,
                 LastRunUtc: _lastRunUtc,
                 Cooldown: _cooldown,
-                Configured: s.MemoryOps));
+                Configured: s.MemoryOps,
+                Aggressive: s.MemoryAggressive));
 
             SetSkip(decision.Reason, before);
             if (!decision.Run) return;
 
             var r = OptimizeCore(s.MemoryOps, MemoryTrigger.Auto);
+            if (r.Outcome == MemoryRunOutcome.Paused)
+            {
+                // A varredura completa achou um jogo que a checagem leve não vê
+                // (em outro monitor, minimizado, em janela): não varre de novo a
+                // cada minuto enquanto ele estiver aberto.
+                Idle.Reset();
+                _gamePauseUntilUtc = DateTime.UtcNow + MemoryOptimizerPolicy.GamePauseBackoff;
+                SetSkip(AutoSkipReason.Game, AutoSkipReason.None);
+                return;
+            }
+            if (r.Outcome is MemoryRunOutcome.NeedsAdmin or MemoryRunOutcome.Failed)
+            {
+                // Sem permissão ou com erro: espera o intervalo normal em vez de
+                // tentar uma otimização completa a cada minuto.
+                _lastRunUtc = DateTime.UtcNow;
+                return;
+            }
             if (r.Outcome != MemoryRunOutcome.Done) return;
 
             _pendingCheck = (DateTime.UtcNow + MemoryOptimizerPolicy.PersistCheckDelay,
@@ -640,10 +800,10 @@ namespace PCOptimizer.Services
         public static string AutoStatusText()
         {
             var s = SettingsService.Current;
-            if (IsRunning) return "Otimizando…";
             if (!s.MemoryAutoOptimize) return "";
 
             string text = $"Automático acima de {MemoryOptimizerPolicy.ClampThreshold(s.MemoryAutoThresholdPercent)}%";
+            if (s.MemoryAggressive) text += " · agressivo";
             if (s.MemoryAutoOnlyWhenIdle) text += " · com PC ocioso";
             switch (LastAutoSkip)
             {
@@ -653,11 +813,15 @@ namespace PCOptimizer.Services
                 case AutoSkipReason.NotIdle:
                     text += " · aguardando PC ocioso";
                     break;
-                case AutoSkipReason.Cooldown when _cooldown > MemoryOptimizerPolicy.BaseCooldown:
-                    text += $" · aguardando {(int)_cooldown.TotalMinutes} min (a última limpeza não segurou)";
+                case AutoSkipReason.Cooldown when _cooldown > MemoryOptimizerPolicy.BaseCooldown && _lastRunUtc is DateTime last:
+                    int left = (int)Math.Ceiling((last + _cooldown - DateTime.UtcNow).TotalMinutes);
+                    if (left > 0) text += $" · aguardando {left} min (a última limpeza não segurou)";
                     break;
                 case AutoSkipReason.NothingToDo:
                     text += " · nenhuma área marcada";
+                    break;
+                case AutoSkipReason.ManualOnlyChecked:
+                    text += " · só áreas manuais marcadas (rodam só no botão)";
                     break;
             }
             return text;

@@ -132,9 +132,9 @@ public sealed class MemoryOptimizerPolicyTests
             MemoryOptimizerPolicy.DecideAuto(Auto(95, requireIdle: true, idle: false)).Reason);
 
     [Fact]
-    public void SoAreasManuaisMarcadasNaoTemOQueFazer() =>
+    public void NenhumaAreaMarcadaNaoTemOQueFazer() =>
         Assert.Equal(AutoSkipReason.NothingToDo,
-            MemoryOptimizerPolicy.DecideAuto(Auto(95, ops: MemoryOptimizerPolicy.ManualOnly)).Reason);
+            MemoryOptimizerPolicy.DecideAuto(Auto(95, ops: MemoryOperation.None)).Reason);
 
     [Fact]
     public void AcimaDoLimiteForaDoIntervaloRoda()
@@ -151,11 +151,12 @@ public sealed class MemoryOptimizerPolicyTests
     }
 
     [Theory]
-    [InlineData(50, 70)]
+    [InlineData(30, 50)]
+    [InlineData(52, 50)]
     [InlineData(72, 70)]
     [InlineData(83, 85)]
     [InlineData(99, 95)]
-    public void LimiarEhArredondadoEPresoEntre70E95(int input, int expected) =>
+    public void LimiarEhArredondadoEPresoEntre50E95(int input, int expected) =>
         Assert.Equal(expected, MemoryOptimizerPolicy.ClampThreshold(input));
 
     [Fact]
@@ -174,8 +175,9 @@ public sealed class MemoryOptimizerPolicyTests
     public void IntervaloDobraQuandoOGanhoNaoSeSustentaEVoltaQuandoSustenta()
     {
         var c = MemoryOptimizerPolicy.BaseCooldown;
+        Assert.Equal(TimeSpan.FromMinutes(10), c);
         c = MemoryOptimizerPolicy.NextCooldown(c, productive: false);
-        Assert.Equal(TimeSpan.FromMinutes(60), c);
+        Assert.Equal(TimeSpan.FromMinutes(20), c);
         c = MemoryOptimizerPolicy.NextCooldown(c, false);
         c = MemoryOptimizerPolicy.NextCooldown(c, false);
         c = MemoryOptimizerPolicy.NextCooldown(c, false);
@@ -278,7 +280,7 @@ public sealed class MemoryOptimizerPolicyTests
 
     private static WindowFacts Win(Rect32 rect, Rect32? mon = null, long style = 0x80000000 /*WS_POPUP*/,
                                    long ex = 0, bool zoomed = false, bool minimized = false,
-                                   string cls = "UnityWndClass", string owner = "game", bool self = false,
+                                   string cls = "GenericGameWnd", string owner = "game", bool self = false,
                                    bool cloaked = false)
         => new(rect, mon ?? Mon, true, minimized, cloaked, zoomed, style, ex, cls, owner, self);
 
@@ -334,6 +336,18 @@ public sealed class MemoryOptimizerPolicyTests
     [Fact]
     public void JanelaPequenaNaoEhJogo() =>
         Assert.False(MemoryOptimizerPolicy.IsGameLikeWindow(Win(new Rect32(100, 100, 1380, 820))));
+
+    [Fact]
+    public void QualquerJanelaVisivelNaTelaProtegeODono()
+    {
+        // Um jogo em janela pequena que não se denunciou ainda fica protegido
+        // enquanto estiver na tela; minimizado ou oculto, não.
+        Assert.True(MemoryOptimizerPolicy.IsVisibleUserWindow(Win(new Rect32(100, 100, 954, 580))));
+        Assert.False(MemoryOptimizerPolicy.IsVisibleUserWindow(Win(new Rect32(100, 100, 954, 580), minimized: true)));
+        Assert.False(MemoryOptimizerPolicy.IsVisibleUserWindow(Win(new Rect32(100, 100, 954, 580), cloaked: true)));
+        Assert.False(MemoryOptimizerPolicy.IsVisibleUserWindow(Win(new Rect32(0, 0, 40, 30))));
+        Assert.False(MemoryOptimizerPolicy.IsVisibleUserWindow(Win(Mon, ex: MemoryOptimizerPolicy.WS_EX_TOOLWINDOW)));
+    }
 
     [Fact]
     public void JanelaGrandeVisivelEhProtegidaPequenaNao()
@@ -489,6 +503,159 @@ public sealed class MemoryOptimizerPolicyTests
 
         // O pico zerou a contagem: só 1 minuto ocioso desde ele.
         Assert.False(t.IsIdle(Now.AddMinutes(3)));
+    }
+
+    // ── Modo agressivo ────────────────────────────────────────────────────
+
+    [Fact]
+    public void ModoAgressivoSomaAreasMasNuncaOCacheCompleto()
+    {
+        // O cache completo faria o próximo jogo carregar do disco: não entra.
+        var plan = MemoryOptimizerPolicy.BuildPlan(MemoryOperation.None, MemoryTrigger.Manual, true, true, aggressive: true);
+
+        Assert.Equal(MemoryOptimizerPolicy.AggressiveOps, plan.Ops);
+        Assert.Equal(MemoryOperation.None, plan.Ops & MemoryOperation.StandbyFull);
+    }
+
+    [Fact]
+    public void ModoAgressivoDeixaAMemoriaModificadaRodarNoAutomatico()
+    {
+        var plan = MemoryOptimizerPolicy.BuildPlan(MemoryOptimizerPolicy.All, MemoryTrigger.Auto, true, true, aggressive: true);
+
+        Assert.True((plan.Ops & MemoryOperation.ModifiedList) != 0);
+        Assert.Equal(MemoryOperation.StandbyFull, plan.SkippedByPolicy);   // o completo continua só no botão
+    }
+
+    [Fact]
+    public void ModoAgressivoLimpaTodoProgramaAPartirDe16MB()
+    {
+        var all = Enumerable.Range(0, 100)
+            .Select(i => new ProcessCandidate(3000 + i, "app" + i, 1, (20 + i) * (long)MiB));
+
+        Assert.Equal(40, MemoryOptimizerPolicy.PickTrimTargets(all, Ctx()).Count);
+        Assert.Equal(100, MemoryOptimizerPolicy.PickTrimTargets(all, Ctx(), aggressive: true).Count);
+    }
+
+    [Fact]
+    public void SoAreasManuaisMarcadasTemRazaoPropria() =>
+        Assert.Equal(AutoSkipReason.ManualOnlyChecked,
+            MemoryOptimizerPolicy.DecideAuto(Auto(95, ops: MemoryOperation.StandbyFull)).Reason);
+
+    // ── Raízes de árvore (bug do explorer) ───────────────────────────────
+
+    [Fact]
+    public void ExplorerNuncaViraRaizDaArvoreProtegida()
+    {
+        // O explorer é pai de quase tudo aberto pelo menu Iniciar: como raiz,
+        // ele protegia todos os programas e a limpeza não fazia nada.
+        var names = new Dictionary<int, string> { [100] = "explorer", [200] = "steam", [300] = "dwm" };
+
+        var (tree, leaves) = MemoryOptimizerPolicy.SplitRoots(new[] { 100, 200, 300 }, names);
+
+        Assert.Equal(new HashSet<int> { 200 }, tree);
+        Assert.Equal(new HashSet<int> { 100, 300 }, leaves);
+    }
+
+    [Fact]
+    public void FilhosDoExplorerContinuamLimpaveis()
+    {
+        var procs = new[] { (100, 1), (101, 100), (102, 100), (200, 100), (201, 200) };
+        var names = new Dictionary<int, string> { [100] = "explorer", [200] = "steam" };
+        var (tree, leaves) = MemoryOptimizerPolicy.SplitRoots(new[] { 100, 200 }, names);
+
+        var protectedPids = MemoryOptimizerPolicy.ExpandProcessTree(procs, tree);
+        protectedPids.UnionWith(leaves);
+
+        Assert.Equal(new HashSet<int> { 100, 200, 201 }, protectedPids);   // 101 e 102 (abertos pelo explorer) ficam limpáveis
+    }
+
+    // ── Detecção de jogo (furos da revisão) ──────────────────────────────
+
+    [Theory]
+    [InlineData("UnityWndClass")]
+    [InlineData("UnrealWindow")]
+    [InlineData("SDL_app")]
+    [InlineData("GLFW30")]
+    public void ClasseDoMotorEhJogoMesmoEmJanelaComBarra(string cls) =>
+        Assert.True(MemoryOptimizerPolicy.IsGameLikeWindow(
+            Win(new Rect32(100, 100, 1380, 820), style: 0x00CF0000, cls: cls, owner: "algumjogo")));
+
+    [Theory]
+    [InlineData("RobloxPlayerBeta")]
+    [InlineData("VALORANT-Win64-Shipping")]
+    [InlineData("dota2.exe")]
+    public void ExecutavelDeJogoConhecidoEhJogo(string owner)
+    {
+        Assert.True(MemoryOptimizerPolicy.IsKnownGameProcess(owner));
+        Assert.True(MemoryOptimizerPolicy.IsGameLikeWindow(
+            Win(new Rect32(0, 0, 854, 480), style: 0x00CF0000, cls: "WINDOWSCLIENT", owner: owner, minimized: true)));
+    }
+
+    [Fact]
+    public void JogoMinimizadoEmResolucaoMenorQueOMonitorContinuaAberto()
+    {
+        // 1280×960 esticado num monitor 1920×1080: alt-tab minimiza e devolve a
+        // resolução da área de trabalho. Antes, isso passava despercebido.
+        Assert.True(MemoryOptimizerPolicy.IsGameLikeWindow(
+            Win(new Rect32(0, 0, 1280, 960), minimized: true, cls: "GenericGameWnd", owner: "jogo")));
+    }
+
+    [Fact]
+    public void AppSemBordaRedimensionavelMinimizadoNaoEhJogo()
+    {
+        // Discord/Spotify/Steam desenham a própria barra, mas são redimensionáveis.
+        const long popupResizable = 0x80000000 | MemoryOptimizerPolicy.WS_THICKFRAME;
+        Assert.False(MemoryOptimizerPolicy.IsGameLikeWindow(
+            Win(new Rect32(0, 0, 1280, 800), style: popupResizable, minimized: true,
+                cls: "Chrome_WidgetWin_1", owner: "Notion")));
+    }
+
+    [Theory]
+    [InlineData(@"E:\SteamLibrary\steamapps\common\Dota 2\game\bin\win64\dota2.exe", true)]
+    [InlineData(@"C:\XboxGames\Forza\Content\forza.exe", true)]
+    [InlineData(@"C:\Program Files\Riot Games\VALORANT\live\VALORANT.exe", true)]
+    [InlineData(@"C:\Program Files\Riot Games\Riot Client\RiotClientServices.exe", false)]
+    [InlineData(@"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe", false)]
+    [InlineData(@"D:\Steam\steamapps\common\wallpaper_engine\wallpaper64.exe", false)]
+    [InlineData(@"C:\Program Files\Google\Chrome\Application\chrome.exe", false)]
+    [InlineData(null, false)]
+    public void PastaDeInstalacaoDeJogoSemOsLaunchers(string? path, bool expected) =>
+        Assert.Equal(expected, MemoryOptimizerPolicy.IsGameInstallPath(path));
+
+    [Theory]
+    [InlineData("dota2", true)]
+    [InlineData("chrome", false)]       // navegador em F11 pausa, mas não é lembrado
+    [InlineData("AnyDesk", false)]
+    [InlineData("explorer", false)]
+    [InlineData("", false)]
+    public void SoJogoEhLembradoAteFechar(string owner, bool expected) =>
+        Assert.Equal(expected, MemoryOptimizerPolicy.CanLatchAsGame(owner));
+
+    [Fact]
+    public void PausaDizQuemBloqueou()
+    {
+        Assert.Equal("Pausado: dota2 aberto (jogo ou tela cheia) — nada foi alterado",
+            MemoryOptimizerPolicy.PausedText("dota2.exe"));
+        Assert.Equal(MemoryOptimizerPolicy.GamePausedText, MemoryOptimizerPolicy.PausedText(null));
+    }
+
+    [Fact]
+    public void ResultadoAvisaOQueFicouParaOBotao()
+    {
+        string text = MemoryOptimizerPolicy.DescribeResult(MemoryRunOutcome.Done,
+            Snap(16 * GiB, 4 * GiB), Snap(16 * GiB, 5 * GiB),
+            MemoryOperation.None, MemoryOperation.None, MemoryOperation.StandbyFull, Now);
+
+        Assert.Contains("cache em espera completo: só no botão", text);
+    }
+
+    [Fact]
+    public void LoteSoComAreasManuaisExplicaPorQueNaoFezNada()
+    {
+        string text = MemoryOptimizerPolicy.DescribeResult(MemoryRunOutcome.NothingToDo, default, default,
+            MemoryOperation.None, MemoryOperation.None, MemoryOperation.StandbyFull, Now);
+
+        Assert.StartsWith("As áreas marcadas só rodam no botão", text);
     }
 
     [Fact]

@@ -447,6 +447,8 @@
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="200">
                                     <Button x:Name="BtnMemOptimize" Content="Otimizar agora" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Left" Click="BtnMemOptimize_Click"/>
+                                    <CheckBox x:Name="ChkMemAggressive" Content="Modo agressivo" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"
+                                              ToolTip="Soma todas as áreas que não afetam jogos (programas, cache de arquivos, cache de baixa prioridade e memória modificada) e limpa todo programa a partir de 16 MB, não só os 40 maiores. O cache em espera completo nunca entra: ele faria o próximo jogo carregar do disco."/>
                                     <TextBlock x:Name="TxtMemResult" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" MaxWidth="300" Margin="0,8,0,0"/>
                                     <TextBlock x:Name="TxtMemStatus" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" MaxWidth="300" Margin="0,4,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
@@ -461,7 +463,7 @@
                                     <TextBlock Text="O que o “Otimizar agora” limpa" Foreground="{DynamicResource TextSecondary}" FontFamily="Cascadia Mono" FontSize="10" Margin="0,0,0,8"/>
 
                                     <CheckBox x:Name="ChkMemTrimPrograms" Content="Liberar RAM de programas abertos" Style="{StaticResource OptionCheckStyle}"/>
-                                    <TextBlock Text="Tira da RAM o que navegador e launchers não estão usando agora. Jogo, janela em uso, voz e música (Discord, Spotify…), áudio, anticheat e máquinas virtuais ficam de fora. Ao voltar para um desses programas, ele pode levar um instante para recarregar." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+                                    <TextBlock Text="Tira da RAM o que programas minimizados e em segundo plano não estão usando agora — ao voltar para eles, podem levar um instante para recarregar. Ficam de fora: jogos, janelas na tela, voz e música (Discord, Spotify…), áudio, anticheat e máquinas virtuais." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
 
                                     <CheckBox x:Name="ChkMemFileCache" Content="Cache de arquivos do sistema" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
                                     <TextBlock Text="Os arquivos continuam em cache (viram cache em espera); só deixam de contar como “em uso”." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
@@ -478,12 +480,12 @@
                                     <TextBlock Text="Automático" Foreground="{DynamicResource TextSecondary}" FontFamily="Cascadia Mono" FontSize="10" Margin="0,18,0,8"/>
                                     <StackPanel Orientation="Horizontal">
                                         <CheckBox x:Name="ChkMemAuto" Content="Otimizar quando a RAM em uso passar de" Style="{StaticResource OptionCheckStyle}" VerticalAlignment="Center"/>
-                                        <Slider x:Name="SldMemThreshold" Minimum="70" Maximum="95" Width="160" Margin="12,0" VerticalAlignment="Center"/>
+                                        <Slider x:Name="SldMemThreshold" Minimum="50" Maximum="95" Width="160" Margin="12,0" VerticalAlignment="Center"/>
                                         <TextBlock x:Name="TxtMemThreshold" Text="85%" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left"/>
                                     </StackPanel>
                                     <CheckBox x:Name="ChkMemAutoIdle" Content="Só com o PC ocioso (CPU abaixo de 10% por 5 minutos)" Style="{StaticResource OptionCheckStyle}" Margin="26,8,0,0"/>
                                     <CheckBox x:Name="ChkMemAutoNotify" Content="Avisar na bandeja depois de otimizar" Style="{StaticResource OptionCheckStyle}" Margin="26,6,0,0"/>
-                                    <TextBlock Text="Nunca roda com jogo aberto (tela cheia, sem borda, minimizado ou com Game Boost ativo) e no máximo uma vez a cada 30 minutos — se o ganho não se sustentar, espera mais. Confere a memória a cada 60 s com uma leitura leve, só com o PC Optimizer aberto. Cache completo e memória modificada nunca entram no automático." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,6,0,0"/>
+                                    <TextBlock Text="Nunca roda com jogo aberto (tela cheia, sem borda, em janela, minimizado ou com Game Boost ativo) e no máximo uma vez a cada 10 minutos — se o ganho não se sustentar, espera mais. Confere a memória a cada 60 s com uma leitura leve, só com o PC Optimizer aberto. Cache completo e memória modificada nunca entram no automático." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,6,0,0"/>
 
                                     <TextBlock Text="Ficam de fora de propósito: esvaziar a memória do jogo, “desfragmentar” a RAM e limpar a área de transferência — é isso que faz otimizadores de memória causarem travadas ou perderem o que você copiou." Foreground="{DynamicResource TextMuted}" FontSize="10" TextWrapping="Wrap" Margin="0,16,0,0"/>
                                 </StackPanel>

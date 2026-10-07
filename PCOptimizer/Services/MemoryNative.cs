@@ -91,6 +91,12 @@ namespace PCOptimizer.Services
 
         internal const uint PROCESS_SET_QUOTA                 = 0x0100;
         internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        internal const uint SYNCHRONIZE                       = 0x00100000;
+        internal const uint WAIT_TIMEOUT                      = 0x00000102;
+
+        /// <summary>Com timeout 0: WAIT_TIMEOUT = o processo ainda está rodando.</summary>
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern IntPtr OpenProcess(uint dwDesiredAccess,
@@ -189,6 +195,7 @@ namespace PCOptimizer.Services
         internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
         internal const uint MONITOR_DEFAULTTONEAREST = 2;
+        internal const uint WPF_RESTORETOMAXIMIZED   = 0x0002;
         internal const int  GWL_STYLE   = -16;
         internal const int  GWL_EXSTYLE = -20;
         internal const int  DWMWA_CLOAKED = 14;

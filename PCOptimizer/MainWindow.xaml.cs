@@ -583,15 +583,17 @@ namespace PCOptimizer
                 StatusStandbyRam.Text = "⏳";
                 var mem = await MemoryOptimizerService.OptimizeAsync(
                     SettingsService.Current.MemoryOps, MemoryTrigger.Batch);
-                totalSteps++;
-                bool memOk = mem.Outcome is MemoryRunOutcome.Done or MemoryRunOutcome.NothingToDo;
+                bool memSkipped = mem.Outcome is MemoryRunOutcome.Paused or MemoryRunOutcome.NothingToDo
+                                  or MemoryRunOutcome.Busy;
+                if (!memSkipped) totalSteps++;
+                bool memOk = mem.Outcome == MemoryRunOutcome.Done || memSkipped;
                 SetStatus(StatusStandbyRam, mem.Outcome switch
                 {
-                    MemoryRunOutcome.Done        => "✅",
-                    MemoryRunOutcome.NothingToDo => "—",
-                    MemoryRunOutcome.Paused      => "⏸️",
-                    MemoryRunOutcome.NeedsAdmin  => "🔒",
-                    _                            => "⚠️",
+                    MemoryRunOutcome.Done       => "✅",
+                    MemoryRunOutcome.Paused     => "⏸️",
+                    MemoryRunOutcome.NeedsAdmin => "🔒",
+                    _ when memSkipped           => "↷",
+                    _                           => "⚠️",
                 }, memOk);
                 Log((memOk ? "✅ Memória: " : "⚠️ Memória: ") + mem.Text);
                 StepDone(ChkStandbyRam);
@@ -1229,6 +1231,7 @@ namespace PCOptimizer
                 foreach (var (box, op) in MemoryOpBoxes())
                     box.IsChecked = (s.MemoryOps & op) != 0;
 
+                ChkMemAggressive.IsChecked = s.MemoryAggressive;
                 ChkMemAuto.IsChecked       = s.MemoryAutoOptimize;
                 ChkMemAutoIdle.IsChecked   = s.MemoryAutoOnlyWhenIdle;
                 ChkMemAutoNotify.IsChecked = s.MemoryAutoNotify;
@@ -1263,7 +1266,7 @@ namespace PCOptimizer
                 box.Checked   += (_, _) => SaveMemorySettings();
                 box.Unchecked += (_, _) => SaveMemorySettings();
             }
-            foreach (var box in new[] { ChkMemAutoIdle, ChkMemAutoNotify })
+            foreach (var box in new[] { ChkMemAutoIdle, ChkMemAutoNotify, ChkMemAggressive })
             {
                 box.Checked   += (_, _) => SaveMemorySettings();
                 box.Unchecked += (_, _) => SaveMemorySettings();
@@ -1309,6 +1312,7 @@ namespace PCOptimizer
                 s.MemoryAutoOptimize = ChkMemAuto.IsChecked == true;
                 s.MemoryAutoOnlyWhenIdle = ChkMemAutoIdle.IsChecked == true;
                 s.MemoryAutoNotify = ChkMemAutoNotify.IsChecked == true;
+                s.MemoryAggressive = ChkMemAggressive.IsChecked == true;
                 s.MemoryAutoThresholdPercent = MemoryOptimizerPolicy.ClampThreshold((int)SldMemThreshold.Value);
                 SettingsService.Save();
             }
@@ -1349,7 +1353,13 @@ namespace PCOptimizer
                     {
                         Interval = TimeSpan.FromSeconds(2)
                     };
-                    _memPoll.Tick += (_, _) => RefreshMemoryReadout();
+                    _memPoll.Tick += (_, _) =>
+                    {
+                        // Jogo sem borda não aciona o detector de tela cheia; a
+                        // checagem do shell é uma chamada só e evita disputar com ele.
+                        if (MemoryOptimizerService.IsFullscreenAppActive()) return;
+                        RefreshMemoryReadout();
+                    };
                 }
                 if (!_memPoll.IsEnabled)
                 {
@@ -1360,6 +1370,14 @@ namespace PCOptimizer
             else
             {
                 _memPoll?.Stop();
+                // Aba aberta mas com jogo: uma leitura só (duas chamadas baratas),
+                // marcada como pausada — em vez de ficar em "Lendo memória…".
+                if (IsVisible && WindowState != WindowState.Minimized
+                    && ReferenceEquals(OptList.SelectedItem, TabDesempenho))
+                {
+                    RefreshMemoryReadout();
+                    TxtMemDetail.Text += " · leitura pausada durante o jogo";
+                }
             }
         }
 
@@ -1393,13 +1411,14 @@ namespace PCOptimizer
             try
             {
                 bool game = GameAwarenessService.IsGameRunning || GameBoostService.IsActive;
-                bool anyOp = (SettingsService.Current.MemoryOps & MemoryOptimizerPolicy.All) != MemoryOperation.None;
+                bool anyOp = MemoryOptimizerPolicy.EffectiveOps(SettingsService.Current.MemoryOps,
+                                 SettingsService.Current.MemoryAggressive) != MemoryOperation.None;
 
                 BtnMemOptimize.IsEnabled = !_isRunning && !MemoryOptimizerService.IsRunning && !game && anyOp;
                 BtnMemOptimize.Content = MemoryOptimizerService.IsRunning ? "Otimizando…" : "Otimizar agora";
 
-                string result = game
-                    ? MemoryOptimizerPolicy.GamePausedText.Replace(" — nada foi alterado", "")
+                string result = MemoryOptimizerService.IsRunning ? "Otimizando…"
+                    : game ? MemoryOptimizerPolicy.GamePausedText.Replace(" — nada foi alterado", "")
                     : !anyOp ? "Nenhuma área marcada em Ajustes de memória"
                     : MemoryOptimizerService.LastResultText ?? "";
                 TxtMemResult.Text = result;
@@ -1550,6 +1569,7 @@ namespace PCOptimizer
                 BtnDeepRepair.IsEnabled = true;
                 BtnRun.IsEnabled = true;
                 _isRunning = false;
+                RefreshMemoryCard();
             }
         }
 

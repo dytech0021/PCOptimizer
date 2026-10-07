@@ -43,7 +43,7 @@ public sealed class VisualStructureTests
             "TabDesempenho", "TxtMemUsage", "BarMemUsage", "TxtMemDetail", "BtnMemOptimize",
             "TxtMemResult", "TxtMemStatus", "ExpMemory", "TxtMemAdmin", "ChkMemTrimPrograms",
             "ChkMemFileCache", "ChkMemStandbyLow", "ChkMemStandbyFull", "ChkMemModified",
-            "ChkMemAuto", "SldMemThreshold", "TxtMemThreshold", "ChkMemAutoIdle", "ChkMemAutoNotify",
+            "ChkMemAuto", "ChkMemAggressive", "SldMemThreshold", "TxtMemThreshold", "ChkMemAutoIdle", "ChkMemAutoNotify",
             "BtnMaximizeDisplay", "TxtMaximizeStatus", "BtnDeepRepair",
             "ChkTemp", "StatusTemp", "ChkDisk", "StatusDisk", "ChkRecycleBin",
             "StatusRecycleBin", "ChkWinUpdateCache", "StatusWinUpdateCache",
