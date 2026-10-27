@@ -340,7 +340,7 @@ namespace PCOptimizer
 
             // Devolve a prioridade de memória dos programas que o nível Agressivo
             // ou Máximo baixou — ela não deve sobreviver ao app.
-            try { MemoryOptimizerService.RestoreMemoryPriorities(); }
+            try { MemoryOptimizerService.RestoreMemoryPriorities(block: true); }
             catch (Exception ex) { Logger.Error(ex, "OnExit/MemoryPriorities"); }
 
             // Restaura a barra de tarefas ao padrão (o efeito só vale com o app aberto).

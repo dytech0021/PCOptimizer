@@ -145,10 +145,10 @@ namespace PCOptimizer.Services
             CpuTuningLevel.Medio =>
                 "• Nenhum núcleo dorme (estacionamento desligado)\n" +
                 "• Frequência mínima 100%: o processador não reduz o clock enquanto trabalha\n" +
-                "• Turbo agressivo e preferência por desempenho\n" +
-                "• É o perfil que deu +12% no seu PC sem híbrido",
+                "• Turbo eficiente agressivo e preferência puxada para desempenho\n" +
+                "• É o perfil de antes, que deu +12% num PC sem híbrido",
             CpuTuningLevel.Agressivo =>
-                "• Tudo do Médio, com desempenho total em todos os núcleos\n" +
+                "• Tudo do Médio, com turbo agressivo e desempenho total em todos os núcleos\n" +
                 "• Timer do sistema em 0,5 ms (com o PC Optimizer aberto): quadros mais regulares\n" +
                 "• Menos CPU reservada para segundo plano (MMCSS)\n" +
                 "• Esquenta mais — em notebook, use na tomada",

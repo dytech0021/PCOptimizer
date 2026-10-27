@@ -54,6 +54,7 @@
     <SolidColorBrush x:Key="Card7Border" Color="#C9C2DA"/>
 
     <SolidColorBrush x:Key="RunButtonBg" Color="#6D28D9"/>
+    <SolidColorBrush x:Key="RunButtonHover" Color="#5B21B6"/>
     <SolidColorBrush x:Key="RunButtonFg" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="RunButtonText" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="Preset1Bg" Color="#F4EFFA"/>

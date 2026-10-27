@@ -27,10 +27,6 @@
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Shell" Property="Background" Value="{DynamicResource ButtonSecondaryHover}"/>
-                                <Setter TargetName="Shell" Property="BorderBrush" Value="{DynamicResource BorderStrong}"/>
-                            </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Shell" Property="Opacity" Value="0.78"/>
                             </Trigger>
@@ -41,6 +37,13 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <!-- Hover no estilo (não no template): o botão violeta tem o próprio hover -->
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ButtonSecondaryHover}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource BorderStrong}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="ActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ChromeButtonStyle}">
@@ -54,6 +57,12 @@
             <Setter Property="Foreground" Value="{DynamicResource RunButtonText}"/>
             <Setter Property="Background" Value="{DynamicResource RunButtonBg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource RunButtonBg}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource RunButtonHover}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource RunButtonHover}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="NavTabStyle" TargetType="TabItem">

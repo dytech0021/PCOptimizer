@@ -665,7 +665,14 @@ namespace PCOptimizer.Services
             hard.UnionWith(Protect(scan.VisiblePids.Except(scan.NonGameVisiblePids), MemoryOptimizerPolicy.ReasonOnScreen));
             hard.Add(myPid);
 
-            var nonGame = Protect(scan.NonGameVisiblePids.Except(hard), MemoryOptimizerPolicy.ReasonOnScreen);
+            // Apps na tela que não são jogo: só o próprio app (e os processos com
+            // o mesmo executável) pode ser esvaziado; qualquer outro filho dele —
+            // que pode ser um jogo aberto por um launcher — volta para a proteção.
+            var (sameApp, foreignRoots) = MemoryOptimizerPolicy.SplitNonGameTree(
+                edges, namesByPid, scan.NonGameVisiblePids.Except(hard));
+            hard.UnionWith(Protect(foreignRoots, MemoryOptimizerPolicy.ReasonOnScreen));
+            var nonGame = new HashSet<int>(sameApp);
+            foreach (int pid in nonGame) reasons.TryAdd(pid, MemoryOptimizerPolicy.ReasonOnScreen);
             nonGame.ExceptWith(hard);
 
             var dirs = new List<string>();
@@ -744,6 +751,8 @@ namespace PCOptimizer.Services
         private sealed record Lowered(int Pid, long CreationTime, uint Original);
         private static readonly object LoweredLock = new();
         private static readonly Dictionary<int, Lowered> LoweredPids = new();
+        /// <summary>Ligado ao sair do app: nada mais é baixado depois do desfazer final.</summary>
+        private static bool _lowerBlocked;
 
         /// <summary>
         /// Programas em segundo plano SEM janela ficam com prioridade de memória
@@ -753,11 +762,13 @@ namespace PCOptimizer.Services
         private static int LowerPriorities(List<ProcInfo> processes, TrimContext ctx, WindowScan scan)
         {
             int changed = 0;
+            var parents = new HashSet<int>(processes.Select(p => p.ParentPid));
+            long minCreated = DateTime.UtcNow.ToFileTimeUtc() - MemoryOptimizerPolicy.PriorityMinAge.Ticks;
             foreach (var p in processes)
             {
                 var c = new ProcessCandidate(p.Pid, p.Name, p.SessionId, p.WorkingSet);
-                if (!MemoryOptimizerPolicy.IsPriorityCandidate(c, ctx, scan.WindowOwners)) continue;
-                lock (LoweredLock) if (LoweredPids.ContainsKey(p.Pid)) continue;
+                if (!MemoryOptimizerPolicy.IsPriorityCandidate(c, ctx, scan.WindowOwners, parents)) continue;
+                lock (LoweredLock) if (_lowerBlocked || LoweredPids.ContainsKey(p.Pid)) continue;
 
                 IntPtr h = MemoryNative.OpenProcess(
                     MemoryNative.PROCESS_SET_INFORMATION | MemoryNative.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Pid);
@@ -771,10 +782,17 @@ namespace PCOptimizer.Services
                         continue;
                     if (original <= MemoryNative.MEMORY_PRIORITY_LOW) continue;   // nunca sobe
                     if (!MemoryNative.GetProcessTimes(h, out long created, out _, out _, out _)) continue;
+                    if (created > minCreated) continue;   // recém-aberto: pode ser um jogo carregando
 
+                    // Baixar e registrar num passo só: um desfazer que comece no
+                    // meio não pode deixar um processo baixado sem registro.
                     uint low = MemoryNative.MEMORY_PRIORITY_LOW;
-                    if (!MemoryNative.SetProcessInformation(h, MemoryNative.ProcessMemoryPriority, ref low, 4)) continue;
-                    lock (LoweredLock) LoweredPids[p.Pid] = new Lowered(p.Pid, created, original);
+                    lock (LoweredLock)
+                    {
+                        if (_lowerBlocked || CurrentLevel == MemoryLevel.Leve) break;
+                        if (!MemoryNative.SetProcessInformation(h, MemoryNative.ProcessMemoryPriority, ref low, 4)) continue;
+                        LoweredPids[p.Pid] = new Lowered(p.Pid, created, original);
+                    }
                     changed++;
                 }
                 finally { MemoryNative.CloseHandle(h); }
@@ -787,11 +805,12 @@ namespace PCOptimizer.Services
         /// Devolve a prioridade de memória original. Confere o horário de criação
         /// para não mexer num processo novo que herdou o mesmo PID.
         /// </summary>
-        public static void RestoreMemoryPriorities()
+        public static void RestoreMemoryPriorities(bool block = false)
         {
             List<Lowered> list;
             lock (LoweredLock)
             {
+                if (block) _lowerBlocked = true;
                 list = LoweredPids.Values.ToList();
                 LoweredPids.Clear();
             }

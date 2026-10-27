@@ -1011,6 +1011,11 @@ namespace PCOptimizer
                 sld.ValueChanged += (_, _) => UpdateCpuTuningValues();
             }
             CmbPBoost.SelectionChanged += (_, _) => UpdateCpuTuningValues();
+            foreach (var chk in new[] { ChkCpuIdleDisable, ChkCpuTimer, ChkCpuResponsiveness })
+            {
+                chk.Checked   += (_, _) => UpdateCpuTuningValues();
+                chk.Unchecked += (_, _) => UpdateCpuTuningValues();
+            }
         }
 
         private bool _cpuPrevRunLogged;
@@ -1078,8 +1083,8 @@ namespace PCOptimizer
             }
         }
 
-        /// <summary>Joga o perfil salvo nos controles da tela.</summary>
-        private void LoadCpuTuningControls()
+        /// <summary>Joga o perfil salvo (ou o indicado) nos controles da tela.</summary>
+        private void LoadCpuTuningControls(CpuTuningProfile? source = null)
         {
             _cpuTuningLoading = true;
             try
@@ -1090,7 +1095,7 @@ namespace PCOptimizer
                 CmbEBoost.Visibility = Visibility.Collapsed;
                 System.Windows.Controls.Grid.SetColumnSpan(CmbPBoost, 2);
 
-                var p = (SettingsService.Current.CpuTuning ?? CpuTuningProfile.Default()).Clone();
+                var p = (source ?? SettingsService.Current.CpuTuning ?? CpuTuningProfile.Default()).Clone();
                 var (col1, col2) = CpuColumns(p, CpuTopologyService.Get().IsHybrid);
 
                 Bind(col1, SldPMinState, SldPMaxState, SldPEpp, SldPMinCores, SldPMaxCores);
@@ -1264,13 +1269,13 @@ namespace PCOptimizer
             finally { RefreshCpuTuningCard(); }
         }
 
-        /// <summary>"Voltar ao Médio": carrega o nível Médio nos controles (sem aplicar).</summary>
+        /// <summary>
+        /// "Voltar ao Médio": só carrega o Médio nos controles. O perfil salvo
+        /// continua sendo o APLICADO — senão o card diria "Médio" com outro valendo.
+        /// </summary>
         private void BtnCpuTuningDefaults_Click(object sender, RoutedEventArgs e)
         {
-            SettingsService.Current.CpuTuning = CpuTuningProfile.ForLevel(CpuTuningLevel.Medio);
-            SettingsService.Save();
-            LoadCpuTuningControls();
-            RefreshCpuTuningCard();
+            LoadCpuTuningControls(CpuTuningProfile.ForLevel(CpuTuningLevel.Medio));
             TxtCpuTuningStatus.Text = CpuTuningService.IsActive
                 ? "Médio carregado — clique em “Reaplicar ajustes” ou no botão Médio"
                 : "Médio carregado — clique em “Aplicar ajustes” ou no botão Médio";
@@ -1514,7 +1519,7 @@ namespace PCOptimizer
                 SettingsService.Current.MemoryLevel = level;
                 SettingsService.Save();
                 // Prioridade de memória baixada só vale nos níveis que a usam.
-                if (level == MemoryLevel.Leve) _ = Task.Run(MemoryOptimizerService.RestoreMemoryPriorities);
+                if (level == MemoryLevel.Leve) _ = Task.Run(() => MemoryOptimizerService.RestoreMemoryPriorities());
                 Log($"🧠 Memória: intensidade {MemoryOptimizerPolicy.LevelName(level)}");
             }
             catch (Exception ex) { Logger.Error(ex, "BtnMemLevel_Click"); }

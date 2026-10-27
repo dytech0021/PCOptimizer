@@ -618,7 +618,7 @@ public sealed class MemoryOptimizerPolicyTests
 
     [Theory]
     [InlineData("chrome", "Chrome_WidgetWin_1", true)]
-    [InlineData("algumapp", "Chrome_WidgetWin_1", true)]   // Electron
+    [InlineData("algumapp", "Chrome_WidgetWin_1", false)]  // Electron desconhecido pode ser jogo
     [InlineData("firefox", "MozillaWindowClass", true)]
     [InlineData("EpicGamesLauncher", "UnrealWindow", true)]
     [InlineData("jogodesconhecido", "SomeGameWnd", false)]
@@ -665,6 +665,54 @@ public sealed class MemoryOptimizerPolicyTests
         Assert.False(MemoryOptimizerPolicy.IsPriorityCandidate(new ProcessCandidate(12, "svchost", 0, (long)MiB), Ctx(), owners));
         Assert.False(MemoryOptimizerPolicy.IsPriorityCandidate(new ProcessCandidate(13, "Discord", 1, (long)MiB), Ctx(), owners));
     }
+
+    [Theory]
+    [InlineData("steam")]
+    [InlineData("EpicGamesLauncher")]
+    [InlineData("Battle.net")]
+    [InlineData("RiotClientServices")]
+    [InlineData("dota2")]
+    public void LauncherEJogoNuncaTemPrioridadeBaixada(string name)
+    {
+        // O filho herda a prioridade de memória do pai: um jogo aberto por um
+        // launcher com prioridade baixa nasceria com prioridade baixa.
+        var c = new ProcessCandidate(4000, name, 1, 300 * (long)MiB);
+        Assert.False(MemoryOptimizerPolicy.IsPriorityCandidate(c, Ctx(), new HashSet<int>()));
+    }
+
+    [Fact]
+    public void QuemAbreOutrosProcessosNuncaTemPrioridadeBaixada()
+    {
+        var c = new ProcessCandidate(4001, "algumlauncher", 1, 300 * (long)MiB);
+        Assert.True(MemoryOptimizerPolicy.IsPriorityCandidate(c, Ctx(), new HashSet<int>(), new HashSet<int>()));
+        Assert.False(MemoryOptimizerPolicy.IsPriorityCandidate(c, Ctx(), new HashSet<int>(), new HashSet<int> { 4001 }));
+    }
+
+    [Fact]
+    public void FilhoComOutroExecutavelDeAppNaTelaFicaProtegido()
+    {
+        // Battle.net (na tela) → Battle.net helper → Diablo II (minimizado):
+        // o helper com o mesmo nome pode ser esvaziado; o jogo, não.
+        var procs = new[] { (100, 1), (101, 100), (102, 100), (103, 102) };
+        var names = new Dictionary<int, string>
+        {
+            [100] = "Battle.net", [101] = "Battle.net", [102] = "D2R", [103] = "crashpad",
+        };
+
+        var (same, foreign) = MemoryOptimizerPolicy.SplitNonGameTree(procs, names, new[] { 100 });
+
+        Assert.Equal(new HashSet<int> { 100, 101 }, same);
+        Assert.Equal(new HashSet<int> { 102 }, foreign);   // a subárvore dele é protegida pelo serviço
+    }
+
+    [Fact]
+    public void JogoElectronNaoEhConfundidoComNavegador() =>
+        // RPG Maker MV/MZ e jogos do itch.io usam a mesma janela do Chromium.
+        Assert.False(MemoryOptimizerPolicy.IsKnownNonGameApp("Game", "Chrome_WidgetWin_1"));
+
+    [Fact]
+    public void SoundpadEhProtegido() =>
+        Assert.True(MemoryOptimizerPolicy.IsProtectedName("Soundpad", new string[0], new string[0]));
 
     [Fact]
     public void EsperaAMemoriaModificadaAssentar()

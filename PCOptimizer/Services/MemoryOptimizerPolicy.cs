@@ -296,7 +296,7 @@ namespace PCOptimizer.Services
             "ts3client_win64", "ts3client_win32", "TeamSpeak", "mumble",
             "Zoom", "ms-teams", "Teams", "Skype", "WhatsApp",
             "NVIDIA Broadcast", "SteelSeriesSonar", "SteelSeriesGG", "WaveLink",
-            "vlc", "foobar2000", "AIMP", "MusicBee",
+            "vlc", "foobar2000", "AIMP", "MusicBee", "Soundpad",
         };
 
         /// <summary>Prefixos de nome protegidos (famílias de programas).</summary>
@@ -354,13 +354,32 @@ namespace PCOptimizer.Services
             "EpicGamesLauncher", "steamwebhelper", "steam", "Battle.net", "EADesktop",
             "RiotClientUx", "RiotClientServices", "GalaxyClient", "upc", "UbisoftConnect",
             "qbittorrent", "Photoshop", "Illustrator",
+            // Electron conhecidos (pela classe da janela não dá: jogos usam a mesma)
+            "Teams", "ms-teams", "Zoom", "Signal", "GitHubDesktop", "Postman", "Insomnia",
+            "Trello", "Todoist", "1Password", "Bitwarden", "Mattermost", "Element",
         };
 
-        /// <summary>…ou pela classe da janela (Chromium/Electron, Firefox, Office).</summary>
+        /// <summary>
+        /// …ou pela classe da janela (Firefox, Office). A classe do Chromium/
+        /// Electron NÃO entra: jogos feitos em NW.js/Electron (RPG Maker e muitos
+        /// do itch.io) usam a mesma — esses apps são reconhecidos pelo nome.
+        /// </summary>
         public static readonly IReadOnlySet<string> KnownNonGameWindowClasses = new HashSet<string>(StringComparer.Ordinal)
         {
-            "Chrome_WidgetWin_0", "Chrome_WidgetWin_1", "MozillaWindowClass",
-            "OpusApp", "XLMAIN", "PPTFrameClass", "rctrl_renwnd32", "Notepad",
+            "MozillaWindowClass", "OpusApp", "XLMAIN", "PPTFrameClass", "rctrl_renwnd32", "Notepad",
+        };
+
+        /// <summary>
+        /// Processos que abrem jogos. Nunca têm a prioridade de memória baixada:
+        /// o filho herda a prioridade do pai, e o jogo nasceria com prioridade baixa.
+        /// </summary>
+        public static readonly IReadOnlySet<string> GameLauncherProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "steam", "steamwebhelper", "EpicGamesLauncher", "EpicWebHelper", "Battle.net", "Agent",
+            "EADesktop", "EABackgroundService", "RiotClientServices", "RiotClientUx", "upc", "UbisoftConnect",
+            "GalaxyClient", "GalaxyClientService", "Playnite.DesktopApp", "Playnite.FullscreenApp", "itch",
+            "Heroic", "LaunchBox", "BigBox", "MinecraftLauncher", "PrismLauncher", "XboxPcApp",
+            "Amazon Games UI", "Launcher", "RockstarService", "PowerToys.PowerLauncher", "explorer",
         };
 
         /// <summary>Serviços que nunca são esvaziados no nível Máximo.</summary>
@@ -716,12 +735,77 @@ namespace PCOptimizer.Services
         /// proteção. Assim, quando o jogo pedir memória, o Windows tira destes
         /// primeiro — e nada que o usuário abre fica lento.
         /// </summary>
-        public static bool IsPriorityCandidate(ProcessCandidate c, TrimContext ctx, IReadOnlySet<int> windowOwners)
+        public static bool IsPriorityCandidate(ProcessCandidate c, TrimContext ctx, IReadOnlySet<int> windowOwners) =>
+            IsPriorityCandidate(c, ctx, windowOwners, EmptyPids);
+
+        /// <summary>
+        /// <paramref name="parentPids"/>: quem tem processos filhos agora. Quem
+        /// abre programas nunca entra — os filhos herdam a prioridade, e um jogo
+        /// aberto por um launcher nasceria com prioridade de memória baixa.
+        /// </summary>
+        public static bool IsPriorityCandidate(ProcessCandidate c, TrimContext ctx, IReadOnlySet<int> windowOwners,
+                                               IReadOnlySet<int> parentPids)
         {
             if (c.Pid <= 4 || c.Pid == ctx.MyPid || c.SessionId == 0) return false;
             if (ctx.ProtectedPids.Contains(c.Pid) || windowOwners.Contains(c.Pid)) return false;
+            if (parentPids.Contains(c.Pid)) return false;
             if (string.IsNullOrWhiteSpace(c.Name)) return false;
+            string n = StripExe(c.Name);
+            if (GameLauncherProcesses.Contains(n) || LauncherOwners.Contains(n) || KnownNonGameApps.Contains(n)) return false;
+            if (IsKnownGameProcess(n)) return false;
             return !IsProtectedName(c.Name, ctx.ExtraProtectedNames, ctx.UserProtected);
+        }
+
+        /// <summary>Processo aberto há pouco pode ser um jogo ainda carregando, sem janela.</summary>
+        public static readonly TimeSpan PriorityMinAge = TimeSpan.FromMinutes(2);
+
+        private static readonly IReadOnlySet<int> EmptyPids = new HashSet<int>();
+
+        /// <summary>
+        /// Árvore de um app na tela que não é jogo, para o nível Máximo: segue só
+        /// os filhos com o MESMO executável (navegador → navegador). Um filho com
+        /// outro executável pode ser um jogo aberto pelo app (Battle.net → Diablo,
+        /// launcher → javaw): ele e a subárvore dele voltam para a proteção.
+        /// </summary>
+        public static (HashSet<int> SameApp, HashSet<int> ForeignRoots) SplitNonGameTree(
+            IEnumerable<(int Pid, int ParentPid)> processes, IReadOnlyDictionary<int, string> namesByPid,
+            IEnumerable<int> roots)
+        {
+            var children = new Dictionary<int, List<int>>();
+            foreach (var (pid, parent) in processes)
+            {
+                if (pid == parent) continue;
+                if (!children.TryGetValue(parent, out var list)) children[parent] = list = new List<int>();
+                list.Add(pid);
+            }
+
+            var same = new HashSet<int>();
+            var foreign = new HashSet<int>();
+            foreach (int root in roots)
+            {
+                if (root <= 4 || !same.Add(root)) continue;
+                namesByPid.TryGetValue(root, out string? rootName);
+                var queue = new Queue<int>();
+                queue.Enqueue(root);
+                while (queue.Count > 0)
+                {
+                    int p = queue.Dequeue();
+                    if (!children.TryGetValue(p, out var kids)) continue;
+                    foreach (int k in kids)
+                    {
+                        if (k <= 4 || same.Contains(k) || foreign.Contains(k)) continue;
+                        namesByPid.TryGetValue(k, out string? kidName);
+                        if (rootName != null && kidName != null
+                            && string.Equals(StripExe(kidName), StripExe(rootName), StringComparison.OrdinalIgnoreCase))
+                        {
+                            same.Add(k);
+                            queue.Enqueue(k);
+                        }
+                        else foreign.Add(k);
+                    }
+                }
+            }
+            return (same, foreign);
         }
 
         /// <summary>A memória modificada já foi gravada (ou parou de cair, ou deu o tempo)?</summary>
