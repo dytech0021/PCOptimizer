@@ -76,18 +76,19 @@ public sealed class MemoryOptimizerPolicyTests
     }
 
     [Fact]
-    public void CachesVemAntesDosProgramas()
+    public void CachesVemAntesDosProgramasEAModificadaPorUltimo()
     {
         // Páginas tiradas dos programas devem cair num cache já limpo e
-        // continuar em RAM, não ser descartadas logo em seguida.
-        var steps = MemoryOptimizerPolicy.OrderedSteps(
-            MemoryOperation.TrimPrograms | MemoryOperation.SystemFileCache |
-            MemoryOperation.StandbyFull | MemoryOperation.ModifiedList);
+        // continuar em RAM; a memória modificada vai por último, porque é a
+        // limpeza que a enche.
+        var steps = MemoryOptimizerPolicy.OrderedSteps(MemoryOptimizerPolicy.All);
 
         Assert.Equal(new[]
         {
-            MemoryOperation.ModifiedList, MemoryOperation.StandbyFull,
-            MemoryOperation.SystemFileCache, MemoryOperation.TrimPrograms,
+            MemoryOperation.StandbyFull, MemoryOperation.StandbyLowPriority,
+            MemoryOperation.SystemFileCache, MemoryOperation.LowerMemoryPriority,
+            MemoryOperation.TrimPrograms, MemoryOperation.TrimServices,
+            MemoryOperation.TrimVisibleApps, MemoryOperation.ModifiedList,
         }, steps);
     }
 
@@ -505,35 +506,205 @@ public sealed class MemoryOptimizerPolicyTests
         Assert.False(t.IsIdle(Now.AddMinutes(3)));
     }
 
-    // ── Modo agressivo ────────────────────────────────────────────────────
+    // ── Níveis da RAM ─────────────────────────────────────────────────────
 
-    [Fact]
-    public void ModoAgressivoSomaAreasMasNuncaOCacheCompleto()
+    [Theory]
+    [InlineData(MemoryLevel.Leve)]
+    [InlineData(MemoryLevel.Agressivo)]
+    [InlineData(MemoryLevel.Maximo)]
+    public void NenhumNivelPoeOCacheCompletoSozinho(MemoryLevel level)
     {
-        // O cache completo faria o próximo jogo carregar do disco: não entra.
-        var plan = MemoryOptimizerPolicy.BuildPlan(MemoryOperation.None, MemoryTrigger.Manual, true, true, aggressive: true);
-
-        Assert.Equal(MemoryOptimizerPolicy.AggressiveOps, plan.Ops);
+        // O cache completo faria o próximo jogo carregar do disco: só se o
+        // usuário marcar, e só no botão.
+        var plan = MemoryOptimizerPolicy.BuildPlan(MemoryOperation.None, MemoryTrigger.Manual, true, true, level);
         Assert.Equal(MemoryOperation.None, plan.Ops & MemoryOperation.StandbyFull);
     }
 
     [Fact]
-    public void ModoAgressivoDeixaAMemoriaModificadaRodarNoAutomatico()
+    public void LeveEhOPadraoDeAntes()
     {
-        var plan = MemoryOptimizerPolicy.BuildPlan(MemoryOptimizerPolicy.All, MemoryTrigger.Auto, true, true, aggressive: true);
+        var plan = MemoryOptimizerPolicy.BuildPlan(MemoryOptimizerPolicy.DefaultOps, MemoryTrigger.Manual, true, true,
+                                                   MemoryLevel.Leve);
+        Assert.Equal(MemoryOptimizerPolicy.DefaultOps, plan.Ops);
+    }
+
+    [Fact]
+    public void CadaNivelContemOAnterior()
+    {
+        var leve = MemoryOptimizerPolicy.EffectiveOps(MemoryOptimizerPolicy.DefaultOps, MemoryLevel.Leve);
+        var agr = MemoryOptimizerPolicy.EffectiveOps(MemoryOptimizerPolicy.DefaultOps, MemoryLevel.Agressivo);
+        var max = MemoryOptimizerPolicy.EffectiveOps(MemoryOptimizerPolicy.DefaultOps, MemoryLevel.Maximo);
+
+        Assert.Equal(leve, leve & agr);
+        Assert.Equal(agr, agr & max);
+        Assert.True((max & MemoryOperation.TrimServices) != 0);
+        Assert.True((max & MemoryOperation.TrimVisibleApps) != 0);
+        Assert.True((agr & MemoryOperation.LowerMemoryPriority) != 0);
+        Assert.Equal(MemoryOperation.None, agr & (MemoryOperation.TrimServices | MemoryOperation.TrimVisibleApps));
+    }
+
+    [Fact]
+    public void ServicosEAppsNaTelaVemSoDoNivelNuncaDeValorSalvo()
+    {
+        var ops = MemoryOptimizerPolicy.EffectiveOps((MemoryOperation)0xFF, MemoryLevel.Leve);
+        Assert.Equal(MemoryOperation.None,
+            ops & (MemoryOperation.TrimServices | MemoryOperation.TrimVisibleApps | MemoryOperation.LowerMemoryPriority));
+    }
+
+    [Fact]
+    public void AgressivoDeixaAMemoriaModificadaRodarNoAutomatico()
+    {
+        var plan = MemoryOptimizerPolicy.BuildPlan(MemoryOptimizerPolicy.UserOps, MemoryTrigger.Auto, true, true,
+                                                   MemoryLevel.Agressivo);
 
         Assert.True((plan.Ops & MemoryOperation.ModifiedList) != 0);
         Assert.Equal(MemoryOperation.StandbyFull, plan.SkippedByPolicy);   // o completo continua só no botão
     }
 
+    [Theory]
+    [InlineData(MemoryTrigger.Batch, false)]
+    [InlineData(MemoryTrigger.Auto, false)]
+    [InlineData(MemoryTrigger.Manual, true)]
+    [InlineData(MemoryTrigger.Tray, true)]
+    public void AppsNaTelaSoComOUsuarioOlhando(MemoryTrigger trigger, bool expected)
+    {
+        var plan = MemoryOptimizerPolicy.BuildPlan(MemoryOperation.None, trigger, true, true, MemoryLevel.Maximo);
+        Assert.Equal(expected, (plan.Ops & MemoryOperation.TrimVisibleApps) != 0);
+        Assert.Equal(MemoryOperation.None, plan.Ops & MemoryOperation.StandbyFull);
+    }
+
+    [Theory]
+    [InlineData(null, true, MemoryLevel.Agressivo)]
+    [InlineData(null, false, MemoryLevel.Leve)]
+    [InlineData(MemoryLevel.Maximo, false, MemoryLevel.Maximo)]
+    [InlineData(MemoryLevel.Leve, true, MemoryLevel.Leve)]
+    public void MigracaoDoModoAgressivoAntigo(MemoryLevel? saved, bool legacy, MemoryLevel expected) =>
+        Assert.Equal(expected, MemoryOptimizerPolicy.ResolveLevel(saved, legacy));
+
     [Fact]
-    public void ModoAgressivoLimpaTodoProgramaAPartirDe16MB()
+    public void LimitesDeTamanhoPorNivel()
     {
         var all = Enumerable.Range(0, 100)
-            .Select(i => new ProcessCandidate(3000 + i, "app" + i, 1, (20 + i) * (long)MiB));
+            .Select(i => new ProcessCandidate(3000 + i, "app" + i, 1, (10 + i) * (long)MiB)).ToList();
 
         Assert.Equal(40, MemoryOptimizerPolicy.PickTrimTargets(all, Ctx()).Count);
-        Assert.Equal(100, MemoryOptimizerPolicy.PickTrimTargets(all, Ctx(), aggressive: true).Count);
+        Assert.Equal(94, MemoryOptimizerPolicy.PickTrimTargets(all, Ctx(), MemoryLevel.Agressivo).Count);   // >= 16 MB
+        Assert.Equal(100, MemoryOptimizerPolicy.PickTrimTargets(all, Ctx(), MemoryLevel.Maximo).Count);    // >= 8 MB
+    }
+
+    [Fact]
+    public void AppNaTelaSoEntraNaPassadaDoMaximo()
+    {
+        var ctx = Ctx() with { VisibleNonGamePids = new HashSet<int> { 5000 } };
+        var chrome = new ProcessCandidate(5000, "chrome", 1, 900 * (long)MiB);
+
+        Assert.Empty(MemoryOptimizerPolicy.PickTrimTargets(new[] { chrome }, ctx, MemoryLevel.Agressivo, TrimKind.Normal));
+        Assert.Single(MemoryOptimizerPolicy.PickTrimTargets(new[] { chrome }, ctx, MemoryLevel.Maximo, TrimKind.VisibleApp));
+    }
+
+    [Fact]
+    public void ServicoProtegidoNuncaEntra()
+    {
+        var ctx = Ctx() with { ServiceDenyPids = new HashSet<int> { 900 } };
+        var spec = MemoryOptimizerPolicy.SpecFor(MemoryLevel.Maximo);
+
+        Assert.Equal(TrimVerdict.ServiceDenied,
+            MemoryOptimizerPolicy.Classify(new ProcessCandidate(900, "svchost", 0, 200 * (long)MiB), ctx, spec, TrimKind.Service));
+        Assert.Equal(TrimVerdict.Trim,
+            MemoryOptimizerPolicy.Classify(new ProcessCandidate(901, "svchost", 0, 200 * (long)MiB), ctx, spec, TrimKind.Service));
+        Assert.Equal(TrimVerdict.ProtectedName,
+            MemoryOptimizerPolicy.Classify(new ProcessCandidate(902, "audiodg", 0, 200 * (long)MiB), ctx, spec, TrimKind.Service));
+    }
+
+    [Theory]
+    [InlineData("chrome", "Chrome_WidgetWin_1", true)]
+    [InlineData("algumapp", "Chrome_WidgetWin_1", true)]   // Electron
+    [InlineData("firefox", "MozillaWindowClass", true)]
+    [InlineData("EpicGamesLauncher", "UnrealWindow", true)]
+    [InlineData("jogodesconhecido", "SomeGameWnd", false)]
+    public void ReconheceAppsQueNaoSaoJogo(string owner, string cls, bool expected) =>
+        Assert.Equal(expected, MemoryOptimizerPolicy.IsKnownNonGameApp(owner, cls));
+
+    [Theory]
+    [InlineData("EpicGamesLauncher", "UnrealWindow")]
+    [InlineData("steamwebhelper", "SDL_app")]
+    public void LaunchersNaoSaoJogoNemSaoLembrados(string owner, string cls)
+    {
+        Assert.False(MemoryOptimizerPolicy.IsGameLikeWindow(
+            Win(new Rect32(100, 100, 1380, 820), style: 0x00CF0000, cls: cls, owner: owner)));
+        Assert.False(MemoryOptimizerPolicy.CanLatchAsGame(owner));
+    }
+
+    [Fact]
+    public void Cs2ComSdlContinuaSendoJogo() =>
+        Assert.True(MemoryOptimizerPolicy.IsGameLikeWindow(Win(new Rect32(0, 0, 1280, 720), cls: "SDL_app", owner: "cs2")));
+
+    [Theory]
+    [InlineData(@"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe", false)]
+    [InlineData(@"C:\Program Files\Riot Games\Riot Client\RiotClientServices.exe", false)]
+    [InlineData(@"C:\Program Files\WindowsApps\Microsoft.YourPhone_1.0\PhoneExperienceHost.exe", false)]
+    [InlineData(@"C:\Program Files\WindowsApps\SomeGame_1.0\game.exe", true)]
+    [InlineData(@"C:\Program Files\Epic Games\Fortnite\x.exe", true)]
+    public void LaunchersEAppsDaStoreNaoSaoBloqueadosComoJogo(string path, bool excluded) =>
+        Assert.Equal(excluded, MemoryOptimizerPolicy.PathExcluded(path, Ctx()));
+
+    [Fact]
+    public void ServicoEmSystem32SoNaPassadaDeServicos()
+    {
+        const string svchost = @"C:\Windows\System32\svchost.exe";
+        Assert.True(MemoryOptimizerPolicy.PathExcluded(svchost, Ctx()));
+        Assert.False(MemoryOptimizerPolicy.PathExcluded(svchost, Ctx(), allowWindowsDir: true));
+    }
+
+    [Fact]
+    public void PrioridadeSoParaQuemNaoTemJanela()
+    {
+        var owners = new HashSet<int> { 10 };
+        Assert.False(MemoryOptimizerPolicy.IsPriorityCandidate(new ProcessCandidate(10, "app", 1, (long)MiB), Ctx(), owners));
+        Assert.True(MemoryOptimizerPolicy.IsPriorityCandidate(new ProcessCandidate(11, "updater", 1, (long)MiB), Ctx(), owners));
+        Assert.False(MemoryOptimizerPolicy.IsPriorityCandidate(new ProcessCandidate(12, "svchost", 0, (long)MiB), Ctx(), owners));
+        Assert.False(MemoryOptimizerPolicy.IsPriorityCandidate(new ProcessCandidate(13, "Discord", 1, (long)MiB), Ctx(), owners));
+    }
+
+    [Fact]
+    public void EsperaAMemoriaModificadaAssentar()
+    {
+        Assert.True(MemoryOptimizerPolicy.SettleComplete(900 * MiB, 40 * MiB, TimeSpan.FromMilliseconds(250)));   // abaixo de 64 MB
+        Assert.True(MemoryOptimizerPolicy.SettleComplete(500 * MiB, 495 * MiB, TimeSpan.FromMilliseconds(500))); // parou de cair
+        Assert.False(MemoryOptimizerPolicy.SettleComplete(900 * MiB, 600 * MiB, TimeSpan.FromMilliseconds(500)));
+        Assert.True(MemoryOptimizerPolicy.SettleComplete(900 * MiB, 600 * MiB, TimeSpan.FromSeconds(2)));       // tempo
+    }
+
+    [Fact]
+    public void GanhoPequenoDizOQueEstavaProtegido()
+    {
+        var extras = new MemoryRunExtras(MemoryLevel.Agressivo, 12, 0, new[]
+        {
+            new ProtectedEntry("chrome", MemoryOptimizerPolicy.ReasonOnScreen, 1800 * MiB),
+            new ProtectedEntry("Discord", MemoryOptimizerPolicy.ReasonName, 410 * MiB),
+        });
+        string text = MemoryOptimizerPolicy.DescribeResult(MemoryRunOutcome.Done,
+            Snap(8 * GiB, GiB), Snap(8 * GiB, GiB + 97 * MiB), MemoryOperation.None, MemoryOperation.None,
+            MemoryOperation.None, Now, extras);
+
+        Assert.Contains("chrome (janela na tela) 1,8 GB", text);
+        Assert.Contains("Discord (voz, música ou sistema) 410 MB", text);
+        Assert.Contains("no nível Máximo apps na tela também entram", text);
+        Assert.DoesNotContain("o Windows já está gerenciando bem", text);
+    }
+
+    [Fact]
+    public void ResultadoMostraDisponivelEComprimido()
+    {
+        var extras = new MemoryRunExtras(MemoryLevel.Maximo, 63, 240L * (1 << 20), Array.Empty<ProtectedEntry>());
+        string text = MemoryOptimizerPolicy.DescribeResult(MemoryRunOutcome.Done,
+            Snap(8 * GiB, 930 * MiB, free: 115 * MiB, standby: 815 * MiB, modified: 300 * MiB),
+            Snap(8 * GiB, 1600 * MiB, free: 400 * MiB, standby: 1200 * MiB, modified: 40 * MiB),
+            MemoryOperation.None, MemoryOperation.None, MemoryOperation.None, Now, extras);
+
+        Assert.Contains("disponível 930 MB → 1,6 GB", text);
+        Assert.Contains("240 MB comprimidos na própria RAM", text);
+        Assert.Contains("63 processo(s)", text);
     }
 
     [Fact]

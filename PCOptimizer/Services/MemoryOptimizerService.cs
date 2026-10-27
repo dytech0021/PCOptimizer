@@ -272,7 +272,14 @@ namespace PCOptimizer.Services
         private sealed class WindowScan
         {
             public readonly HashSet<int> GamePids = new();
-            public readonly HashSet<int> BigWindowPids = new();
+            /// <summary>Donos de janela visível na tela (não minimizada).</summary>
+            public readonly HashSet<int> VisiblePids = new();
+            /// <summary>Dos visíveis, os que com certeza não são jogo (navegador, Office…).</summary>
+            public readonly HashSet<int> NonGameVisiblePids = new();
+            /// <summary>Donos de qualquer janela de programa, minimizada inclusive.</summary>
+            public readonly HashSet<int> WindowOwners = new();
+            /// <summary>Dono da janela mais ao topo: o app usado antes de abrir o PC Optimizer.</summary>
+            public int TopZPid;
             public string? Blocker;
         }
 
@@ -297,7 +304,13 @@ namespace PCOptimizer.Services
                     }
                     else
                     {
-                        if (MemoryOptimizerPolicy.IsVisibleUserWindow(f)) scan.BigWindowPids.Add(pid);
+                        if (MemoryOptimizerPolicy.IsVisibleUserWindow(f))
+                        {
+                            scan.VisiblePids.Add(pid);
+                            if (scan.TopZPid == 0) scan.TopZPid = pid;   // EnumWindows vai do topo para baixo
+                            if (MemoryOptimizerPolicy.IsKnownNonGameApp(name, f.ClassName))
+                                scan.NonGameVisiblePids.Add(pid);
+                        }
                         if (!f.Cloaked && !MemoryOptimizerPolicy.IsShellClass(f.ClassName)
                             && (f.ExStyle & (MemoryOptimizerPolicy.WS_EX_TOOLWINDOW | MemoryOptimizerPolicy.WS_EX_TRANSPARENT)) == 0)
                             windowOwners.Add(pid);
@@ -333,6 +346,9 @@ namespace PCOptimizer.Services
                 namesByPid.TryGetValue(pid, out string? name);
                 if (name != null) Latch(pid, name);
             }
+            scan.WindowOwners.UnionWith(windowOwners);
+            scan.WindowOwners.UnionWith(scan.VisiblePids);
+            scan.NonGameVisiblePids.ExceptWith(scan.GamePids);
             return scan;
         }
 
@@ -427,9 +443,14 @@ namespace PCOptimizer.Services
 
         private static DateTime? _lastRunUtc;
 
+        /// <summary>Nível salvo (migra o antigo "Modo agressivo").</summary>
+        public static MemoryLevel CurrentLevel =>
+            MemoryOptimizerPolicy.ResolveLevel(SettingsService.Current.MemoryLevel, SettingsService.Current.MemoryAggressive);
+
         private static MemoryRunResult OptimizeCore(MemoryOperation configured, MemoryTrigger trigger)
         {
-            bool aggressive = SettingsService.Current.MemoryAggressive;
+            var level = CurrentLevel;
+            var spec = MemoryOptimizerPolicy.SpecFor(level);
             if (Interlocked.Exchange(ref _running, 1) != 0)
             {
                 string busy = MemoryOptimizerPolicy.DescribeResult(MemoryRunOutcome.Busy, default, default,
@@ -463,8 +484,13 @@ namespace PCOptimizer.Services
                         MemoryOperation.None, MemoryOperation.None, MemoryOperation.None, 0, paused);
                 }
 
-                var plan = MemoryOptimizerPolicy.BuildPlan(configured, trigger, _canPurgeLists, _canTrimFileCache, aggressive);
+                var plan = MemoryOptimizerPolicy.BuildPlan(configured, trigger, _canPurgeLists, _canTrimFileCache, level);
                 var before = ReadSnapshot();
+                long storeBefore = CompressionStoreBytes(processes);
+
+                var protection = BuildProtection(processes, scan,
+                    needServices: (plan.Ops & MemoryOperation.TrimServices) != 0);
+                var ctx = protection.Context;
 
                 var done = MemoryOperation.None;
                 var failed = MemoryOperation.None;
@@ -475,13 +501,20 @@ namespace PCOptimizer.Services
                 {
                     try
                     {
+                        // A memória modificada vai por último: dá meio segundo para
+                        // as páginas tiradas dos programas chegarem nela.
+                        if (step == MemoryOperation.ModifiedList && trimmed > 0) Thread.Sleep(500);
+
                         int status = step switch
                         {
-                            MemoryOperation.ModifiedList       => ListCommand(MemoryNative.MemoryFlushModifiedList),
-                            MemoryOperation.StandbyFull        => ListCommand(MemoryNative.MemoryPurgeStandbyList),
-                            MemoryOperation.StandbyLowPriority => ListCommand(MemoryNative.MemoryPurgeLowPriorityStandbyList),
-                            MemoryOperation.SystemFileCache    => TrimFileCache(),
-                            MemoryOperation.TrimPrograms       => TrimPrograms(processes, scan, aggressive, out trimmed),
+                            MemoryOperation.ModifiedList        => ListCommand(MemoryNative.MemoryFlushModifiedList),
+                            MemoryOperation.StandbyFull         => ListCommand(MemoryNative.MemoryPurgeStandbyList),
+                            MemoryOperation.StandbyLowPriority  => ListCommand(MemoryNative.MemoryPurgeLowPriorityStandbyList),
+                            MemoryOperation.SystemFileCache     => TrimFileCache(),
+                            MemoryOperation.LowerMemoryPriority => LowerPriorities(processes, ctx, scan),
+                            MemoryOperation.TrimPrograms        => TrimPass(processes, ctx, spec, TrimKind.Normal, ref trimmed),
+                            MemoryOperation.TrimServices        => TrimServicesPass(processes, ctx, spec, ref trimmed),
+                            MemoryOperation.TrimVisibleApps     => TrimPass(processes, ctx, spec, TrimKind.VisibleApp, ref trimmed),
                             _ => MemoryNative.STATUS_SUCCESS,
                         };
 
@@ -500,19 +533,21 @@ namespace PCOptimizer.Services
                     }
                 }
 
-                // Os contadores do kernel acompanham a hora; o respiro só evita
-                // pegar a foto no meio da última troca de lista.
-                Thread.Sleep(250);
-                var after = ReadSnapshot();
+                var after = (done & MemoryOperation.ModifiedList) != 0 ? WaitModifiedSettled() : SettleShort();
+
+                long storeDelta = CompressionStoreBytes(null) - storeBefore;
+                var extras = new MemoryRunExtras(level, trimmed, storeDelta,
+                    TopProtected(processes, ctx, spec, protection.Reasons));
 
                 var outcome = MemoryOptimizerPolicy.Classify(done, failed, noAdmin, paused: false, busy: false);
                 string text = MemoryOptimizerPolicy.DescribeResult(outcome, before, after, failed, noAdmin,
-                    plan.SkippedByPolicy, DateTime.Now);
+                    plan.SkippedByPolicy, DateTime.Now, extras);
                 LastResultText = text;
                 if (outcome == MemoryRunOutcome.Done) _lastRunUtc = DateTime.UtcNow;
 
-                Logger.Info($"Memória ({trigger}): {text} | feito={done} falhou={failed} " +
-                            $"semAdmin={noAdmin} porRegra={plan.SkippedByPolicy} processos={trimmed}");
+                Logger.Info($"Memória ({trigger}, {MemoryOptimizerPolicy.LevelName(level)}): {text} | feito={done} " +
+                            $"falhou={failed} semAdmin={noAdmin} porRegra={plan.SkippedByPolicy} processos={trimmed} " +
+                            $"compressão={storeDelta / (1 << 20)} MB");
                 return new MemoryRunResult(outcome, before, after, done, failed, noAdmin, trimmed, text);
             }
             catch (Exception ex)
@@ -586,44 +621,53 @@ namespace PCOptimizer.Services
             return list;
         }
 
-        /// <summary>
-        /// Esvazia o working set dos maiores programas abertos — com tudo que o
-        /// usuário está usando, e os filhos desses processos, de fora.
-        /// </summary>
-        private static int TrimPrograms(List<ProcInfo> processes, WindowScan scan, bool aggressive, out int trimmed)
-        {
-            trimmed = 0;
-            int myPid = Environment.ProcessId;
+        /// <summary>O que a limpeza não pode tocar, e por quê (para explicar ganho pequeno).</summary>
+        private sealed record Protection(TrimContext Context, Dictionary<int, string> Reasons);
 
-            // Quem o usuário está usando agora: janela da frente, janelas grandes
-            // e (por segurança) qualquer janela com cara de jogo — com os filhos.
-            var roots = new HashSet<int>(scan.GamePids);
-            roots.UnionWith(scan.BigWindowPids);
-            roots.UnionWith(LatchedPids());
+        /// <summary>
+        /// Monta, uma vez por execução, tudo que fica de fora:
+        /// - árvore do jogo, dos jogos lembrados, da janela da frente e da janela
+        ///   mais ao topo (o app que o usuário usava antes de abrir o PC Optimizer);
+        /// - árvore de toda janela na tela que NÃO é sabidamente não-jogo;
+        /// - apps na tela que não são jogo ficam num conjunto à parte, que só a
+        ///   passada do nível Máximo usa.
+        /// Shell e serviços do Windows protegem só a si mesmos (o explorer é pai de
+        /// quase tudo).
+        /// </summary>
+        private static Protection BuildProtection(List<ProcInfo> processes, WindowScan scan, bool needServices)
+        {
+            int myPid = Environment.ProcessId;
+            var namesByPid = new Dictionary<int, string>();
+            foreach (var p in processes) namesByPid[p.Pid] = p.Name;
+            var edges = processes.Select(p => (p.Pid, p.ParentPid)).ToList();
+            var reasons = new Dictionary<int, string>();
+
+            int fgPid = 0;
             try
             {
                 IntPtr fg = MemoryNative.GetForegroundWindow();
-                if (fg != IntPtr.Zero)
-                {
-                    MemoryNative.GetWindowThreadProcessId(fg, out int fgPid);
-                    if (fgPid > 4) roots.Add(fgPid);
-                }
+                if (fg != IntPtr.Zero) MemoryNative.GetWindowThreadProcessId(fg, out fgPid);
             }
             catch { }
 
-            // Shell e serviços do Windows protegem só a si mesmos: o explorer é pai
-            // de quase todo programa, e usá-lo como raiz anulava a limpeza.
-            var namesByPid = new Dictionary<int, string>();
-            foreach (var p in processes) namesByPid[p.Pid] = p.Name;
-            var (treeRoots, leaves) = MemoryOptimizerPolicy.SplitRoots(roots, namesByPid);
+            HashSet<int> Protect(IEnumerable<int> roots, string reason)
+            {
+                var (tree, leaves) = MemoryOptimizerPolicy.SplitRoots(roots, namesByPid);
+                var set = MemoryOptimizerPolicy.ExpandProcessTree(edges, tree);
+                set.UnionWith(leaves);
+                foreach (int pid in set) reasons.TryAdd(pid, reason);
+                return set;
+            }
 
-            var protectedPids = MemoryOptimizerPolicy.ExpandProcessTree(
-                processes.Select(p => (p.Pid, p.ParentPid)), treeRoots);
-            protectedPids.UnionWith(leaves);
-            protectedPids.Add(myPid);
+            var hard = new HashSet<int>();
+            hard.UnionWith(Protect(scan.GamePids.Concat(LatchedPids()), MemoryOptimizerPolicy.ReasonGame));
+            hard.UnionWith(Protect(new[] { fgPid, scan.TopZPid }.Where(p => p > 4), MemoryOptimizerPolicy.ReasonInUse));
+            hard.UnionWith(Protect(scan.VisiblePids.Except(scan.NonGameVisiblePids), MemoryOptimizerPolicy.ReasonOnScreen));
+            hard.Add(myPid);
 
-            // Pastas protegidas: a do jogo e a do app da frente (launchers e
-            // processos auxiliares ficam ao lado do executável principal).
+            var nonGame = Protect(scan.NonGameVisiblePids.Except(hard), MemoryOptimizerPolicy.ReasonOnScreen);
+            nonGame.ExceptWith(hard);
+
             var dirs = new List<string>();
             foreach (int pid in scan.GamePids)
                 if (MemoryOptimizerPolicy.DirectoryOf(MemoryNative.ImagePathReadOnly(pid)) is string d) dirs.Add(d);
@@ -635,12 +679,35 @@ namespace PCOptimizer.Services
             try { userProtected = SettingsService.Current.GameBoostUserProtected?.ToList() ?? new List<string>(); }
             catch { userProtected = new List<string>(); }
 
-            var ctx = new TrimContext(myPid, protectedPids, extraNames, dirs, userProtected,
-                Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+            var deny = new HashSet<int>();
+            if (needServices)
+            {
+                foreach (var (name, pid) in MemoryNative.ActiveServices())
+                    if (MemoryOptimizerPolicy.ServiceDenyList.Contains(name)) deny.Add(pid);
+                foreach (int pid in deny) reasons.TryAdd(pid, MemoryOptimizerPolicy.ReasonService);
+            }
 
+            var ctx = new TrimContext(myPid, hard, extraNames, dirs, userProtected,
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows))
+            {
+                VisibleNonGamePids = nonGame,
+                ServiceDenyPids = deny,
+            };
+            return new Protection(ctx, reasons);
+        }
+
+        /// <summary>
+        /// Uma passada de limpeza: escolhe, abre só com SET_QUOTA + consulta,
+        /// confere nome e pasta depois de abrir, e esvazia.
+        /// </summary>
+        private static int TrimPass(List<ProcInfo> processes, TrimContext ctx, MemoryLevelSpec spec,
+                                    TrimKind pass, ref int trimmed)
+        {
             var candidates = processes.Select(p => new ProcessCandidate(p.Pid, p.Name, p.SessionId, p.WorkingSet));
-            int count = 0;
-            foreach (var target in MemoryOptimizerPolicy.PickTrimTargets(candidates, ctx, aggressive))
+            // Serviços moram em System32; apps do Windows na sessão do usuário
+            // também — só o nível Máximo os alcança.
+            bool allowWindowsDir = pass == TrimKind.Service || spec.AllowWindowsDir;
+            foreach (var target in MemoryOptimizerPolicy.PickTrimTargets(candidates, ctx, spec.Level, pass))
             {
                 IntPtr h = MemoryNative.OpenProcess(
                     MemoryNative.PROCESS_SET_QUOTA | MemoryNative.PROCESS_QUERY_LIMITED_INFORMATION, false, target.Pid);
@@ -649,17 +716,172 @@ namespace PCOptimizer.Services
                 {
                     string? path = MemoryNative.ImagePath(h);
                     if (!MemoryOptimizerPolicy.ImageNameMatches(path, target.Name)) continue;   // PID reaproveitado
-                    if (MemoryOptimizerPolicy.PathExcluded(path, ctx)) continue;
-                    if (MemoryNative.EmptyWorkingSet(h)) count++;
+                    if (MemoryOptimizerPolicy.PathExcluded(path, ctx, allowWindowsDir)) continue;
+                    if (MemoryNative.EmptyWorkingSet(h)) trimmed++;
                 }
                 finally { MemoryNative.CloseHandle(h); }
 
                 // Espaça as limpezas para o gravador de páginas e a compressão de
                 // memória não receberem tudo de uma vez.
-                Thread.Sleep(10);
+                Thread.Sleep(5);
             }
-            trimmed = count;
             return MemoryNative.STATUS_SUCCESS;
+        }
+
+        /// <summary>
+        /// Serviços rodam como SYSTEM: abrir com SET_QUOTA pede o privilégio de
+        /// depuração, ligado só durante esta passada e desligado logo depois.
+        /// </summary>
+        private static int TrimServicesPass(List<ProcInfo> processes, TrimContext ctx, MemoryLevelSpec spec, ref int trimmed)
+        {
+            bool debug = MemoryNative.TrySetPrivilege(MemoryNative.SE_DEBUG_NAME, true);
+            try { return TrimPass(processes, ctx, spec, TrimKind.Service, ref trimmed); }
+            finally { if (debug) MemoryNative.TrySetPrivilege(MemoryNative.SE_DEBUG_NAME, false); }
+        }
+
+        // ── Prioridade de memória ─────────────────────────────────────────────
+
+        private sealed record Lowered(int Pid, long CreationTime, uint Original);
+        private static readonly object LoweredLock = new();
+        private static readonly Dictionary<int, Lowered> LoweredPids = new();
+
+        /// <summary>
+        /// Programas em segundo plano SEM janela ficam com prioridade de memória
+        /// baixa: quando o jogo pedir RAM, o Windows tira deles primeiro. Guarda o
+        /// valor original para devolver ao sair do app ou ao voltar ao nível Leve.
+        /// </summary>
+        private static int LowerPriorities(List<ProcInfo> processes, TrimContext ctx, WindowScan scan)
+        {
+            int changed = 0;
+            foreach (var p in processes)
+            {
+                var c = new ProcessCandidate(p.Pid, p.Name, p.SessionId, p.WorkingSet);
+                if (!MemoryOptimizerPolicy.IsPriorityCandidate(c, ctx, scan.WindowOwners)) continue;
+                lock (LoweredLock) if (LoweredPids.ContainsKey(p.Pid)) continue;
+
+                IntPtr h = MemoryNative.OpenProcess(
+                    MemoryNative.PROCESS_SET_INFORMATION | MemoryNative.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Pid);
+                if (h == IntPtr.Zero) continue;
+                try
+                {
+                    string? path = MemoryNative.ImagePath(h);
+                    if (!MemoryOptimizerPolicy.ImageNameMatches(path, p.Name)) continue;
+                    if (MemoryOptimizerPolicy.PathExcluded(path, ctx)) continue;
+                    if (!MemoryNative.GetProcessInformation(h, MemoryNative.ProcessMemoryPriority, out uint original, 4))
+                        continue;
+                    if (original <= MemoryNative.MEMORY_PRIORITY_LOW) continue;   // nunca sobe
+                    if (!MemoryNative.GetProcessTimes(h, out long created, out _, out _, out _)) continue;
+
+                    uint low = MemoryNative.MEMORY_PRIORITY_LOW;
+                    if (!MemoryNative.SetProcessInformation(h, MemoryNative.ProcessMemoryPriority, ref low, 4)) continue;
+                    lock (LoweredLock) LoweredPids[p.Pid] = new Lowered(p.Pid, created, original);
+                    changed++;
+                }
+                finally { MemoryNative.CloseHandle(h); }
+            }
+            if (changed > 0) Logger.Info($"Memória: prioridade baixa em {changed} processo(s) sem janela");
+            return MemoryNative.STATUS_SUCCESS;
+        }
+
+        /// <summary>
+        /// Devolve a prioridade de memória original. Confere o horário de criação
+        /// para não mexer num processo novo que herdou o mesmo PID.
+        /// </summary>
+        public static void RestoreMemoryPriorities()
+        {
+            List<Lowered> list;
+            lock (LoweredLock)
+            {
+                list = LoweredPids.Values.ToList();
+                LoweredPids.Clear();
+            }
+            int restored = 0;
+            foreach (var l in list)
+            {
+                IntPtr h = MemoryNative.OpenProcess(
+                    MemoryNative.PROCESS_SET_INFORMATION | MemoryNative.PROCESS_QUERY_LIMITED_INFORMATION, false, l.Pid);
+                if (h == IntPtr.Zero) continue;   // já fechou
+                try
+                {
+                    if (!MemoryNative.GetProcessTimes(h, out long created, out _, out _, out _) || created != l.CreationTime)
+                        continue;
+                    uint value = l.Original;
+                    if (MemoryNative.SetProcessInformation(h, MemoryNative.ProcessMemoryPriority, ref value, 4)) restored++;
+                }
+                catch { }
+                finally { MemoryNative.CloseHandle(h); }
+            }
+            if (restored > 0) Logger.Info($"Memória: prioridade original devolvida a {restored} processo(s)");
+        }
+
+        // ── Medição ───────────────────────────────────────────────────────────
+
+        /// <summary>Respiro curto para não pegar a foto no meio de uma troca de lista.</summary>
+        private static MemorySnapshot SettleShort()
+        {
+            Thread.Sleep(250);
+            return ReadSnapshot();
+        }
+
+        /// <summary>
+        /// Depois de gravar a memória modificada, espera ela assentar (até 2 s):
+        /// a foto tirada cedo demais mostrava páginas ainda a caminho do disco.
+        /// </summary>
+        private static MemorySnapshot WaitModifiedSettled()
+        {
+            var sw = Stopwatch.StartNew();
+            Thread.Sleep(250);
+            var snap = ReadSnapshot();
+            ulong prev = ulong.MaxValue;
+            while (snap.ModifiedBytes is ulong mod
+                   && !MemoryOptimizerPolicy.SettleComplete(prev, mod, sw.Elapsed))
+            {
+                prev = mod;
+                Thread.Sleep(250);
+                snap = ReadSnapshot();
+            }
+            return snap;
+        }
+
+        /// <summary>Tamanho do depósito de memória comprimida (conta como "em uso").</summary>
+        private static long CompressionStoreBytes(List<ProcInfo>? processes)
+        {
+            try
+            {
+                if (processes != null)
+                    return processes.Where(p => p.Name is "MemCompression" or "Memory Compression")
+                                    .Sum(p => p.WorkingSet);
+                long total = 0;
+                foreach (var name in new[] { "MemCompression", "Memory Compression" })
+                    foreach (var p in Process.GetProcessesByName(name))
+                        using (p) total += p.WorkingSet64;
+                return total;
+            }
+            catch { return 0; }
+        }
+
+        /// <summary>Os 3 maiores que ficaram de fora e por quê.</summary>
+        private static IReadOnlyList<ProtectedEntry> TopProtected(List<ProcInfo> processes, TrimContext ctx,
+            MemoryLevelSpec spec, Dictionary<int, string> reasons)
+        {
+            var list = new List<ProtectedEntry>();
+            foreach (var p in processes)
+            {
+                if (p.Pid <= 4 || p.Pid == ctx.MyPid || p.WorkingSet < (long)MemoryOptimizerPolicy.SmallGainBytes) continue;
+                var c = new ProcessCandidate(p.Pid, p.Name, p.SessionId, p.WorkingSet);
+                string? reason = null;
+                if (reasons.TryGetValue(p.Pid, out var r)
+                    && (ctx.ProtectedPids.Contains(p.Pid) || ctx.ServiceDenyPids.Contains(p.Pid)
+                        || (ctx.VisibleNonGamePids.Contains(p.Pid) && spec.Level != MemoryLevel.Maximo)))
+                    reason = r;
+                else if (p.SessionId != 0
+                         && MemoryOptimizerPolicy.IsProtectedName(p.Name, ctx.ExtraProtectedNames, ctx.UserProtected)
+                         && !MemoryOptimizerPolicy.NeverTreeRoots.Contains(p.Name)
+                         && p.Name is not ("dwm" or "MemCompression" or "Memory Compression"))
+                    reason = MemoryOptimizerPolicy.ReasonName;
+                if (reason != null) list.Add(new ProtectedEntry(p.Name, reason, (ulong)p.WorkingSet));
+            }
+            return list.OrderByDescending(e => e.Bytes).Take(3).ToList();
         }
 
         // ── Automático ────────────────────────────────────────────────────────
@@ -759,7 +981,7 @@ namespace PCOptimizer.Services
                 LastRunUtc: _lastRunUtc,
                 Cooldown: _cooldown,
                 Configured: s.MemoryOps,
-                Aggressive: s.MemoryAggressive));
+                Level: CurrentLevel));
 
             SetSkip(decision.Reason, before);
             if (!decision.Run) return;
@@ -818,7 +1040,7 @@ namespace PCOptimizer.Services
             if (!s.MemoryAutoOptimize) return "";
 
             string text = $"Automático acima de {MemoryOptimizerPolicy.ClampThreshold(s.MemoryAutoThresholdPercent)}%";
-            if (s.MemoryAggressive) text += " · agressivo";
+            text += " · nível " + MemoryOptimizerPolicy.LevelName(CurrentLevel);
             if (s.MemoryAutoOnlyWhenIdle) text += " · com PC ocioso";
             switch (LastAutoSkip)
             {

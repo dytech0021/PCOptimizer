@@ -71,9 +71,9 @@ namespace PCOptimizer.Views
         {
             if (enabled)
             {
-                StatusBadge.Background     = new SolidColorBrush(Color.FromRgb(0x06, 0x2D, 0x1A));
+                StatusBadge.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "AccentBoxBg");
                 TxtStatusBadge.Text        = "✅ Ativo";
-                TxtStatusBadge.Foreground  = new SolidColorBrush(Color.FromRgb(0x6E, 0xE7, 0xB7));
+                TxtStatusBadge.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "AccentBoxFg");
             }
             else
             {
@@ -86,12 +86,12 @@ namespace PCOptimizer.Views
         private void ShowMsg(string text, bool? success)
         {
             TxtMsg.Text       = text;
-            TxtMsg.Foreground = new SolidColorBrush(success switch
-            {
-                true  => Color.FromRgb(0xA6, 0xE3, 0xA1),
-                false => Color.FromRgb(0xF3, 0x8B, 0xA8),
-                null  => Color.FromRgb(0xF9, 0xE2, 0xAF),
-            });
+            // Sucesso e erro seguem o tema; aviso continua amarelo.
+            if (success is bool ok)
+                TxtMsg.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
+                    ok ? "StatusOkFg" : "StatusErrFg");
+            else
+                TxtMsg.Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF));
         }
 
         private void CboAdapter_SelectionChanged(object sender,

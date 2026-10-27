@@ -80,6 +80,11 @@ namespace PCOptimizer.Services
                     IsActive = true;
                     FromPreviousRun = true;
                     Logger.Info("CPU: perfil do painel continua ativo desde a sessão anterior");
+
+                    // O timer de 0,5 ms vale por processo e acabou junto com a
+                    // sessão anterior: o resto do perfil persiste, ele não.
+                    if (SettingsService.Current.CpuTuning?.LowLatencyTimer == true)
+                        TimerResolutionService.Apply();
                 }
                 else
                 {
@@ -186,6 +191,9 @@ namespace PCOptimizer.Services
 
                 if (recovery?.ResponsivenessChanged == true)
                     RestoreResponsiveness(recovery.PreviousResponsiveness);
+
+                // O pedido de timer fino deste processo também sai com o perfil.
+                TimerResolutionService.Revert();
 
                 ProcessRunner.Run("powercfg.exe", $"/delete {OurScheme}", 10000);
                 ClearRecovery();

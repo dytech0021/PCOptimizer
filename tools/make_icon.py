@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Gera PCOptimizer/Assets/icon.ico — simbolo radioativo (trefoil) preto
-sobre o verde #22C55E do proprio app.
+sobre o violeta #A78BFA do proprio app.
 
 Python puro (zlib + struct da biblioteca padrao). Nao precisa de Pillow,
 ImageMagick nem Inkscape, e nao adiciona dependencia ao projeto.
@@ -21,7 +21,7 @@ import zlib
 
 # ---------------------------------------------------------------- parametros
 
-GREEN = (0x22, 0xC5, 0x5E)      # verde do app (#22C55E), usado nos cards
+ACCENT = (0xA7, 0x8B, 0xFA)     # violeta do app (#A78BFA), o destaque do tema
 BLACK = (0x00, 0x00, 0x00)      # simbolo, como na placa de radiacao real
 
 SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]   # 100/125/150/175/200% do Windows
@@ -110,9 +110,9 @@ def render(n):
             if cover == 0:
                 continue                       # transparente
             t = ink / cover                    # fracao de preto sobre o verde
-            out[i + 0] = round(BLACK[0] * t + GREEN[0] * (1 - t))
-            out[i + 1] = round(BLACK[1] * t + GREEN[1] * (1 - t))
-            out[i + 2] = round(BLACK[2] * t + GREEN[2] * (1 - t))
+            out[i + 0] = round(BLACK[0] * t + ACCENT[0] * (1 - t))
+            out[i + 1] = round(BLACK[1] * t + ACCENT[1] * (1 - t))
+            out[i + 2] = round(BLACK[2] * t + ACCENT[2] * (1 - t))
             out[i + 3] = round(255 * cover / samples)
     return bytes(out)
 

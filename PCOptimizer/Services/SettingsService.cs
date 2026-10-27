@@ -83,6 +83,7 @@ namespace PCOptimizer.Services
         // até o usuário desativar.
         public CpuTuningProfile CpuTuning { get; set; } = CpuTuningProfile.Default();
         public bool CpuTuningWarningShown { get; set; }
+        public bool CpuTuningAggressiveWarningShown { get; set; }
 
         // Sai da frente dos jogos: com um jogo em tela cheia, pausa os timers de
         // segundo plano e baixa a prioridade do processo. Ligado por padrão —
@@ -99,7 +100,10 @@ namespace PCOptimizer.Services
         public bool MemoryAutoNotify { get; set; } = true;
         // Modo agressivo: soma todas as áreas que não afetam jogos e limpa todo
         // programa elegível a partir de 16 MB. O cache completo nunca entra.
-        public bool MemoryAggressive { get; set; }
+        public bool MemoryAggressive { get; set; }   // antigo "Modo agressivo": só para migrar
+        // Intensidade: Leve / Agressivo / Máximo. Null = configuração antiga
+        // (ver MemoryOptimizerPolicy.ResolveLevel).
+        public MemoryLevel? MemoryLevel { get; set; }
 
         // Monitores desativados pelo app: device (\\.\DISPLAYn) →
         // "LARGURAxALTURAxHZxPOSXxPOSY" de antes, para a reativação devolver a

@@ -355,12 +355,15 @@
                             <Border Grid.Column="1" Style="{StaticResource ActionCardStyle}" Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="Controle de CPU" Style="{StaticResource SectionTitleStyle}"/>
-                                    <TextBlock Text="Frequência, turbo e estacionamento dos núcleos." Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
-                                    <TextBlock x:Name="TxtCpuTuningStatus" Text="Inativo" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" Margin="0,8,0,12"/>
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="BtnCpuTuning" Content="Aplicar perfil" Style="{StaticResource PrimaryButtonStyle}" Click="BtnCpuTuning_Click"/>
-                                        <Button x:Name="BtnCpuTuningDefaults" Content="Padrões" Style="{StaticResource ActionButtonStyle}" Margin="8,0,0,0" Click="BtnCpuTuningDefaults_Click"/>
-                                    </StackPanel>
+                                    <TextBlock Text="Frequência, turbo e estacionamento dos núcleos — para evitar travadas." Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="TxtCpuTuningStatus" Text="Inativo" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" Margin="0,8,0,10"/>
+                                    <UniformGrid x:Name="PnlCpuLevels" Columns="3">
+                                        <Button x:Name="BtnCpuLevelBaixo" Content="Baixo" Tag="Baixo" Style="{StaticResource ActionButtonStyle}" MinWidth="0" Margin="0,0,6,0" Click="BtnCpuLevel_Click"/>
+                                        <Button x:Name="BtnCpuLevelMedio" Content="Médio" Tag="Medio" Style="{StaticResource ActionButtonStyle}" MinWidth="0" Margin="3,0,3,0" Click="BtnCpuLevel_Click"/>
+                                        <Button x:Name="BtnCpuLevelAgressivo" Content="Agressivo" Tag="Agressivo" Style="{StaticResource ActionButtonStyle}" MinWidth="0" Margin="6,0,0,0" Click="BtnCpuLevel_Click"/>
+                                    </UniformGrid>
+                                    <TextBlock x:Name="TxtCpuLevelSummary" Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap" LineHeight="17" Margin="0,10,0,10"/>
+                                    <Button x:Name="BtnCpuTuningOff" Content="Desativar e devolver o plano" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Left" Click="BtnCpuTuningOff_Click"/>
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -398,7 +401,7 @@
                                         <Slider Grid.Row="2" Grid.Column="1" x:Name="SldPMaxState" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
                                         <Slider Grid.Row="2" Grid.Column="2" x:Name="SldEMaxState" Minimum="0" Maximum="100" Margin="12,0" VerticalAlignment="Center"/>
 
-                                        <TextBlock Grid.Row="3" Text="Modo de turbo" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="3" Text="Modo de turbo (todos)" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                                         <ComboBox Grid.Row="3" Grid.Column="1" x:Name="CmbPBoost" Margin="12,0" VerticalAlignment="Center"/>
                                         <ComboBox Grid.Row="3" Grid.Column="2" x:Name="CmbEBoost" Margin="12,0" VerticalAlignment="Center"/>
 
@@ -425,7 +428,11 @@
 
                                     <CheckBox x:Name="ChkCpuResponsiveness" Content="Reservar menos CPU para segundo plano (MMCSS)" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
 
-                                    <Button x:Name="BtnCpuTuningOff" Content="Desativar e devolver o plano" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Left" Margin="0,16,0,0" Click="BtnCpuTuningOff_Click"/>
+                                    <TextBlock Text="Mexeu nos controles? O nível vira “Personalizado” e vale ao aplicar." Foreground="{DynamicResource TextMuted}" FontSize="10" TextWrapping="Wrap" Margin="0,16,0,8"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="BtnCpuTuning" Content="Aplicar ajustes" Style="{StaticResource PrimaryButtonStyle}" Click="BtnCpuTuning_Click"/>
+                                        <Button x:Name="BtnCpuTuningDefaults" Content="Voltar ao Médio" Style="{StaticResource ActionButtonStyle}" Margin="8,0,0,0" Click="BtnCpuTuningDefaults_Click"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </Expander>
@@ -445,11 +452,16 @@
                                     <TextBlock x:Name="TxtMemDetail" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" Margin="0,6,0,0"
                                                ToolTip="Disponível = livre + cache em espera. O Windows guarda arquivos recentes na RAM que sobra para abrir tudo mais rápido, e devolve essa memória na hora em que um programa precisa."/>
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="200">
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Width="300">
                                     <Button x:Name="BtnMemOptimize" Content="Otimizar agora" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Left" Click="BtnMemOptimize_Click"/>
-                                    <CheckBox x:Name="ChkMemAggressive" Content="Modo agressivo" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"
-                                              ToolTip="Soma todas as áreas que não afetam jogos (programas, cache de arquivos, cache de baixa prioridade e memória modificada) e limpa todo programa a partir de 16 MB, não só os 40 maiores. O cache em espera completo nunca entra: ele faria o próximo jogo carregar do disco."/>
-                                    <TextBlock x:Name="TxtMemResult" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" MaxWidth="300" Margin="0,8,0,0"/>
+                                    <TextBlock Text="Intensidade" Foreground="{DynamicResource TextSecondary}" FontFamily="Cascadia Mono" FontSize="10" Margin="0,12,0,6"/>
+                                    <UniformGrid x:Name="PnlMemLevels" Columns="3">
+                                        <Button x:Name="BtnMemLevelLeve" Content="Leve" Tag="Leve" Style="{StaticResource ActionButtonStyle}" MinWidth="0" Height="32" Margin="0,0,4,0" Click="BtnMemLevel_Click"/>
+                                        <Button x:Name="BtnMemLevelAgressivo" Content="Agressivo" Tag="Agressivo" Style="{StaticResource ActionButtonStyle}" MinWidth="0" Height="32" Margin="2,0,2,0" Click="BtnMemLevel_Click"/>
+                                        <Button x:Name="BtnMemLevelMaximo" Content="Máximo" Tag="Maximo" Style="{StaticResource ActionButtonStyle}" MinWidth="0" Height="32" Margin="4,0,0,0" Click="BtnMemLevel_Click"/>
+                                    </UniformGrid>
+                                    <TextBlock x:Name="TxtMemLevelSummary" Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    <TextBlock x:Name="TxtMemResult" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" Margin="0,8,0,0"/>
                                     <TextBlock x:Name="TxtMemStatus" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" MaxWidth="300" Margin="0,4,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
                             </Grid>
@@ -475,7 +487,7 @@
                                     <TextBlock Text="Joga fora todo o cache de arquivos: programas e fases de jogo vão ler do disco de novo. Só ajuda com pouca RAM livre. Roda apenas no botão “Otimizar agora”." Foreground="{DynamicResource WarningBrush}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
 
                                     <CheckBox x:Name="ChkMemModified" Content="Memória modificada (grava no disco)" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
-                                    <TextBlock Text="Grava no disco o que estava esperando para ser salvo e devolve ao cache. Pode travar o PC por um instante com disco lento. Roda apenas no botão “Otimizar agora”." Foreground="{DynamicResource WarningBrush}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
+                                    <TextBlock Text="Grava no disco o que estava esperando para ser salvo e devolve ao cache. Pode travar o PC por um instante com disco lento. No nível Leve, só no botão; no Agressivo e no Máximo também no automático, sempre depois da limpeza." Foreground="{DynamicResource WarningBrush}" FontSize="10" TextWrapping="Wrap" Margin="26,2,0,0"/>
 
                                     <TextBlock Text="Automático" Foreground="{DynamicResource TextSecondary}" FontFamily="Cascadia Mono" FontSize="10" Margin="0,18,0,8"/>
                                     <StackPanel Orientation="Horizontal">
@@ -485,7 +497,7 @@
                                     </StackPanel>
                                     <CheckBox x:Name="ChkMemAutoIdle" Content="Só com o PC ocioso (CPU abaixo de 10% por 5 minutos)" Style="{StaticResource OptionCheckStyle}" Margin="26,8,0,0"/>
                                     <CheckBox x:Name="ChkMemAutoNotify" Content="Avisar na bandeja depois de otimizar" Style="{StaticResource OptionCheckStyle}" Margin="26,6,0,0"/>
-                                    <TextBlock Text="Nunca roda com jogo aberto (tela cheia, sem borda, em janela, minimizado ou com Game Boost ativo) e no máximo uma vez a cada 10 minutos — se o ganho não se sustentar, espera mais. Confere a memória a cada 60 s com uma leitura leve, só com o PC Optimizer aberto. Cache completo e memória modificada nunca entram no automático." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,6,0,0"/>
+                                    <TextBlock Text="Nunca roda com jogo aberto (tela cheia, sem borda, em janela, minimizado ou com Game Boost ativo) e no máximo uma vez a cada 10 minutos — se o ganho não se sustentar, espera mais. Confere a memória a cada 60 s com uma leitura leve, só com o PC Optimizer aberto. O cache completo e os apps na tela nunca entram no automático; a memória modificada só a partir do nível Agressivo." Foreground="{DynamicResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="26,6,0,0"/>
 
                                     <TextBlock Text="Ficam de fora de propósito: esvaziar a memória do jogo, “desfragmentar” a RAM e limpar a área de transferência — é isso que faz otimizadores de memória causarem travadas ou perderem o que você copiou." Foreground="{DynamicResource TextMuted}" FontSize="10" TextWrapping="Wrap" Margin="0,16,0,0"/>
                                 </StackPanel>

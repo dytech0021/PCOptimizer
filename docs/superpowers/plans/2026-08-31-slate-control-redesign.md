@@ -15,7 +15,7 @@
 - Preserve every existing `x:Name` used by code-behind.
 - Preserve all existing button, checkbox, slider, and mouse event handlers.
 - Keep the floating brightness window and its topmost behavior.
-- Use Ink `#0B0E13`, Slate `#121720`, Graphite `#293241`, Signal Lime `#B7F34A`, Signal Cyan `#5EEAD4`, and Paper `#F4F7FB` as the dark reference palette.
+- Use Ink `#000000`, Slate `#000000`, Graphite `#26222F`, Signal Violet `#A78BFA`, Signal Cyan `#5EEAD4`, and Paper `#F4F7FB` as the dark reference palette.
 - Keep `net10.0-windows10.0.26100.0` and `SupportedOSPlatformVersion` `10.0.19041.0`.
 
 ---

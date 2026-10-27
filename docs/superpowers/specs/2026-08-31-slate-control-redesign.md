@@ -6,17 +6,17 @@ Replace the crowded PC Optimizer presentation with a compact control-console lay
 
 ## Visual system
 
-- Ink `#0B0E13`: application background.
-- Slate `#121720`: primary surfaces.
-- Graphite `#293241`: boundaries and inactive controls.
-- Signal Lime `#B7F34A`: operational state, selection, progress, and primary actions.
+- Ink `#000000`: application background — pure matte black (all surfaces black since v1.90).
+- Slate `#000000`: primary surfaces, separated only by borders.
+- Graphite `#26222F`: boundaries and inactive controls.
+- Signal Violet `#A78BFA`: operational state, selection, progress, and primary actions (was Signal Lime `#B7F34A` until v1.89).
 - Signal Cyan `#5EEAD4`: display/color context and secondary live state.
 - Paper `#F4F7FB`: primary text.
 - Display role: Segoe UI Variable Display, semibold, tightly spaced.
 - Body role: Segoe UI Variable Text / Segoe UI.
 - Utility role: Cascadia Mono for versions, percentages, status codes, and measurements.
 
-The signature element is the signal spine: a narrow lime indicator attached to the currently selected navigation area and to the primary system-state card. It makes active state legible without gradients or decorative glow.
+The signature element is the signal spine: a narrow violet indicator attached to the currently selected navigation area and to the primary system-state card. It makes active state legible without gradients or decorative glow.
 
 ## Main window
 

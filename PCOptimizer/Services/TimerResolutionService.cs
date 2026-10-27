@@ -38,5 +38,16 @@ namespace PCOptimizer.Services
 
             return ok;
         }
+
+        /// <summary>
+        /// Desfaz o pedido de 0,5 ms deste processo. O valor de registro do
+        /// Windows 11 fica: sozinho ele não muda nada — só faz o Windows respeitar
+        /// pedidos de timer de quem pedir.
+        /// </summary>
+        public static void Revert()
+        {
+            try { NtSetTimerResolution(5000, false, out _); }
+            catch { }
+        }
     }
 }

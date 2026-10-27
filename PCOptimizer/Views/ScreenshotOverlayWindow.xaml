@@ -14,14 +14,14 @@
                 MouseMove="Canvas_MouseMove"
                 MouseUp="Canvas_MouseUp">
             <Rectangle x:Name="SelectionRect"
-                       Stroke="#4FC3F7" StrokeThickness="2"
-                       Fill="#204FC3F7"
+                       Stroke="#A78BFA" StrokeThickness="2"
+                       Fill="#20A78BFA"
                        Visibility="Collapsed"/>
         </Canvas>
 
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0"
                     IsHitTestVisible="False">
-            <Border Background="#CC1A1A2E" CornerRadius="10" Padding="18,10">
+            <Border Background="#CC0E0820" CornerRadius="10" Padding="18,10">
                 <TextBlock Text="Arraste para selecionar a área  •  ESC para cancelar"
                            Foreground="White" FontSize="13" FontWeight="SemiBold"/>
             </Border>

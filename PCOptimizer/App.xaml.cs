@@ -338,6 +338,11 @@ namespace PCOptimizer
             try { MemoryOptimizerService.Stop(); }
             catch (Exception ex) { Logger.Error(ex, "OnExit/MemoryOptimizer"); }
 
+            // Devolve a prioridade de memória dos programas que o nível Agressivo
+            // ou Máximo baixou — ela não deve sobreviver ao app.
+            try { MemoryOptimizerService.RestoreMemoryPriorities(); }
+            catch (Exception ex) { Logger.Error(ex, "OnExit/MemoryPriorities"); }
+
             // Restaura a barra de tarefas ao padrão (o efeito só vale com o app aberto).
             TaskbarTransparencyService.Stop();
             HotkeyService.Dispose();

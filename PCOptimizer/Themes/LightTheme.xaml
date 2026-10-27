@@ -2,7 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
-    <!-- Slate Control — light counterpart -->
+    <!-- Claro + violeta — contraparte do tema escuro -->
     <SolidColorBrush x:Key="WindowBg" Color="#EEF1F4"/>
     <SolidColorBrush x:Key="NavBg" Color="#E5E9ED"/>
     <SolidColorBrush x:Key="SurfaceBg" Color="#F8FAFB"/>
@@ -11,13 +11,13 @@
     <SolidColorBrush x:Key="BorderColor" Color="#CDD4DC"/>
     <SolidColorBrush x:Key="BorderStrong" Color="#AEB8C4"/>
 
-    <SolidColorBrush x:Key="AccentStripBg" Color="#E5F0C8"/>
-    <SolidColorBrush x:Key="AccentBrush" Color="#6B8F14"/>
-    <SolidColorBrush x:Key="AccentMuted" Color="#E5F0C8"/>
+    <SolidColorBrush x:Key="AccentStripBg" Color="#EDE9FE"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#6D28D9"/>
+    <SolidColorBrush x:Key="AccentMuted" Color="#EDE9FE"/>
     <SolidColorBrush x:Key="SignalCyan" Color="#0F8B82"/>
     <SolidColorBrush x:Key="DangerBrush" Color="#C24141"/>
     <SolidColorBrush x:Key="WarningBrush" Color="#A16207"/>
-    <SolidColorBrush x:Key="SuccessBrush" Color="#19733A"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="#6D28D9"/>
 
     <SolidColorBrush x:Key="TextPrimary" Color="#171B21"/>
     <SolidColorBrush x:Key="TextSecondary" Color="#4E5967"/>
@@ -26,34 +26,34 @@
     <SolidColorBrush x:Key="LogText" Color="#344050"/>
     <SolidColorBrush x:Key="Placeholder" Color="#A4AEB9"/>
 
-    <SolidColorBrush x:Key="ButtonPrimaryBg" Color="#6B8F14"/>
+    <SolidColorBrush x:Key="ButtonPrimaryBg" Color="#6D28D9"/>
     <SolidColorBrush x:Key="ButtonPrimaryFg" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="ButtonSecondaryBg" Color="#E8ECF0"/>
     <SolidColorBrush x:Key="ButtonSecondaryHover" Color="#DCE2E8"/>
     <SolidColorBrush x:Key="ButtonSecondaryFg" Color="#29313B"/>
-    <SolidColorBrush x:Key="ButtonSuccessBg" Color="#DDF3E4"/>
-    <SolidColorBrush x:Key="ButtonSuccessFg" Color="#155D31"/>
+    <SolidColorBrush x:Key="ButtonSuccessBg" Color="#EDE9FE"/>
+    <SolidColorBrush x:Key="ButtonSuccessFg" Color="#5B21B6"/>
     <SolidColorBrush x:Key="ProgressBg" Color="#D9DFE5"/>
-    <SolidColorBrush x:Key="BadgeBg" Color="#E5F0C8"/>
-    <SolidColorBrush x:Key="BadgeFg" Color="#536F11"/>
-    <SolidColorBrush x:Key="BadgeText" Color="#536F11"/>
+    <SolidColorBrush x:Key="BadgeBg" Color="#EDE9FE"/>
+    <SolidColorBrush x:Key="BadgeFg" Color="#5B21B6"/>
+    <SolidColorBrush x:Key="BadgeText" Color="#5B21B6"/>
 
     <SolidColorBrush x:Key="Card1Bg" Color="#F8ECEE"/>
     <SolidColorBrush x:Key="Card2Bg" Color="#EAF1F6"/>
     <SolidColorBrush x:Key="Card3Bg" Color="#F8F2DF"/>
-    <SolidColorBrush x:Key="Card4Bg" Color="#E8F3ED"/>
-    <SolidColorBrush x:Key="Card5Bg" Color="#EDF2E2"/>
+    <SolidColorBrush x:Key="Card4Bg" Color="#F3F1F8"/>
+    <SolidColorBrush x:Key="Card5Bg" Color="#F3F1F8"/>
     <SolidColorBrush x:Key="Card6Bg" Color="#E5F2F4"/>
-    <SolidColorBrush x:Key="Card7Bg" Color="#E7F4EC"/>
+    <SolidColorBrush x:Key="Card7Bg" Color="#F3F1F8"/>
     <SolidColorBrush x:Key="Card1Border" Color="#D7A8AE"/>
     <SolidColorBrush x:Key="Card2Border" Color="#AFC9DA"/>
     <SolidColorBrush x:Key="Card3Border" Color="#D8C486"/>
-    <SolidColorBrush x:Key="Card4Border" Color="#9FC9B2"/>
-    <SolidColorBrush x:Key="Card5Border" Color="#BBCB91"/>
+    <SolidColorBrush x:Key="Card4Border" Color="#C9C2DA"/>
+    <SolidColorBrush x:Key="Card5Border" Color="#C9C2DA"/>
     <SolidColorBrush x:Key="Card6Border" Color="#9BC7CF"/>
-    <SolidColorBrush x:Key="Card7Border" Color="#9BCBAD"/>
+    <SolidColorBrush x:Key="Card7Border" Color="#C9C2DA"/>
 
-    <SolidColorBrush x:Key="RunButtonBg" Color="#6B8F14"/>
+    <SolidColorBrush x:Key="RunButtonBg" Color="#6D28D9"/>
     <SolidColorBrush x:Key="RunButtonFg" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="RunButtonText" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="Preset1Bg" Color="#F4EFFA"/>
@@ -62,9 +62,16 @@
     <SolidColorBrush x:Key="Preset2Bg" Color="#E7F4F5"/>
     <SolidColorBrush x:Key="Preset2Fg" Color="#0F716D"/>
     <SolidColorBrush x:Key="Preset2Border" Color="#A7D4D3"/>
-    <SolidColorBrush x:Key="Preset3Bg" Color="#EDF4DF"/>
-    <SolidColorBrush x:Key="Preset3Fg" Color="#577615"/>
-    <SolidColorBrush x:Key="Preset3Border" Color="#C4D79A"/>
+    <SolidColorBrush x:Key="Preset3Bg" Color="#F5F3FF"/>
+    <SolidColorBrush x:Key="Preset3Fg" Color="#5B21B6"/>
+    <SolidColorBrush x:Key="Preset3Border" Color="#C4B5FD"/>
+
+    <SolidColorBrush x:Key="AccentBoxBg" Color="#F5F3FF"/>
+    <SolidColorBrush x:Key="AccentBoxBorder" Color="#C4B5FD"/>
+    <SolidColorBrush x:Key="AccentBoxFg" Color="#5B21B6"/>
+    <SolidColorBrush x:Key="AccentBoxTitle" Color="#4C1D95"/>
+    <SolidColorBrush x:Key="StatusOkFg" Color="#6D28D9"/>
+    <SolidColorBrush x:Key="StatusErrFg" Color="#C24141"/>
 
     <sys:String x:Key="ThemeToggleIcon">☾</sys:String>
 </ResourceDictionary>

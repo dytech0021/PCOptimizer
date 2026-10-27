@@ -42,8 +42,8 @@
 
             <!-- Como funciona -->
             <Border Grid.Row="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,14"
-                    Background="#0A1E14" BorderBrush="#173D27" BorderThickness="1">
-                <TextBlock FontSize="10" Foreground="#6EE7B7" TextWrapping="Wrap">
+                    Background="{DynamicResource AccentBoxBg}" BorderBrush="{DynamicResource AccentBoxBorder}" BorderThickness="1">
+                <TextBlock FontSize="10" Foreground="{DynamicResource AccentBoxFg}" TextWrapping="Wrap">
                     <Run FontWeight="SemiBold" Text="Como funciona: "/>
                     <Run Text="um app no celular envia um 'magic packet' com o MAC desta placa. O PC recebe pelo cabo Ethernet e liga — mesmo estando desligado, desde que haja energia e o BIOS esteja configurado."/>
                 </TextBlock>

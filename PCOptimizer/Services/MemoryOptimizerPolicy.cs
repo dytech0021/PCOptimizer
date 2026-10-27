@@ -18,9 +18,33 @@ namespace PCOptimizer.Services
         StandbyLowPriority = 4,
         /// <summary>Descarta TODO o cache em espera. Só no botão manual.</summary>
         StandbyFull        = 8,
-        /// <summary>Grava a memória modificada no disco. Só no botão manual.</summary>
+        /// <summary>Grava a memória modificada no disco (sempre DEPOIS da limpeza).</summary>
         ModifiedList       = 16,
+        /// <summary>Esvazia serviços do Windows (sessão 0), menos os de áudio, rede, Xbox e anticheat.</summary>
+        TrimServices       = 32,
+        /// <summary>Esvazia apps com janela na tela que não são jogo (navegador, Office, launchers).</summary>
+        TrimVisibleApps    = 64,
+        /// <summary>Baixa a prioridade de memória de processos sem janela (reversível).</summary>
+        LowerMemoryPriority = 128,
     }
+
+    /// <summary>Intensidade da otimização de memória.</summary>
+    public enum MemoryLevel { Leve, Agressivo, Maximo }
+
+    /// <summary>O que cada nível faz. Ver <see cref="MemoryOptimizerPolicy.SpecFor"/>.</summary>
+    public sealed record MemoryLevelSpec(
+        MemoryLevel Level,
+        MemoryOperation ExtraOps,
+        MemoryOperation ManualOnly,
+        long MinTrimWorkingSetBytes,
+        int MaxTrimProcesses,
+        bool AllowWindowsDir);
+
+    /// <summary>Em qual passada um processo pode ser esvaziado.</summary>
+    public enum TrimKind { Normal, Service, VisibleApp }
+
+    /// <summary>Por que um processo foi (ou não) escolhido.</summary>
+    public enum TrimVerdict { Trim, System, Self, Protected, ProtectedName, TooSmall, ServiceDenied, NotThisPass }
 
     /// <summary>De onde veio o pedido de limpeza.</summary>
     public enum MemoryTrigger { Manual, Batch, Tray, Auto }
@@ -71,7 +95,16 @@ namespace PCOptimizer.Services
         IReadOnlyCollection<string> ExtraProtectedNames,
         IReadOnlyCollection<string> ProtectedDirs,
         IReadOnlyCollection<string> UserProtected,
-        string WindowsDir);
+        string WindowsDir)
+    {
+        private static readonly IReadOnlySet<int> Empty = new HashSet<int>();
+
+        /// <summary>Apps com janela na tela que não são jogo (e seus filhos): só no nível Máximo.</summary>
+        public IReadOnlySet<int> VisibleNonGamePids { get; init; } = Empty;
+
+        /// <summary>Serviços que nunca são esvaziados (áudio, rede, Xbox, anticheat).</summary>
+        public IReadOnlySet<int> ServiceDenyPids { get; init; } = Empty;
+    }
 
     /// <summary>Plano de uma execução: o que roda e o que ficou de fora, e por quê.</summary>
     public readonly record struct MemoryPlan(
@@ -80,9 +113,19 @@ namespace PCOptimizer.Services
     public sealed record AutoInputs(
         bool Enabled, int ThresholdPercent, MemorySnapshot Snapshot, bool GameOpen,
         bool RequireIdle, bool IsIdle, DateTime NowUtc, DateTime? LastRunUtc,
-        TimeSpan Cooldown, MemoryOperation Configured, bool Aggressive = false);
+        TimeSpan Cooldown, MemoryOperation Configured, MemoryLevel Level = MemoryLevel.Leve);
 
     public readonly record struct AutoDecision(bool Run, AutoSkipReason Reason);
+
+    /// <summary>Um processo que ficou de fora, para explicar um ganho pequeno.</summary>
+    public readonly record struct ProtectedEntry(string Name, string Reason, ulong Bytes);
+
+    /// <summary>Medições extras de uma execução, para o texto do resultado.</summary>
+    public sealed record MemoryRunExtras(
+        MemoryLevel Level,
+        int TrimmedProcesses,
+        long CompressedDeltaBytes,
+        IReadOnlyList<ProtectedEntry> TopProtected);
 
     public sealed record MemoryRunResult(
         MemoryRunOutcome Outcome, MemorySnapshot Before, MemorySnapshot After,
@@ -110,11 +153,17 @@ namespace PCOptimizer.Services
     {
         // ── Limites ────────────────────────────────────────────────────────────
         public const int   ThresholdMin = 50, ThresholdMax = 95, ThresholdStep = 5, ThresholdDefault = 85;
-        public const long  MinTrimWorkingSetBytes = 64L << 20;   // 64 MB
+        public const long  MinTrimWorkingSetBytes = 64L << 20;   // 64 MB (nível Leve)
         public const int   MaxTrimProcesses = 40;
-        /// <summary>Modo agressivo: todo programa elegível a partir de 16 MB.</summary>
+        /// <summary>Nível Agressivo: todo programa elegível a partir de 16 MB.</summary>
         public const long  AggressiveMinTrimWorkingSetBytes = 16L << 20;
         public const int   AggressiveMaxTrimProcesses = 400;
+        /// <summary>Nível Máximo: a partir de 8 MB.</summary>
+        public const long  MaximoMinTrimWorkingSetBytes = 8L << 20;
+        public const int   MaximoMaxTrimProcesses = 1000;
+        /// <summary>Memória modificada abaixo disso já "assentou" depois da gravação.</summary>
+        public const ulong SettledModifiedBytes = 64UL << 20;
+        public static readonly TimeSpan SettleTimeout = TimeSpan.FromSeconds(2);
         public const ulong SmallGainBytes = 150UL << 20;         // abaixo disso = "pouco a liberar"
 
         public static readonly TimeSpan AutoPollInterval  = TimeSpan.FromSeconds(60);
@@ -133,20 +182,69 @@ namespace PCOptimizer.Services
 
         public const MemoryOperation All =
             MemoryOperation.TrimPrograms | MemoryOperation.SystemFileCache |
-            MemoryOperation.StandbyLowPriority | MemoryOperation.StandbyFull | MemoryOperation.ModifiedList;
+            MemoryOperation.StandbyLowPriority | MemoryOperation.StandbyFull | MemoryOperation.ModifiedList |
+            MemoryOperation.TrimServices | MemoryOperation.TrimVisibleApps | MemoryOperation.LowerMemoryPriority;
 
         /// <summary>O que vem marcado de fábrica: só o que não tem efeito colateral sério.</summary>
         public const MemoryOperation DefaultOps =
             MemoryOperation.TrimPrograms | MemoryOperation.SystemFileCache | MemoryOperation.StandbyLowPriority;
 
         /// <summary>
-        /// O que o modo agressivo soma às áreas marcadas. O cache em espera
-        /// completo fica de fora de propósito: ele faz o próximo jogo carregar
-        /// tudo do disco de novo — e a regra é não afetar jogos.
+        /// O que o nível Agressivo soma às áreas marcadas. O cache em espera
+        /// completo fica de fora em TODOS os níveis: ele faz o próximo jogo
+        /// carregar tudo do disco de novo — e a regra é não afetar jogos.
         /// </summary>
         public const MemoryOperation AggressiveOps =
             MemoryOperation.TrimPrograms | MemoryOperation.SystemFileCache |
-            MemoryOperation.StandbyLowPriority | MemoryOperation.ModifiedList;
+            MemoryOperation.StandbyLowPriority | MemoryOperation.ModifiedList |
+            MemoryOperation.LowerMemoryPriority;
+
+        /// <summary>O que o nível Máximo soma além do Agressivo.</summary>
+        public const MemoryOperation MaximoOps =
+            AggressiveOps | MemoryOperation.TrimServices | MemoryOperation.TrimVisibleApps;
+
+        public static MemoryLevelSpec SpecFor(MemoryLevel level) => level switch
+        {
+            MemoryLevel.Agressivo => new(level, AggressiveOps, MemoryOperation.StandbyFull,
+                                         AggressiveMinTrimWorkingSetBytes, AggressiveMaxTrimProcesses, false),
+            // Apps com janela na tela só com o usuário olhando (botão e bandeja):
+            // no lote e no automático ele pode estar fazendo outra coisa neles.
+            MemoryLevel.Maximo    => new(level, MaximoOps,
+                                         MemoryOperation.StandbyFull | MemoryOperation.TrimVisibleApps,
+                                         MaximoMinTrimWorkingSetBytes, MaximoMaxTrimProcesses, true),
+            _                     => new(MemoryLevel.Leve, MemoryOperation.None, ManualOnly,
+                                         MinTrimWorkingSetBytes, MaxTrimProcesses, false),
+        };
+
+        /// <summary>
+        /// Nível salvo, migrando configurações antigas: quem tinha ligado o
+        /// "Modo agressivo" continua no Agressivo; os demais, no Leve.
+        /// </summary>
+        public static MemoryLevel ResolveLevel(MemoryLevel? saved, bool legacyAggressive) =>
+            saved is MemoryLevel l && Enum.IsDefined(l) ? l
+            : legacyAggressive ? MemoryLevel.Agressivo : MemoryLevel.Leve;
+
+        public static string LevelName(MemoryLevel level) => level switch
+        {
+            MemoryLevel.Agressivo => "Agressivo",
+            MemoryLevel.Maximo    => "Máximo",
+            _                     => "Leve",
+        };
+
+        /// <summary>O que o nível faz, em português simples.</summary>
+        public static string DescribeLevel(MemoryLevel level) => level switch
+        {
+            MemoryLevel.Agressivo =>
+                "Todos os programas em segundo plano (a partir de 16 MB), grava a memória modificada " +
+                "no disco e deixa quem não tem janela com prioridade de memória baixa — o próximo jogo " +
+                "ganha espaço primeiro.",
+            MemoryLevel.Maximo =>
+                "Tudo do Agressivo, mais serviços do Windows e apps com janela na tela que não são jogo " +
+                "(navegador, Office, launchers), menos o que você está usando agora. Eles podem levar " +
+                "um instante para responder quando você voltar a eles.",
+            _ =>
+                "Os 40 maiores programas em segundo plano e os caches leves. Nada que está na tela é tocado.",
+        };
 
         /// <summary>Áreas que dependem de privilégio de administrador habilitado.</summary>
         public const MemoryOperation ListOps =
@@ -180,8 +278,11 @@ namespace PCOptimizer.Services
 
             // Shell, composição e núcleo do Windows
             "dwm", "explorer", "csrss", "wininit", "winlogon", "smss", "services",
-            "lsass", "fontdrvhost", "Registry", "MemCompression", "System", "Idle",
-            "Secure System",
+            "lsass", "fontdrvhost", "Registry", "MemCompression", "Memory Compression",
+            "System", "Idle", "Secure System",
+
+            // Digitação e sessão: esvaziar estes dá atraso ao digitar e no menu
+            "ctfmon", "TextInputHost", "sihost", "MsMpEng", "NisSrv", "SecurityHealthService",
 
             // Captura e gravação
             "obs64", "obs32", "nvcontainer", "NVDisplay.Container", "Streamlabs OBS",
@@ -226,6 +327,73 @@ namespace PCOptimizer.Services
             "RTSS", "EncoderServer", "TextInputHost", "ShellExperienceHost",
             "StartMenuExperienceHost", "SearchHost", "SearchApp", "LockApp",
             "ApplicationFrameHost", "SystemSettings", "AMDRSServ", "RadeonSoftware",
+        };
+
+        /// <summary>
+        /// Launchers: a janela do Epic é UnrealWindow e a do Steam é SDL_app, as
+        /// mesmas classes de jogos — mas eles não são jogo. Ficam fora da lista
+        /// acima porque continuam podendo proteger a própria árvore (o jogo
+        /// aberto por eles é filho deles).
+        /// </summary>
+        public static readonly IReadOnlySet<string> LauncherOwners = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "EpicGamesLauncher", "steamwebhelper", "steam", "Battle.net", "EADesktop",
+            "RiotClientUx", "RiotClientServices", "GalaxyClient", "upc", "UbisoftConnect",
+        };
+
+        /// <summary>
+        /// Apps que, com janela na tela, nunca são jogo: só eles podem ser
+        /// esvaziados no nível Máximo. Por nome do executável…
+        /// </summary>
+        public static readonly IReadOnlySet<string> KnownNonGameApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "chrome", "msedge", "firefox", "brave", "opera", "opera_gx", "vivaldi", "iexplore",
+            "Code", "Cursor", "devenv", "rider64", "idea64", "pycharm64", "notepad", "notepad++",
+            "slack", "Notion", "Obsidian", "Figma", "Postman", "Telegram",
+            "WINWORD", "EXCEL", "POWERPNT", "OUTLOOK", "ONENOTE", "Acrobat", "AcroRd32",
+            "EpicGamesLauncher", "steamwebhelper", "steam", "Battle.net", "EADesktop",
+            "RiotClientUx", "RiotClientServices", "GalaxyClient", "upc", "UbisoftConnect",
+            "qbittorrent", "Photoshop", "Illustrator",
+        };
+
+        /// <summary>…ou pela classe da janela (Chromium/Electron, Firefox, Office).</summary>
+        public static readonly IReadOnlySet<string> KnownNonGameWindowClasses = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Chrome_WidgetWin_0", "Chrome_WidgetWin_1", "MozillaWindowClass",
+            "OpusApp", "XLMAIN", "PPTFrameClass", "rctrl_renwnd32", "Notepad",
+        };
+
+        /// <summary>Serviços que nunca são esvaziados no nível Máximo.</summary>
+        public static readonly IReadOnlySet<string> ServiceDenyList = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Áudio e Bluetooth (fone)
+            "Audiosrv", "AudioEndpointBuilder", "MMCSS", "BthAvctpSvc", "BTAGService", "bthserv",
+            // Rede: ping e DNS
+            "Dhcp", "Dnscache", "NlaSvc", "nsi", "WlanSvc", "Netman", "netprofm", "LanmanWorkstation",
+            // Jogos e Xbox
+            "GamingServices", "GamingServicesNet", "XblAuthManager", "XblGameSave", "XboxNetApiSvc", "XboxGipSvc",
+            // Anticheat
+            "BEService", "EasyAntiCheat", "EasyAntiCheat_EOS", "vgc", "faceit", "FACEITService",
+            // Interface: tema, fontes, digitação
+            "Themes", "FontCache", "TextInputManagementService", "TabletInputService",
+            // Proteção do sistema
+            "WinDefend", "mpssvc", "BFE", "SecurityHealthService", "RpcSs", "RpcEptMapper", "DcomLaunch",
+            "LSM", "EventLog", "Power", "PlugPlay",
+        };
+
+        /// <summary>Apps da Store que não são jogo: fora da exclusão de "\WindowsApps\".</summary>
+        public static readonly IReadOnlyList<string> NonGameStorePackages = new[]
+        {
+            @"\WindowsApps\Microsoft.YourPhone", @"\WindowsApps\MicrosoftWindows.Client.WebExperience",
+            @"\WindowsApps\Microsoft.WindowsTerminal", @"\WindowsApps\Microsoft.OutlookForWindows",
+            @"\WindowsApps\Microsoft.GamingApp", @"\WindowsApps\Microsoft.WindowsStore",
+            @"\WindowsApps\Microsoft.Windows.Photos", @"\WindowsApps\Microsoft.ScreenSketch",
+            @"\WindowsApps\Microsoft.WindowsCalculator", @"\WindowsApps\Microsoft.WindowsNotepad",
+            @"\WindowsApps\Microsoft.Paint", @"\WindowsApps\Microsoft.Todos",
+            @"\WindowsApps\Microsoft.MicrosoftStickyNotes", @"\WindowsApps\Microsoft.ZuneMusic",
+            @"\WindowsApps\Microsoft.ZuneVideo", @"\WindowsApps\Microsoft.BingWeather",
+            @"\WindowsApps\Microsoft.BingNews", @"\WindowsApps\MSTeams", @"\WindowsApps\Microsoft.Copilot",
+            @"\WindowsApps\Clipchamp", @"\WindowsApps\Microsoft.PowerAutomateDesktop",
         };
 
         /// <summary>
@@ -337,17 +505,27 @@ namespace PCOptimizer.Services
         /// - Sem privilégio, a área vira "pulada", não "falhou".
         /// </summary>
         public static MemoryPlan BuildPlan(MemoryOperation configured, MemoryTrigger trigger,
-                                           bool canPurgeLists, bool canTrimFileCache, bool aggressive = false)
+                                           bool canPurgeLists, bool canTrimFileCache,
+                                           MemoryLevel level = MemoryLevel.Leve)
         {
-            var ops = EffectiveOps(configured, aggressive);
+            var ops = EffectiveOps(configured, level);
             var byPolicy = MemoryOperation.None;
             var noAdmin = MemoryOperation.None;
 
-            if (trigger != MemoryTrigger.Manual)
+            // A bandeja é um clique do usuário, como o botão: só lote e automático
+            // ficam sem as áreas que pedem alguém olhando.
+            if (trigger is MemoryTrigger.Batch or MemoryTrigger.Auto
+                || (trigger == MemoryTrigger.Tray && level != MemoryLevel.Maximo))
             {
-                var manualOnly = ManualOnlyFor(aggressive);
+                var manualOnly = ManualOnlyFor(level);
                 byPolicy |= ops & manualOnly;
                 ops &= ~manualOnly;
+            }
+            else if (trigger == MemoryTrigger.Tray)
+            {
+                // Bandeja no Máximo: apps na tela entram, cache completo não.
+                byPolicy |= ops & MemoryOperation.StandbyFull;
+                ops &= ~MemoryOperation.StandbyFull;
             }
 
             if ((ops & MemoryOperation.StandbyFull) != 0)
@@ -366,34 +544,44 @@ namespace PCOptimizer.Services
             return new MemoryPlan(ops, noAdmin, byPolicy);
         }
 
-        /// <summary>Áreas marcadas, somadas às do modo agressivo quando ligado.</summary>
-        public static MemoryOperation EffectiveOps(MemoryOperation configured, bool aggressive) =>
-            (aggressive ? configured | AggressiveOps : configured) & All;
+        /// <summary>Áreas marcadas, somadas às do nível.</summary>
+        public static MemoryOperation EffectiveOps(MemoryOperation configured, MemoryLevel level) =>
+            ((configured & UserOps) | SpecFor(level).ExtraOps) & All;
 
         /// <summary>
-        /// Áreas que só rodam no botão. No modo agressivo a memória modificada
-        /// pode rodar sozinha (só grava no disco; o cache continua); o cache
-        /// completo nunca, porque faz o próximo jogo carregar do disco.
+        /// Áreas que o usuário marca nas caixas. Serviços, apps na tela e
+        /// prioridade vêm só do nível — nunca de um valor salvo.
         /// </summary>
-        public static MemoryOperation ManualOnlyFor(bool aggressive) =>
-            aggressive ? MemoryOperation.StandbyFull : ManualOnly;
+        public const MemoryOperation UserOps =
+            MemoryOperation.TrimPrograms | MemoryOperation.SystemFileCache |
+            MemoryOperation.StandbyLowPriority | MemoryOperation.StandbyFull | MemoryOperation.ModifiedList;
+
+        /// <summary>
+        /// Áreas que só rodam no botão. A partir do Agressivo a memória
+        /// modificada pode rodar sozinha (só grava no disco; o cache continua);
+        /// o cache completo nunca, porque faz o próximo jogo carregar do disco.
+        /// </summary>
+        public static MemoryOperation ManualOnlyFor(MemoryLevel level) => SpecFor(level).ManualOnly;
 
         /// <summary>
         /// Ordem de execução. Os caches vêm ANTES dos programas: as páginas tiradas
         /// dos programas caem num cache em espera recém-limpo e continuam em RAM —
         /// se o programa voltar a usá-las, custa um soft fault, não uma leitura de
-        /// disco. A memória modificada vai primeiro para virar cache e ser limpa
-        /// junto.
+        /// disco. A memória modificada vai por ÚLTIMO: é a limpeza que a enche, e
+        /// gravá-la antes não tinha quase nada a gravar.
         /// </summary>
         public static IReadOnlyList<MemoryOperation> OrderedSteps(MemoryOperation ops)
         {
             var order = new[]
             {
-                MemoryOperation.ModifiedList,
                 MemoryOperation.StandbyFull,
                 MemoryOperation.StandbyLowPriority,
                 MemoryOperation.SystemFileCache,
+                MemoryOperation.LowerMemoryPriority,
                 MemoryOperation.TrimPrograms,
+                MemoryOperation.TrimServices,
+                MemoryOperation.TrimVisibleApps,
+                MemoryOperation.ModifiedList,
             };
             return order.Where(o => (ops & o) != 0).ToList();
         }
@@ -417,8 +605,8 @@ namespace PCOptimizer.Services
             if (i.Snapshot.InUsePercent < ClampThreshold(i.ThresholdPercent))
                 return new(false, AutoSkipReason.BelowThreshold);
             if (i.RequireIdle && !i.IsIdle) return new(false, AutoSkipReason.NotIdle);
-            if (BuildPlan(i.Configured, MemoryTrigger.Auto, true, true, i.Aggressive).Ops == MemoryOperation.None)
-                return new(false, EffectiveOps(i.Configured, i.Aggressive) == MemoryOperation.None
+            if (BuildPlan(i.Configured, MemoryTrigger.Auto, true, true, i.Level).Ops == MemoryOperation.None)
+                return new(false, EffectiveOps(i.Configured, i.Level) == MemoryOperation.None
                     ? AutoSkipReason.NothingToDo
                     : AutoSkipReason.ManualOnlyChecked);
             return new(true, AutoSkipReason.None);
@@ -452,18 +640,31 @@ namespace PCOptimizer.Services
         // ── Processos ─────────────────────────────────────────────────────────
 
         /// <summary>Filtro ANTES de abrir qualquer processo.</summary>
+        /// <summary>Programa comum, no nível Leve, pode ser esvaziado?</summary>
         public static bool ShouldTrim(ProcessCandidate c, TrimContext ctx) =>
-            ShouldTrim(c, ctx, MinTrimWorkingSetBytes);
+            Classify(c, ctx, SpecFor(MemoryLevel.Leve), TrimKind.Normal) == TrimVerdict.Trim;
 
-        public static bool ShouldTrim(ProcessCandidate c, TrimContext ctx, long minWorkingSetBytes)
+        /// <summary>Em que passada o processo cairia: serviço, app na tela ou comum.</summary>
+        public static TrimKind KindOf(ProcessCandidate c, TrimContext ctx) =>
+            c.SessionId == 0 ? TrimKind.Service
+            : ctx.VisibleNonGamePids.Contains(c.Pid) ? TrimKind.VisibleApp
+            : TrimKind.Normal;
+
+        /// <summary>
+        /// Filtro ANTES de abrir qualquer processo, para uma passada. Devolve o
+        /// motivo, que alimenta o "o que estava protegido" do resultado.
+        /// </summary>
+        public static TrimVerdict Classify(ProcessCandidate c, TrimContext ctx, MemoryLevelSpec spec, TrimKind pass)
         {
-            if (c.Pid <= 4 || c.Pid == ctx.MyPid) return false;
-            if (c.SessionId == 0) return false;
-            if (ctx.ProtectedPids.Contains(c.Pid)) return false;
-            if (c.WorkingSetBytes < minWorkingSetBytes) return false;
-            if (string.IsNullOrWhiteSpace(c.Name)) return false;
-            if (IsProtectedName(c.Name, ctx.ExtraProtectedNames, ctx.UserProtected)) return false;
-            return true;
+            if (c.Pid <= 4) return TrimVerdict.System;
+            if (c.Pid == ctx.MyPid) return TrimVerdict.Self;
+            if (ctx.ProtectedPids.Contains(c.Pid)) return TrimVerdict.Protected;
+            if (string.IsNullOrWhiteSpace(c.Name)) return TrimVerdict.ProtectedName;
+            if (IsProtectedName(c.Name, ctx.ExtraProtectedNames, ctx.UserProtected)) return TrimVerdict.ProtectedName;
+            if (KindOf(c, ctx) != pass) return TrimVerdict.NotThisPass;
+            if (c.WorkingSetBytes < spec.MinTrimWorkingSetBytes) return TrimVerdict.TooSmall;
+            if (pass == TrimKind.Service && ctx.ServiceDenyPids.Contains(c.Pid)) return TrimVerdict.ServiceDenied;
+            return TrimVerdict.Trim;
         }
 
         public static bool IsProtectedName(string name, IReadOnlyCollection<string> extra,
@@ -485,16 +686,49 @@ namespace PCOptimizer.Services
         /// Windows, nada de bibliotecas de jogos, nada nas pastas protegidas.
         /// Caminho desconhecido também fica de fora — na dúvida, não mexe.
         /// </summary>
-        public static bool PathExcluded(string? exePath, TrimContext ctx)
+        public static bool PathExcluded(string? exePath, TrimContext ctx, bool allowWindowsDir = false)
         {
             if (string.IsNullOrWhiteSpace(exePath)) return true;
-            if (!string.IsNullOrWhiteSpace(ctx.WindowsDir) && IsUnder(exePath, ctx.WindowsDir)) return true;
-            foreach (var marker in GameLibraryMarkers)
-                if (exePath.Contains(marker, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!allowWindowsDir && !string.IsNullOrWhiteSpace(ctx.WindowsDir) && IsUnder(exePath, ctx.WindowsDir))
+                return true;
             foreach (var dir in ctx.ProtectedDirs)
                 if (IsUnder(exePath, dir)) return true;
+
+            // Launchers e ferramentas instalados em pasta de jogos, e apps da
+            // Store que não são jogo, não são jogo: podem ser esvaziados.
+            foreach (var ex in GameInstallExceptions)
+                if (exePath.Contains(ex, StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (var pkg in NonGameStorePackages)
+                if (exePath.Contains(pkg, StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (var marker in GameLibraryMarkers)
+                if (exePath.Contains(marker, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
+
+        /// <summary>Um app com janela na tela é, com certeza, não-jogo?</summary>
+        public static bool IsKnownNonGameApp(string? ownerName, string? className) =>
+            (!string.IsNullOrWhiteSpace(ownerName) && KnownNonGameApps.Contains(StripExe(ownerName)))
+            || (!string.IsNullOrWhiteSpace(className) && KnownNonGameWindowClasses.Contains(className));
+
+        /// <summary>
+        /// Candidato a prioridade de memória baixa: programa em segundo plano SEM
+        /// nenhuma janela (minimizada também conta como janela), fora de qualquer
+        /// proteção. Assim, quando o jogo pedir memória, o Windows tira destes
+        /// primeiro — e nada que o usuário abre fica lento.
+        /// </summary>
+        public static bool IsPriorityCandidate(ProcessCandidate c, TrimContext ctx, IReadOnlySet<int> windowOwners)
+        {
+            if (c.Pid <= 4 || c.Pid == ctx.MyPid || c.SessionId == 0) return false;
+            if (ctx.ProtectedPids.Contains(c.Pid) || windowOwners.Contains(c.Pid)) return false;
+            if (string.IsNullOrWhiteSpace(c.Name)) return false;
+            return !IsProtectedName(c.Name, ctx.ExtraProtectedNames, ctx.UserProtected);
+        }
+
+        /// <summary>A memória modificada já foi gravada (ou parou de cair, ou deu o tempo)?</summary>
+        public static bool SettleComplete(ulong previousModified, ulong currentModified, TimeSpan elapsed) =>
+            elapsed >= SettleTimeout
+            || currentModified <= SettledModifiedBytes
+            || currentModified + (16UL << 20) >= previousModified;
 
         /// <summary>
         /// O executável aberto é mesmo o processo do retrato? Se o PID foi
@@ -508,15 +742,15 @@ namespace PCOptimizer.Services
                                  StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>Filtra, ordena do maior para o menor e limita a 40.</summary>
+        /// <summary>Filtra, ordena do maior para o menor e limita conforme o nível.</summary>
         public static IReadOnlyList<ProcessCandidate> PickTrimTargets(
-            IEnumerable<ProcessCandidate> all, TrimContext ctx, bool aggressive = false)
+            IEnumerable<ProcessCandidate> all, TrimContext ctx,
+            MemoryLevel level = MemoryLevel.Leve, TrimKind pass = TrimKind.Normal)
         {
-            long minWs = aggressive ? AggressiveMinTrimWorkingSetBytes : MinTrimWorkingSetBytes;
-            int max = aggressive ? AggressiveMaxTrimProcesses : MaxTrimProcesses;
-            return all.Where(c => ShouldTrim(c, ctx, minWs))
+            var spec = SpecFor(level);
+            return all.Where(c => Classify(c, ctx, spec, pass) == TrimVerdict.Trim)
                       .OrderByDescending(c => c.WorkingSetBytes)
-                      .Take(max)
+                      .Take(spec.MaxTrimProcesses)
                       .ToList();
         }
 
@@ -600,6 +834,7 @@ namespace PCOptimizer.Services
             if (!w.Visible || w.Cloaked || w.OwnerIsSelf) return false;
             if (IsShellClass(w.ClassName)) return false;
             if (NonGameWindowOwners.Contains(StripExe(w.OwnerName))) return false;
+            if (LauncherOwners.Contains(StripExe(w.OwnerName))) return false;
             if ((w.ExStyle & (WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)) != 0) return false;
 
             // Sinais fortes, em qualquer tamanho ou estado (em janela, minimizado):
@@ -654,7 +889,7 @@ namespace PCOptimizer.Services
         /// </summary>
         public static bool CanLatchAsGame(string? ownerName) =>
             !string.IsNullOrWhiteSpace(ownerName) && !NeverLatchOwners.Contains(StripExe(ownerName))
-            && !NonGameWindowOwners.Contains(StripExe(ownerName));
+            && !NonGameWindowOwners.Contains(StripExe(ownerName)) && !LauncherOwners.Contains(StripExe(ownerName));
 
         /// <summary>
         /// Janela de programa visível na tela (não minimizada, não oculta, não
@@ -741,6 +976,12 @@ namespace PCOptimizer.Services
         public static string DescribeResult(MemoryRunOutcome outcome, MemorySnapshot before, MemorySnapshot after,
                                             MemoryOperation failed, MemoryOperation skippedNoAdmin,
                                             MemoryOperation skippedByPolicy, DateTime localTime)
+            => DescribeResult(outcome, before, after, failed, skippedNoAdmin, skippedByPolicy, localTime, null);
+
+        public static string DescribeResult(MemoryRunOutcome outcome, MemorySnapshot before, MemorySnapshot after,
+                                            MemoryOperation failed, MemoryOperation skippedNoAdmin,
+                                            MemoryOperation skippedByPolicy, DateTime localTime,
+                                            MemoryRunExtras? extras)
         {
             string when = " · " + localTime.ToString("HH:mm", CultureInfo.InvariantCulture);
             switch (outcome)
@@ -761,20 +1002,43 @@ namespace PCOptimizer.Services
             if (before.HasLists && after.HasLists && after.FreeBytes!.Value > before.FreeBytes!.Value)
                 freeGain = after.FreeBytes.Value - before.FreeBytes.Value;
 
+            ulong availGain = after.AvailableBytes > before.AvailableBytes ? after.AvailableBytes - before.AvailableBytes : 0;
+
             if (freed >= SmallGainBytes)
             {
                 text = $"Em uso {Pct(before.InUsePercent)}% → {Pct(after.InUsePercent)}% (−{FormatBytes(freed)})";
-                if (freeGain >= SmallGainBytes) text += $" · livre +{FormatBytes(freeGain)}";
+                // Sem as listas, o disponível cresce exatamente o que o "em uso"
+                // caiu — repetir o número não diz nada novo.
+                if (availGain >= SmallGainBytes && before.HasLists && after.HasLists)
+                    text += $" · disponível {FormatBytes(before.AvailableBytes)} → {FormatBytes(after.AvailableBytes)}";
+                else if (freeGain >= SmallGainBytes)
+                    text += $" · livre +{FormatBytes(freeGain)}";
             }
             else if (freeGain >= SmallGainBytes)
             {
                 text = $"Cache em espera virou memória livre: +{FormatBytes(freeGain)} " +
                        "(o “em uso” não muda — o cache já contava como disponível)";
             }
+            else if (extras is { TopProtected.Count: > 0 })
+            {
+                // Ganho pequeno porque o que mais ocupa estava protegido: dizer
+                // o quê, em vez de culpar o Windows.
+                text = $"Pouco a liberar (−{FormatBytes(freed)}) — o que mais ocupa está protegido: " +
+                       string.Join(", ", extras.TopProtected.Take(3)
+                           .Select(e => $"{StripExe(e.Name)} ({e.Reason}) {FormatBytes(e.Bytes)}"));
+                if (extras.Level != MemoryLevel.Maximo
+                    && extras.TopProtected.Any(e => e.Reason == ReasonOnScreen))
+                    text += " · no nível Máximo apps na tela também entram";
+            }
             else
             {
                 text = $"Pouco a liberar (−{FormatBytes(freed)}) — o Windows já está gerenciando bem a memória";
             }
+
+            if (extras is { CompressedDeltaBytes: >= 64L << 20 })
+                text += $" · {FormatBytes((ulong)extras.CompressedDeltaBytes)} comprimidos na própria RAM";
+            if (extras is { TrimmedProcesses: > 0 })
+                text += $" · {extras.TrimmedProcesses} processo(s)";
 
             int noAdmin = PopCount(skippedNoAdmin);
             if (noAdmin > 0) text += $" · {noAdmin} limpeza(s) pulada(s): requer administrador";
@@ -787,13 +1051,24 @@ namespace PCOptimizer.Services
 
         public static string LabelOf(MemoryOperation op) => op switch
         {
-            MemoryOperation.TrimPrograms       => "programas abertos",
-            MemoryOperation.SystemFileCache    => "cache de arquivos do sistema",
-            MemoryOperation.StandbyLowPriority => "cache em espera de baixa prioridade",
-            MemoryOperation.StandbyFull        => "cache em espera completo",
-            MemoryOperation.ModifiedList       => "memória modificada",
+            MemoryOperation.TrimPrograms        => "programas abertos",
+            MemoryOperation.SystemFileCache     => "cache de arquivos do sistema",
+            MemoryOperation.StandbyLowPriority  => "cache em espera de baixa prioridade",
+            MemoryOperation.StandbyFull         => "cache em espera completo",
+            MemoryOperation.ModifiedList        => "memória modificada",
+            MemoryOperation.TrimServices        => "serviços do Windows",
+            MemoryOperation.TrimVisibleApps     => "apps na tela",
+            MemoryOperation.LowerMemoryPriority => "prioridade de memória",
             _ => op.ToString(),
         };
+
+        // Motivos de proteção mostrados ao usuário
+        public const string ReasonInUse     = "em uso";
+        public const string ReasonOnScreen  = "janela na tela";
+        public const string ReasonGame      = "jogo";
+        public const string ReasonName      = "voz, música ou sistema";
+        public const string ReasonService   = "serviço protegido";
+        public const string ReasonGamePath  = "pasta de jogo";
 
         // ── Auxiliares ────────────────────────────────────────────────────────
 

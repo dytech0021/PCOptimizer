@@ -227,9 +227,9 @@ namespace PCOptimizer.Views
                 }
                 else
                 {
-                    btn.Background  = new SolidColorBrush(Color.FromRgb(0x16, 0x33, 0x22));
-                    btn.Foreground  = new SolidColorBrush(Color.FromRgb(0x86, 0xEF, 0xAC));
-                    btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x1C, 0x51, 0x38));
+                    btn.SetResourceReference(Control.BackgroundProperty, "AccentBoxBg");
+                    btn.SetResourceReference(Control.ForegroundProperty, "AccentBoxFg");
+                    btn.SetResourceReference(Control.BorderBrushProperty, "AccentBoxBorder");
                 }
 
                 string dev = d.Device;
@@ -1256,12 +1256,17 @@ namespace PCOptimizer.Views
         private static void ApplyHdrButtonStyle(Button btn, bool enabled)
         {
             btn.Content     = enabled ? "HDR: Ligado" : "HDR: Desligado";
-            btn.Background  = new SolidColorBrush(enabled
-                ? Color.FromRgb(0x1B, 0x4E, 0x2D) : Color.FromRgb(0x1B, 0x3A, 0x4E));
-            btn.Foreground  = new SolidColorBrush(enabled
-                ? Color.FromRgb(0xA6, 0xE3, 0xA1) : Color.FromRgb(0x89, 0xB4, 0xFA));
-            btn.BorderBrush = new SolidColorBrush(enabled
-                ? Color.FromRgb(0x2A, 0x5E, 0x3A) : Color.FromRgb(0x2A, 0x4A, 0x5E));
+            if (enabled)
+            {
+                // Ligado segue o destaque do tema (violeta).
+                btn.SetResourceReference(Control.BackgroundProperty, "AccentBoxBg");
+                btn.SetResourceReference(Control.ForegroundProperty, "AccentBoxFg");
+                btn.SetResourceReference(Control.BorderBrushProperty, "AccentBoxBorder");
+                return;
+            }
+            btn.Background  = new SolidColorBrush(Color.FromRgb(0x1B, 0x3A, 0x4E));
+            btn.Foreground  = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA));
+            btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x2A, 0x4A, 0x5E));
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Hide();

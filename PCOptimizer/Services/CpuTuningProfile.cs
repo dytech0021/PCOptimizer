@@ -31,6 +31,9 @@ namespace PCOptimizer.Services
         public CoreClassTuning Clone() => (CoreClassTuning)MemberwiseClone();
     }
 
+    /// <summary>Níveis prontos do Controle de CPU, pensados para evitar engasgos.</summary>
+    public enum CpuTuningLevel { Baixo, Medio, Agressivo, Personalizado }
+
     /// <summary>
     /// Perfil completo do painel de CPU. Só dados e regras — nada de Windows
     /// aqui, para a montagem dos comandos poder ser conferida por teste.
@@ -57,8 +60,9 @@ namespace PCOptimizer.Services
 
         public CpuTuningProfile Clone() => new()
         {
-            Class0 = Class0.Clone(),
-            Class1 = Class1.Clone(),
+            // Configurações antigas ou editadas à mão podem trazer null aqui.
+            Class0 = (Class0 ?? new CoreClassTuning()).Clone(),
+            Class1 = (Class1 ?? new CoreClassTuning()).Clone(),
             DisableIdle = DisableIdle,
             LowLatencyTimer = LowLatencyTimer,
             GamingResponsiveness = GamingResponsiveness
@@ -74,9 +78,89 @@ namespace PCOptimizer.Services
             GamingResponsiveness = false
         };
 
+        /// <summary>
+        /// Perfil de um nível. Médio é exatamente o padrão de fábrica — o perfil
+        /// que deu +12% num jogo pesado de CPU. Nenhum nível desliga os C-states:
+        /// com todos os núcleos sempre ligados sobra menos margem térmica para o
+        /// turbo do núcleo do jogo, e isso pode CAUSAR engasgo.
+        /// </summary>
+        public static CpuTuningProfile ForLevel(CpuTuningLevel level) => level switch
+        {
+            CpuTuningLevel.Baixo => new CpuTuningProfile
+            {
+                Class0 = new CoreClassTuning { MinState = 50, BoostMode = 1, Epp = 33 },
+                Class1 = new CoreClassTuning { MinState = 50, BoostMode = 1, Epp = 25 },
+            },
+            CpuTuningLevel.Agressivo => new CpuTuningProfile
+            {
+                Class0 = new CoreClassTuning { Epp = 0, BoostMode = 2 },
+                Class1 = new CoreClassTuning { Epp = 0, BoostMode = 2 },
+                LowLatencyTimer = true,
+                GamingResponsiveness = true,
+            },
+            _ => Default(),
+        };
+
+        /// <summary>
+        /// Qual nível este perfil é? Compara o que de fato é aplicado: a classe 1
+        /// só conta em CPU híbrida, e o turbo é global (vem da classe 0).
+        /// </summary>
+        public static CpuTuningLevel DetectLevel(CpuTuningProfile? profile, bool hybrid)
+        {
+            if (profile == null) return CpuTuningLevel.Medio;
+            var p = profile.Clone();
+            p.Clamp();
+            foreach (var level in new[] { CpuTuningLevel.Baixo, CpuTuningLevel.Medio, CpuTuningLevel.Agressivo })
+            {
+                var l = ForLevel(level);
+                if (p.DisableIdle != l.DisableIdle || p.LowLatencyTimer != l.LowLatencyTimer
+                    || p.GamingResponsiveness != l.GamingResponsiveness) continue;
+                if (!SameClass(p.Class0, l.Class0, compareBoost: true)) continue;
+                if (hybrid && !SameClass(p.Class1, l.Class1, compareBoost: false)) continue;
+                return level;
+            }
+            return CpuTuningLevel.Personalizado;
+        }
+
+        private static bool SameClass(CoreClassTuning a, CoreClassTuning b, bool compareBoost) =>
+            a.MinState == b.MinState && a.MaxState == b.MaxState && a.Epp == b.Epp
+            && a.MinCores == b.MinCores && a.MaxCores == b.MaxCores
+            && (!compareBoost || a.BoostMode == b.BoostMode);
+
+        public static string LevelName(CpuTuningLevel level) => level switch
+        {
+            CpuTuningLevel.Baixo     => "Baixo",
+            CpuTuningLevel.Medio     => "Médio",
+            CpuTuningLevel.Agressivo => "Agressivo",
+            _                        => "Personalizado",
+        };
+
+        /// <summary>O que o nível muda, em português simples, uma linha por item.</summary>
+        public static string Describe(CpuTuningLevel level) => level switch
+        {
+            CpuTuningLevel.Baixo =>
+                "• Nenhum núcleo dorme (estacionamento desligado): nada de esperar núcleo acordar\n" +
+                "• Frequência mínima 50%: o clock não despenca entre um quadro e outro\n" +
+                "• Turbo normal e preferência equilibrada: esquenta pouco",
+            CpuTuningLevel.Medio =>
+                "• Nenhum núcleo dorme (estacionamento desligado)\n" +
+                "• Frequência mínima 100%: o processador não reduz o clock enquanto trabalha\n" +
+                "• Turbo agressivo e preferência por desempenho\n" +
+                "• É o perfil que deu +12% no seu PC sem híbrido",
+            CpuTuningLevel.Agressivo =>
+                "• Tudo do Médio, com desempenho total em todos os núcleos\n" +
+                "• Timer do sistema em 0,5 ms (com o PC Optimizer aberto): quadros mais regulares\n" +
+                "• Menos CPU reservada para segundo plano (MMCSS)\n" +
+                "• Esquenta mais — em notebook, use na tomada",
+            _ =>
+                "• Ajustes manuais — veja “Ajustes de CPU”",
+        };
+
         /// <summary>Prende todo valor na faixa que o powercfg aceita.</summary>
         public void Clamp()
         {
+            Class0 ??= new CoreClassTuning();
+            Class1 ??= new CoreClassTuning();
             foreach (var c in new[] { Class0, Class1 })
             {
                 c.MinState  = Math.Clamp(c.MinState, 0, 100);
@@ -119,6 +203,10 @@ namespace PCOptimizer.Services
             Add(list, p.Class0, "");
             if (hybrid) Add(list, p.Class1, "1");
 
+            // O modo de turbo é UM ajuste para o processador inteiro: não existe
+            // variante por classe de núcleo (PERFBOOSTMODE1 falhava calado).
+            list.Add(new Setting("PERFBOOSTMODE", p.Class0.BoostMode));
+
             // IDLEDISABLE é global: não tem variante por classe de núcleo.
             list.Add(new Setting("IDLEDISABLE", p.DisableIdle ? 1 : 0));
             return list;
@@ -128,7 +216,6 @@ namespace PCOptimizer.Services
         {
             list.Add(new Setting($"PROCTHROTTLEMIN{suffix}", c.MinState));
             list.Add(new Setting($"PROCTHROTTLEMAX{suffix}", c.MaxState));
-            list.Add(new Setting($"PERFBOOSTMODE{suffix}", c.BoostMode));
             list.Add(new Setting($"PERFEPP{suffix}", c.Epp));
             list.Add(new Setting($"CPMINCORES{suffix}", c.MinCores));
             list.Add(new Setting($"CPMAXCORES{suffix}", c.MaxCores));

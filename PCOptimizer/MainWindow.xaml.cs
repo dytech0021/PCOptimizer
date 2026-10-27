@@ -282,9 +282,9 @@ namespace PCOptimizer
         private void SetStatus(System.Windows.Controls.TextBlock status, string text, bool success)
         {
             status.Text = text;
-            status.Foreground = new System.Windows.Media.SolidColorBrush(
-                success ? System.Windows.Media.Color.FromRgb(166, 227, 161)
-                        : System.Windows.Media.Color.FromRgb(243, 139, 168));
+            // Cores do tema (seguem o violeta e a troca claro/escuro).
+            status.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
+                success ? "StatusOkFg" : "StatusErrFg");
         }
 
         private void UpdateSelectedCount()
@@ -1010,25 +1010,49 @@ namespace PCOptimizer
                 sld.TickFrequency = 1;
                 sld.ValueChanged += (_, _) => UpdateCpuTuningValues();
             }
-            foreach (var cmb in new[] { CmbPBoost, CmbEBoost })
-                cmb.SelectionChanged += (_, _) => UpdateCpuTuningValues();
+            CmbPBoost.SelectionChanged += (_, _) => UpdateCpuTuningValues();
         }
+
+        private bool _cpuPrevRunLogged;
+
+        /// <summary>
+        /// Em CPU híbrida a 1ª coluna é a classe 1 (P-cores) e a 2ª a classe 0
+        /// (E-cores). Em CPU comum só existe a classe 0 — e é ELA que a coluna
+        /// visível precisa editar (antes a tela editava a classe 1, que nem é
+        /// aplicada nesse caso).
+        /// </summary>
+        private static (CoreClassTuning Col1, CoreClassTuning Col2) CpuColumns(CpuTuningProfile p, bool hybrid) =>
+            hybrid ? (p.Class1, p.Class0) : (p.Class0, p.Class1);
+
+        private CpuTuningLevel CurrentCpuLevel() =>
+            CpuTuningProfile.DetectLevel(SettingsService.Current.CpuTuning, CpuTopologyService.Get().IsHybrid);
 
         private void RefreshCpuTuningCard()
         {
             try
             {
                 var topo = CpuTopologyService.Get();
-                TxtCpuTuningStatus.Text = CpuTuningService.StatusText();
-                BtnCpuTuning.Content = CpuTuningService.IsActive ? "Reaplicar perfil" : "Aplicar perfil";
+                var level = CurrentCpuLevel();
+                string name = CpuTuningProfile.LevelName(level);
+
+                TxtCpuTuningStatus.Text = CpuTuningService.IsActive
+                    ? $"{CpuTuningService.StatusText()} · nível {name}"
+                    : $"Inativo · escolha um nível para aplicar";
+                BtnCpuTuning.Content = CpuTuningService.IsActive ? "Reaplicar ajustes" : "Aplicar ajustes";
                 BtnCpuTuningOff.IsEnabled = CpuTuningService.IsActive;
                 TxtCpuTuningTopology.Text = CpuTopologyService.Describe();
+                TxtCpuLevelSummary.Text = CpuTuningProfile.Describe(level);
+
+                foreach (var (btn, l) in new[] { (BtnCpuLevelBaixo, CpuTuningLevel.Baixo),
+                             (BtnCpuLevelMedio, CpuTuningLevel.Medio), (BtnCpuLevelAgressivo, CpuTuningLevel.Agressivo) })
+                    btn.Style = (Style)FindResource(CpuTuningService.IsActive && level == l
+                        ? "PrimaryButtonStyle" : "ActionButtonStyle");
 
                 // Numa CPU sem P/E existe uma classe só: a segunda coluna some
                 // em vez de mostrar controles que não vão a lugar nenhum.
                 var second = topo.IsHybrid ? Visibility.Visible : Visibility.Collapsed;
                 foreach (var el in new UIElement[] { TxtCpuClass0, SldEMinState, SldEMaxState,
-                             CmbEBoost, SldEEpp, SldEMinCores, SldEMaxCores })
+                             SldEEpp, SldEMinCores, SldEMaxCores })
                     el.Visibility = second;
 
                 if (topo.IsHybrid)
@@ -1041,8 +1065,11 @@ namespace PCOptimizer
                     TxtCpuClass1.Text = $"Todos os núcleos ({topo.LogicalCount})";
                 }
 
-                if (CpuTuningService.FromPreviousRun)
-                    Log("ℹ️ O perfil de CPU continua ativo desde a sessão anterior");
+                if (CpuTuningService.FromPreviousRun && !_cpuPrevRunLogged)
+                {
+                    _cpuPrevRunLogged = true;
+                    Log($"ℹ️ O perfil de CPU continua ativo desde a sessão anterior (nível {name})");
+                }
             }
             catch (Exception ex)
             {
@@ -1057,17 +1084,19 @@ namespace PCOptimizer
             _cpuTuningLoading = true;
             try
             {
-                foreach (var cmb in new[] { CmbPBoost, CmbEBoost })
-                {
-                    cmb.ItemsSource = null;
-                    cmb.ItemsSource = BoostModes.Select(m => m.Label).ToList();
-                }
+                CmbPBoost.ItemsSource = null;
+                CmbPBoost.ItemsSource = BoostModes.Select(m => m.Label).ToList();
+                // O turbo é um ajuste só para o processador inteiro: uma caixa basta.
+                CmbEBoost.Visibility = Visibility.Collapsed;
+                System.Windows.Controls.Grid.SetColumnSpan(CmbPBoost, 2);
 
-                var p = SettingsService.Current.CpuTuning ?? CpuTuningProfile.Default();
+                var p = (SettingsService.Current.CpuTuning ?? CpuTuningProfile.Default()).Clone();
+                var (col1, col2) = CpuColumns(p, CpuTopologyService.Get().IsHybrid);
 
-                // Classe 1 = P-cores, classe 0 = E-cores (ordem do Windows).
-                Bind(p.Class1, SldPMinState, SldPMaxState, CmbPBoost, SldPEpp, SldPMinCores, SldPMaxCores);
-                Bind(p.Class0, SldEMinState, SldEMaxState, CmbEBoost, SldEEpp, SldEMinCores, SldEMaxCores);
+                Bind(col1, SldPMinState, SldPMaxState, SldPEpp, SldPMinCores, SldPMaxCores);
+                Bind(col2, SldEMinState, SldEMaxState, SldEEpp, SldEMinCores, SldEMaxCores);
+                int i = Array.FindIndex(BoostModes, m => m.Value == p.Class0.BoostMode);
+                CmbPBoost.SelectedIndex = i >= 0 ? i : 2;
 
                 ChkCpuIdleDisable.IsChecked    = p.DisableIdle;
                 ChkCpuTimer.IsChecked          = p.LowLatencyTimer;
@@ -1077,7 +1106,7 @@ namespace PCOptimizer
 
             UpdateCpuTuningValues();
 
-            static void Bind(CoreClassTuning c, System.Windows.Controls.Slider min, System.Windows.Controls.Slider max, System.Windows.Controls.ComboBox boost,
+            static void Bind(CoreClassTuning c, System.Windows.Controls.Slider min, System.Windows.Controls.Slider max,
                              System.Windows.Controls.Slider epp, System.Windows.Controls.Slider minCores, System.Windows.Controls.Slider maxCores)
             {
                 min.Value = c.MinState;
@@ -1085,36 +1114,40 @@ namespace PCOptimizer
                 epp.Value = c.Epp;
                 minCores.Value = c.MinCores;
                 maxCores.Value = c.MaxCores;
-                int i = Array.FindIndex(BoostModes, m => m.Value == c.BoostMode);
-                boost.SelectedIndex = i >= 0 ? i : 2;
             }
         }
 
-        /// <summary>Lê os controles de volta para um perfil.</summary>
+        /// <summary>
+        /// Lê os controles de volta para um perfil. Parte do perfil salvo para
+        /// preservar a classe que não aparece na tela (CPU sem híbrido).
+        /// </summary>
         private CpuTuningProfile ReadCpuTuningControls()
         {
-            var p = new CpuTuningProfile
-            {
-                Class1 = Read(SldPMinState, SldPMaxState, CmbPBoost, SldPEpp, SldPMinCores, SldPMaxCores),
-                Class0 = Read(SldEMinState, SldEMaxState, CmbEBoost, SldEEpp, SldEMinCores, SldEMaxCores),
-                DisableIdle          = ChkCpuIdleDisable.IsChecked == true,
-                LowLatencyTimer      = ChkCpuTimer.IsChecked == true,
-                GamingResponsiveness = ChkCpuResponsiveness.IsChecked == true
-            };
+            var p = (SettingsService.Current.CpuTuning ?? CpuTuningProfile.Default()).Clone();
+            var (col1, col2) = CpuColumns(p, CpuTopologyService.Get().IsHybrid);
+            Read(col1, SldPMinState, SldPMaxState, SldPEpp, SldPMinCores, SldPMaxCores);
+            Read(col2, SldEMinState, SldEMaxState, SldEEpp, SldEMinCores, SldEMaxCores);
+
+            int boost = CmbPBoost.SelectedIndex >= 0 && CmbPBoost.SelectedIndex < BoostModes.Length
+                ? BoostModes[CmbPBoost.SelectedIndex].Value : 2;
+            p.Class0.BoostMode = boost;
+            p.Class1.BoostMode = boost;
+
+            p.DisableIdle          = ChkCpuIdleDisable.IsChecked == true;
+            p.LowLatencyTimer      = ChkCpuTimer.IsChecked == true;
+            p.GamingResponsiveness = ChkCpuResponsiveness.IsChecked == true;
             p.Clamp();
             return p;
 
-            static CoreClassTuning Read(System.Windows.Controls.Slider min, System.Windows.Controls.Slider max, System.Windows.Controls.ComboBox boost,
-                                        System.Windows.Controls.Slider epp, System.Windows.Controls.Slider minCores, System.Windows.Controls.Slider maxCores) => new()
+            static void Read(CoreClassTuning c, System.Windows.Controls.Slider min, System.Windows.Controls.Slider max,
+                             System.Windows.Controls.Slider epp, System.Windows.Controls.Slider minCores, System.Windows.Controls.Slider maxCores)
             {
-                MinState  = (int)min.Value,
-                MaxState  = (int)max.Value,
-                Epp       = (int)epp.Value,
-                MinCores  = (int)minCores.Value,
-                MaxCores  = (int)maxCores.Value,
-                BoostMode = boost.SelectedIndex >= 0 && boost.SelectedIndex < BoostModes.Length
-                    ? BoostModes[boost.SelectedIndex].Value : 2
-            };
+                c.MinState = (int)min.Value;
+                c.MaxState = (int)max.Value;
+                c.Epp      = (int)epp.Value;
+                c.MinCores = (int)minCores.Value;
+                c.MaxCores = (int)maxCores.Value;
+            }
         }
 
         private void UpdateCpuTuningValues()
@@ -1123,57 +1156,93 @@ namespace PCOptimizer
             try
             {
                 var p = ReadCpuTuningControls();
-                TxtCpuTuningValues.Text = CpuTopologyService.Get().IsHybrid
+                bool hybrid = CpuTopologyService.Get().IsHybrid;
+                var level = CpuTuningProfile.DetectLevel(p, hybrid);
+                TxtCpuTuningValues.Text = (hybrid
                     ? $"P: {p.Class1.MinState}–{p.Class1.MaxState}%  EPP {p.Class1.Epp}  " +
                       $"núcleos {p.Class1.MinCores}–{p.Class1.MaxCores}%   |   " +
                       $"E: {p.Class0.MinState}–{p.Class0.MaxState}%  EPP {p.Class0.Epp}  " +
                       $"núcleos {p.Class0.MinCores}–{p.Class0.MaxCores}%"
-                    : $"{p.Class1.MinState}–{p.Class1.MaxState}%  EPP {p.Class1.Epp}  " +
-                      $"núcleos {p.Class1.MinCores}–{p.Class1.MaxCores}%";
+                    : $"{p.Class0.MinState}–{p.Class0.MaxState}%  EPP {p.Class0.Epp}  " +
+                      $"núcleos {p.Class0.MinCores}–{p.Class0.MaxCores}%")
+                    + $"   ·   nível: {CpuTuningProfile.LevelName(level)}";
             }
             catch (Exception ex) { Logger.Error(ex, "UpdateCpuTuningValues"); }
+        }
+
+        /// <summary>Aviso único da primeira vez que o perfil de CPU é aplicado.</summary>
+        private static bool ConfirmCpuTuningFirstUse()
+        {
+            if (SettingsService.Current.CpuTuningWarningShown) return true;
+            var answer = MessageBox.Show(
+                "⚙️ Controle de CPU\n\n" +
+                "Os ajustes vão para um plano de energia CRIADO pelo aplicativo. " +
+                "O seu plano não é alterado — desativar devolve ele e apaga a cópia.\n\n" +
+                "Diferente do resto do programa, este perfil CONTINUA VALENDO com o " +
+                "PC Optimizer fechado, até você desativar.\n\nContinuar?",
+                "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (answer != MessageBoxResult.Yes) return false;
+            SettingsService.Current.CpuTuningWarningShown = true;
+            SettingsService.Save();
+            return true;
+        }
+
+        /// <summary>Salva e aplica um perfil, com os botões travados durante a troca.</summary>
+        private async Task ApplyCpuProfileAsync(CpuTuningProfile profile, string label)
+        {
+            var buttons = new[] { BtnCpuTuning, BtnCpuTuningDefaults, BtnCpuTuningOff,
+                                  BtnCpuLevelBaixo, BtnCpuLevelMedio, BtnCpuLevelAgressivo };
+            foreach (var b in buttons) b.IsEnabled = false;
+            try
+            {
+                SettingsService.Current.CpuTuning = profile;
+                SettingsService.Save();
+                LoadCpuTuningControls();
+
+                TxtCpuTuningStatus.Text = $"Aplicando nível {label}...";
+                string result = await Task.Run(() => CpuTuningService.Apply(profile));
+                Log($"⚙️ Controle de CPU ({label}): {result}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "ApplyCpuProfileAsync");
+                TxtCpuTuningStatus.Text = "Erro: " + ex.Message;
+            }
+            finally
+            {
+                foreach (var b in buttons) b.IsEnabled = true;
+                RefreshCpuTuningCard();
+            }
+        }
+
+        private async void BtnCpuLevel_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isRunning || sender is not System.Windows.Controls.Button btn) return;
+            if (!Enum.TryParse(btn.Tag as string, out CpuTuningLevel level)) return;
+            if (!ConfirmCpuTuningFirstUse()) return;
+
+            if (level == CpuTuningLevel.Agressivo && !SettingsService.Current.CpuTuningAggressiveWarningShown)
+            {
+                var answer = MessageBox.Show(
+                    "🔥 Nível Agressivo\n\n" +
+                    "Desempenho total em todos os núcleos, timer do sistema em 0,5 ms e " +
+                    "menos CPU reservada para segundo plano.\n\n" +
+                    "O processador esquenta mais. Em notebook, use na tomada.\n\nAplicar?",
+                    "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (answer != MessageBoxResult.Yes) return;
+                SettingsService.Current.CpuTuningAggressiveWarningShown = true;
+            }
+
+            await ApplyCpuProfileAsync(CpuTuningProfile.ForLevel(level), CpuTuningProfile.LevelName(level));
         }
 
         private async void BtnCpuTuning_Click(object sender, RoutedEventArgs e)
         {
             if (_isRunning) return;
-
-            if (!SettingsService.Current.CpuTuningWarningShown)
-            {
-                var answer = MessageBox.Show(
-                    "⚙️ Controle de CPU\n\n" +
-                    "Os ajustes vão para um plano de energia CRIADO pelo aplicativo. " +
-                    "O seu plano não é alterado — desativar devolve ele e apaga a cópia.\n\n" +
-                    "Diferente do resto do programa, este perfil CONTINUA VALENDO com o " +
-                    "PC Optimizer fechado, até você desativar.\n\nContinuar?",
-                    "PC Optimizer", MessageBoxButton.YesNo, MessageBoxImage.Information);
-                if (answer != MessageBoxResult.Yes) return;
-                SettingsService.Current.CpuTuningWarningShown = true;
-                SettingsService.Save();
-            }
-
-            BtnCpuTuning.IsEnabled = false;
-            try
-            {
-                var profile = ReadCpuTuningControls();
-                SettingsService.Current.CpuTuning = profile;
-                SettingsService.Save();
-
-                TxtCpuTuningStatus.Text = "Aplicando...";
-                string result = await Task.Run(() => CpuTuningService.Apply(profile));
-                TxtCpuTuningStatus.Text = result;
-                Log($"⚙️ Controle de CPU: {result}");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "BtnCpuTuning_Click");
-                TxtCpuTuningStatus.Text = "Erro: " + ex.Message;
-            }
-            finally
-            {
-                BtnCpuTuning.IsEnabled = true;
-                RefreshCpuTuningCard();
-            }
+            if (!ConfirmCpuTuningFirstUse()) return;
+            var profile = ReadCpuTuningControls();
+            await ApplyCpuProfileAsync(profile,
+                CpuTuningProfile.LevelName(CpuTuningProfile.DetectLevel(profile, CpuTopologyService.Get().IsHybrid)));
         }
 
         private async void BtnCpuTuningOff_Click(object sender, RoutedEventArgs e)
@@ -1195,14 +1264,16 @@ namespace PCOptimizer
             finally { RefreshCpuTuningCard(); }
         }
 
+        /// <summary>"Voltar ao Médio": carrega o nível Médio nos controles (sem aplicar).</summary>
         private void BtnCpuTuningDefaults_Click(object sender, RoutedEventArgs e)
         {
-            SettingsService.Current.CpuTuning = CpuTuningProfile.Default();
+            SettingsService.Current.CpuTuning = CpuTuningProfile.ForLevel(CpuTuningLevel.Medio);
             SettingsService.Save();
             LoadCpuTuningControls();
+            RefreshCpuTuningCard();
             TxtCpuTuningStatus.Text = CpuTuningService.IsActive
-                ? "Padrões carregados — clique em Aplicar perfil"
-                : "Padrões carregados";
+                ? "Médio carregado — clique em “Reaplicar ajustes” ou no botão Médio"
+                : "Médio carregado — clique em “Aplicar ajustes” ou no botão Médio";
         }
 
         // ── Memória RAM ───────────────────────────────────────────────────────
@@ -1231,7 +1302,6 @@ namespace PCOptimizer
                 foreach (var (box, op) in MemoryOpBoxes())
                     box.IsChecked = (s.MemoryOps & op) != 0;
 
-                ChkMemAggressive.IsChecked = s.MemoryAggressive;
                 ChkMemAuto.IsChecked       = s.MemoryAutoOptimize;
                 ChkMemAutoIdle.IsChecked   = s.MemoryAutoOnlyWhenIdle;
                 ChkMemAutoNotify.IsChecked = s.MemoryAutoNotify;
@@ -1266,7 +1336,7 @@ namespace PCOptimizer
                 box.Checked   += (_, _) => SaveMemorySettings();
                 box.Unchecked += (_, _) => SaveMemorySettings();
             }
-            foreach (var box in new[] { ChkMemAutoIdle, ChkMemAutoNotify, ChkMemAggressive })
+            foreach (var box in new[] { ChkMemAutoIdle, ChkMemAutoNotify })
             {
                 box.Checked   += (_, _) => SaveMemorySettings();
                 box.Unchecked += (_, _) => SaveMemorySettings();
@@ -1312,7 +1382,6 @@ namespace PCOptimizer
                 s.MemoryAutoOptimize = ChkMemAuto.IsChecked == true;
                 s.MemoryAutoOnlyWhenIdle = ChkMemAutoIdle.IsChecked == true;
                 s.MemoryAutoNotify = ChkMemAutoNotify.IsChecked == true;
-                s.MemoryAggressive = ChkMemAggressive.IsChecked == true;
                 s.MemoryAutoThresholdPercent = MemoryOptimizerPolicy.ClampThreshold((int)SldMemThreshold.Value);
                 SettingsService.Save();
             }
@@ -1412,7 +1481,13 @@ namespace PCOptimizer
             {
                 bool game = GameAwarenessService.IsGameRunning || GameBoostService.IsActive;
                 bool anyOp = MemoryOptimizerPolicy.EffectiveOps(SettingsService.Current.MemoryOps,
-                                 SettingsService.Current.MemoryAggressive) != MemoryOperation.None;
+                                 MemoryOptimizerService.CurrentLevel) != MemoryOperation.None;
+
+                var level = MemoryOptimizerService.CurrentLevel;
+                TxtMemLevelSummary.Text = MemoryOptimizerPolicy.DescribeLevel(level);
+                foreach (var (btn, l) in new[] { (BtnMemLevelLeve, MemoryLevel.Leve),
+                             (BtnMemLevelAgressivo, MemoryLevel.Agressivo), (BtnMemLevelMaximo, MemoryLevel.Maximo) })
+                    btn.Style = (Style)FindResource(level == l ? "PrimaryButtonStyle" : "ActionButtonStyle");
 
                 BtnMemOptimize.IsEnabled = !_isRunning && !MemoryOptimizerService.IsRunning && !game && anyOp;
                 BtnMemOptimize.Content = MemoryOptimizerService.IsRunning ? "Otimizando…" : "Otimizar agora";
@@ -1428,6 +1503,22 @@ namespace PCOptimizer
                 TxtMemStatus.Visibility = auto.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
             catch (Exception ex) { Logger.Error(ex, "RefreshMemoryCard"); }
+        }
+
+        private void BtnMemLevel_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not System.Windows.Controls.Button btn) return;
+            if (!Enum.TryParse(btn.Tag as string, out MemoryLevel level)) return;
+            try
+            {
+                SettingsService.Current.MemoryLevel = level;
+                SettingsService.Save();
+                // Prioridade de memória baixada só vale nos níveis que a usam.
+                if (level == MemoryLevel.Leve) _ = Task.Run(MemoryOptimizerService.RestoreMemoryPriorities);
+                Log($"🧠 Memória: intensidade {MemoryOptimizerPolicy.LevelName(level)}");
+            }
+            catch (Exception ex) { Logger.Error(ex, "BtnMemLevel_Click"); }
+            RefreshMemoryCard();
         }
 
         private async void BtnMemOptimize_Click(object sender, RoutedEventArgs e)
@@ -1985,8 +2076,9 @@ namespace PCOptimizer
                 int darkMode = dark ? 1 : 0;
                 DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
 
-                // Mesma cor do WindowBg de cada tema (formato COLORREF: 0x00BBGGRR)
-                int caption = dark ? 0x1E1111 : 0xF8F2F0;
+                // Mesma cor do WindowBg de cada tema (formato COLORREF: 0x00BBGGRR):
+                // preto puro no escuro, #EEF1F4 no claro.
+                int caption = dark ? 0x000000 : 0xF4F1EE;
                 DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
             }
             catch { /* DWM indisponível (Win10 antigo) — barra fica padrão */ }

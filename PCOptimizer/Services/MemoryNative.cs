@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -130,6 +131,101 @@ namespace PCOptimizer.Services
             if (h == IntPtr.Zero) return null;
             try { return ImagePath(h); }
             finally { CloseHandle(h); }
+        }
+
+        // ── Prioridade de memória (reversível) ───────────────────────────────
+
+        internal const uint PROCESS_SET_INFORMATION = 0x0200;
+        internal const int  ProcessMemoryPriority   = 0;   // PROCESS_INFORMATION_CLASS
+        internal const uint MEMORY_PRIORITY_LOW     = 2;   // 1 muito baixa … 5 normal
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetProcessInformation(IntPtr hProcess, int processInformationClass,
+            ref uint processInformation, uint processInformationSize);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetProcessInformation(IntPtr hProcess, int processInformationClass,
+            out uint processInformation, uint processInformationSize);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetProcessTimes(IntPtr hProcess, out long creationTime,
+            out long exitTime, out long kernelTime, out long userTime);
+
+        // ── Serviços (para a lista de serviços que nunca são esvaziados) ─────
+
+        internal const uint SC_MANAGER_ENUMERATE_SERVICE = 0x0004;
+        internal const int  SC_ENUM_PROCESS_INFO         = 0;
+        internal const uint SERVICE_WIN32                = 0x00000030;
+        internal const uint SERVICE_ACTIVE               = 0x00000001;
+        internal const int  ERROR_MORE_DATA              = 234;
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct SERVICE_STATUS_PROCESS                                       // 36 bytes
+        {
+            public uint dwServiceType, dwCurrentState, dwControlsAccepted, dwWin32ExitCode,
+                        dwServiceSpecificExitCode, dwCheckPoint, dwWaitHint, dwProcessId, dwServiceFlags;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ENUM_SERVICE_STATUS_PROCESSW                                 // 56 bytes em x64
+        {
+            public IntPtr lpServiceName;
+            public IntPtr lpDisplayName;
+            public SERVICE_STATUS_PROCESS ServiceStatusProcess;
+        }
+
+        [DllImport("advapi32.dll", EntryPoint = "OpenSCManagerW", CharSet = CharSet.Unicode, SetLastError = true)]
+        internal static extern IntPtr OpenSCManager(string? machineName, string? databaseName, uint desiredAccess);
+
+        [DllImport("advapi32.dll", EntryPoint = "EnumServicesStatusExW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool EnumServicesStatusEx(IntPtr hSCManager, int infoLevel, uint serviceType,
+            uint serviceState, IntPtr services, uint bufSize, out uint bytesNeeded, out uint servicesReturned,
+            ref uint resumeHandle, string? groupName);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool CloseServiceHandle(IntPtr hSCObject);
+
+        /// <summary>Serviço ativo → PID que o hospeda. Vazio se falhar.</summary>
+        internal static List<(string Name, int Pid)> ActiveServices()
+        {
+            var result = new List<(string, int)>();
+            IntPtr scm = OpenSCManager(null, null, SC_MANAGER_ENUMERATE_SERVICE);
+            if (scm == IntPtr.Zero) return result;
+            IntPtr buf = IntPtr.Zero;
+            try
+            {
+                uint resume = 0;
+                EnumServicesStatusEx(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE,
+                    IntPtr.Zero, 0, out uint needed, out _, ref resume, null);
+                if (needed == 0) return result;
+                uint size = needed + 4096;
+                buf = Marshal.AllocHGlobal((int)size);
+                resume = 0;
+                if (!EnumServicesStatusEx(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE,
+                        buf, size, out _, out uint count, ref resume, null))
+                    return result;
+
+                int stride = Marshal.SizeOf<ENUM_SERVICE_STATUS_PROCESSW>();
+                for (int i = 0; i < count; i++)
+                {
+                    var e = Marshal.PtrToStructure<ENUM_SERVICE_STATUS_PROCESSW>(buf + i * stride);
+                    string? name = Marshal.PtrToStringUni(e.lpServiceName);
+                    int pid = (int)e.ServiceStatusProcess.dwProcessId;
+                    if (!string.IsNullOrEmpty(name) && pid > 4) result.Add((name, pid));
+                }
+            }
+            catch { }
+            finally
+            {
+                if (buf != IntPtr.Zero) Marshal.FreeHGlobal(buf);
+                CloseServiceHandle(scm);
+            }
+            return result;
         }
 
         // ── Árvore de processos (Toolhelp) ────────────────────────────────────
@@ -279,6 +375,8 @@ namespace PCOptimizer.Services
         internal const uint SE_PRIVILEGE_ENABLED    = 0x00000002;
         internal const string SE_PROF_SINGLE_PROCESS_NAME = "SeProfileSingleProcessPrivilege";
         internal const string SE_INCREASE_QUOTA_NAME      = "SeIncreaseQuotaPrivilege";
+        /// <summary>Só durante a limpeza de serviços (nível Máximo), desligado logo depois.</summary>
+        internal const string SE_DEBUG_NAME               = "SeDebugPrivilege";
 
         [DllImport("kernel32.dll")]
         internal static extern IntPtr GetCurrentProcess();   // pseudo-handle (-1): nunca fechar
@@ -302,14 +400,17 @@ namespace PCOptimizer.Services
         /// cria privilégio nenhum. Vale para o processo inteiro e é inofensivo.
         /// false = não elevado (Debug/asInvoker) ou falha.
         /// </summary>
-        internal static bool TryEnablePrivilege(string name)
+        internal static bool TryEnablePrivilege(string name) => TrySetPrivilege(name, true);
+
+        /// <summary>Liga ou desliga um privilégio que o token já tem.</summary>
+        internal static bool TrySetPrivilege(string name, bool enable)
         {
             if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, out IntPtr token))
                 return false;
             try
             {
                 if (!LookupPrivilegeValue(null, name, out LUID luid)) return false;
-                var tp = new TOKEN_PRIVILEGES_1 { PrivilegeCount = 1, Luid = luid, Attributes = SE_PRIVILEGE_ENABLED };
+                var tp = new TOKEN_PRIVILEGES_1 { PrivilegeCount = 1, Luid = luid, Attributes = enable ? SE_PRIVILEGE_ENABLED : 0 };
                 if (!AdjustTokenPrivileges(token, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero)) return false;
                 // Devolve TRUE mesmo sem atribuir nada; só o último erro distingue
                 // ERROR_SUCCESS de ERROR_NOT_ALL_ASSIGNED (1300).
