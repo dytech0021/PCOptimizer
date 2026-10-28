@@ -30,6 +30,10 @@ namespace PCOptimizer
             // ANTES de qualquer outra coisa: se o app foi morto com o Turbo de
             // Jogo ativo, há processos presos nos E-cores esperando restauração.
             BoostStateStore.RestoreOrphansFromPreviousRun();
+            CoreReserveService.RestoreOrphansFromPreviousRun();
+            // Ouve o detector de jogo direto (só ouve; quem liga o detector é o
+            // bloco abaixo ou a caixa do card).
+            CoreReserveService.Initialize();
 
             // O perfil de CPU é PERSISTENTE por escolha do usuário: não se
             // desfaz ao fechar. Aqui só descobrimos se ele ficou ativo da
@@ -70,7 +74,8 @@ namespace PCOptimizer
             // roda em segundo plano é invisível — pausar libera CPU para o jogo.
             // O detector de tela cheia serve a dois recursos: pausar as tarefas de
             // fundo e ligar o Turbo de Jogo. Basta um deles estar ativo.
-            if (SettingsService.Current.GameAwareMode || SettingsService.Current.GameBoostEnabled)
+            if (SettingsService.Current.GameAwareMode || SettingsService.Current.GameBoostEnabled
+                || SettingsService.Current.CoreReserveAuto)
             {
                 GameAwarenessService.GameStateChanged += OnGameStateChanged;
                 GameAwarenessService.Start();
@@ -341,6 +346,8 @@ namespace PCOptimizer
             // rodar, eles ficariam lentos até o próximo reboot.
             try { GameBoostService.ReleaseAll("app encerrando"); }
             catch (Exception ex) { Logger.Error(ex, "OnExit/GameBoost"); }
+            try { CoreReserveService.ReleaseAll("app encerrando"); }
+            catch (Exception ex) { Logger.Error(ex, "OnExit/CoreReserve"); }
 
             // O automático da memória não deve disparar no meio do encerramento.
             try { MemoryOptimizerService.Stop(); }

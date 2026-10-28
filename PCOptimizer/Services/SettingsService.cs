@@ -78,6 +78,12 @@ namespace PCOptimizer.Services
         // Programas que o usuário quer manter fora do confinamento
         public List<string> GameBoostUserProtected { get; set; } = new();
 
+        // Game Boost por núcleos reservados (processadores sem P/E, como Xeon):
+        // liga sozinho ao abrir um jogo, como o Game Boost híbrido.
+        public bool CoreReserveAuto { get; set; } = true;
+        public bool CoreReserveLowerPriority { get; set; } = true;
+        public bool CoreReserveWarningShown { get; set; }
+
         // Painel de CPU: perfil aplicado num plano de energia próprio do app.
         // Persistente de propósito — continua valendo com o programa fechado,
         // até o usuário desativar.

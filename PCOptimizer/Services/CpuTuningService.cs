@@ -119,7 +119,7 @@ namespace PCOptimizer.Services
                         $"/duplicatescheme {original} {OurScheme}", 15000))
                     return "Não consegui criar o plano de energia do aplicativo";
 
-                var settings = CpuTuningPlan.Build(profile, topo.IsHybrid);
+                var settings = CpuTuningPlan.Build(profile, topo.IsHybrid, CpuInfoService.IsLegacyPStates);
                 int applied = 0;
                 foreach (var s in settings)
                     if (ProcessRunner.Run("powercfg.exe",

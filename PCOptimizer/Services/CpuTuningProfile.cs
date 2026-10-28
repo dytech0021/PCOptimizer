@@ -194,7 +194,7 @@ namespace PCOptimizer.Services
         /// híbrida ela não existe, e escrever nela só gera erro — por isso
         /// <paramref name="hybrid"/> decide se ela entra.
         /// </summary>
-        public static List<Setting> Build(CpuTuningProfile profile, bool hybrid)
+        public static List<Setting> Build(CpuTuningProfile profile, bool hybrid, bool legacyPStates = false)
         {
             var p = profile.Clone();
             p.Clamp();
@@ -209,6 +209,16 @@ namespace PCOptimizer.Services
 
             // IDLEDISABLE é global: não tem variante por classe de núcleo.
             list.Add(new Setting("IDLEDISABLE", p.DisableIdle ? 1 : 0));
+
+            // Processadores sem Speed Shift (Xeon E5 v1–v4, Core até a 5ª geração):
+            // o Windows decide o clock sozinho, e a preferência de energia (EPP) é
+            // ignorada. Valem a política de turbo e a rapidez com que o clock sobe.
+            if (legacyPStates)
+            {
+                list.Add(new Setting("PERFBOOSTPOL", 100));     // turbo inteiro, não uma fração
+                list.Add(new Setting("PERFINCTHRESHOLD", 30));  // sobe o clock com 30% de uso (padrão 60–90)
+                list.Add(new Setting("PERFDECTHRESHOLD", 10));  // só desce com o núcleo quase parado
+            }
             return list;
         }
 

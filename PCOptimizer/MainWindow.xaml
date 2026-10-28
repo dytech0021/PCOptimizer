@@ -446,6 +446,21 @@
                             </Border>
                         </Expander>
 
+                        <!-- Game Boost por núcleos reservados: CPU sem P/E (Xeon, Ryzen, Intel até a 11ª) -->
+                        <Border Style="{StaticResource ActionCardStyle}" Margin="0,0,0,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,24,0">
+                                    <TextBlock Text="Game Boost — núcleos reservados" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock Text="Para processadores sem P-cores/E-cores (Xeon, Ryzen, Intel até a 11ª geração): enquanto o jogo roda, os outros programas ficam nos 2 últimos núcleos e o jogo fica com o resto livre. O jogo não é alterado."
+                                               Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="TxtCoreReserveStatus" Text="—" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                    <CheckBox x:Name="ChkCoreReserveAuto" Content="Ligar sozinho ao abrir um jogo" Style="{StaticResource OptionCheckStyle}" Margin="0,10,0,0"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" x:Name="BtnCoreReserve" Content="Ativar agora" Style="{StaticResource ActionButtonStyle}" VerticalAlignment="Center" Click="BtnCoreReserve_Click"/>
+                            </Grid>
+                        </Border>
+
                         <!-- Memória RAM: card em largura total, abaixo do Controle de CPU -->
                         <Border Style="{StaticResource ActionCardStyle}" Margin="0,0,0,12">
                             <Grid>
