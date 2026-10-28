@@ -12,6 +12,7 @@ namespace PCOptimizer.Services
         public static event Action? ShowBrightnessRequested;
         public static event Action? ExitRequested;
         public static event Action? OptimizeMemoryRequested;
+        public static event Action? KeyboardSettingsRequested;
 
         public static void Initialize()
         {
@@ -28,6 +29,7 @@ namespace PCOptimizer.Services
                 System.Windows.Application.Current.Dispatcher.Invoke(() => ShowBrightnessRequested?.Invoke()));
             menu.Items.Add("Otimizar memória", null, (_, _) =>
                 System.Windows.Application.Current.Dispatcher.Invoke(() => OptimizeMemoryRequested?.Invoke()));
+            menu.Items.Add(BuildKeyboardMenu());
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Fechar PC Optimizer", null, (_, _) =>
                 System.Windows.Application.Current.Dispatcher.Invoke(() => ExitRequested?.Invoke()));
@@ -35,6 +37,44 @@ namespace PCOptimizer.Services
             _trayIcon.ContextMenuStrip = menu;
             _trayIcon.DoubleClick += (_, _) =>
                 System.Windows.Application.Current.Dispatcher.Invoke(() => ShowBrightnessRequested?.Invoke());
+        }
+
+        /// <summary>
+        /// "Idioma do teclado": um item por teclado instalado (o em uso marcado),
+        /// montado na hora de abrir — reflete o que mudou desde a última vez.
+        /// </summary>
+        private static ToolStripMenuItem BuildKeyboardMenu()
+        {
+            var root = new ToolStripMenuItem("Idioma do teclado");
+            root.DropDownItems.Add("Carregando…");
+            root.DropDownOpening += (_, _) =>
+            {
+                root.DropDownItems.Clear();
+                var installed = KeyboardLayoutService.Installed;
+                if (installed.Count == 0)
+                {
+                    root.DropDownItems.Add(new ToolStripMenuItem("Carregando… abra de novo em instantes") { Enabled = false });
+                    System.Threading.Tasks.Task.Run(KeyboardLayoutService.Refresh);
+                }
+                string? current = KeyboardLayoutService.CurrentTip();
+                foreach (var entry in installed)
+                {
+                    var item = new ToolStripMenuItem(entry.DisplayName)
+                    {
+                        Checked = KeyboardLayoutPolicy.SameTip(entry.Tip, current)
+                    };
+                    item.Click += (_, _) =>
+                    {
+                        if (KeyboardLayoutService.Switch(entry))
+                            ShowBalloonTip("Teclado", entry.DisplayName);
+                    };
+                    root.DropDownItems.Add(item);
+                }
+                root.DropDownItems.Add(new ToolStripSeparator());
+                root.DropDownItems.Add("Adicionar outro teclado…", null, (_, _) =>
+                    System.Windows.Application.Current.Dispatcher.Invoke(() => KeyboardSettingsRequested?.Invoke()));
+            };
+            return root;
         }
 
         public static void ShowBalloonTip(string title, string text)

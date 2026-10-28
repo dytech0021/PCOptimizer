@@ -81,6 +81,14 @@ namespace PCOptimizer
             MemoryOptimizerService.Initialize();
             MemoryOptimizerService.ApplyAutoSetting();
             TrayService.OptimizeMemoryRequested += OnTrayOptimizeMemory;
+            TrayService.KeyboardSettingsRequested += () =>
+            {
+                if (MainWindow is not PCOptimizer.MainWindow w) return;
+                if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+                w.Show();
+                w.Activate();
+                w.ShowKeyboardSection();
+            };
 
             TrayService.ShowBrightnessRequested += ToggleBrightnessWindow;
             TrayService.ExitRequested += Shutdown;

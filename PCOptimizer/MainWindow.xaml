@@ -537,7 +537,7 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="Sistema">
+            <TabItem Header="Sistema" x:Name="TabSistema">
                 <ScrollViewer Style="{StaticResource PageScrollStyle}">
                     <StackPanel>
                         <TextBlock Text="Sistema" Style="{StaticResource PageTitleStyle}"/>
@@ -549,6 +549,25 @@
                             <Border Style="{StaticResource ActionCardStyle}"><StackPanel><TextBlock Text="Barra de tarefas" Style="{StaticResource SectionTitleStyle}"/><TextBlock x:Name="TxtTaskbarStatus" Text="Padrão" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" Margin="0,0,0,12"/><Button x:Name="BtnTaskbar" Content="Configurar" Style="{StaticResource ActionButtonStyle}" Click="BtnTaskbar_Click"/></StackPanel></Border>
                             <Border Style="{StaticResource ActionCardStyle}" Margin="0,0,0,12"><StackPanel><TextBlock Text="Reparo profundo" Style="{StaticResource SectionTitleStyle}"/><TextBlock x:Name="TxtDeepRepairStatus" Text="Disponível" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" Margin="0,0,0,12"/><Button x:Name="BtnDeepRepair" Content="Reparar" Style="{StaticResource ActionButtonStyle}" Click="BtnDeepRepair_Click"/></StackPanel></Border>
                         </UniformGrid>
+
+                        <!-- Idioma do teclado: trocar com um clique e adicionar outro -->
+                        <Border Style="{StaticResource PanelStyle}" Margin="0,0,0,14">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Idioma do teclado" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock Grid.Column="1" x:Name="TxtKbdCurrent" Text="" Style="{StaticResource StatusTextStyle}"/>
+                                </Grid>
+                                <TextBlock Text="Clique num teclado para usar ele em todas as janelas. Também dá para trocar pela bandeja (perto do relógio) ou com Win + Espaço."
+                                           Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
+                                <WrapPanel x:Name="PnlKbdLayouts" Margin="0,12,0,0"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <ComboBox x:Name="CmbKbdAdd" Width="330" VerticalAlignment="Center"/>
+                                    <Button x:Name="BtnKbdAdd" Content="Adicionar teclado" Style="{StaticResource ActionButtonStyle}" Margin="8,0,0,0" Click="BtnKbdAdd_Click"/>
+                                </StackPanel>
+                                <TextBlock x:Name="TxtKbdStatus" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
