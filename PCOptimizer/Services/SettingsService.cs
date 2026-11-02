@@ -120,6 +120,11 @@ namespace PCOptimizer.Services
         // HardwareId → "LARGURAxALTURAxHZ" da resolução original, para reverter
         public Dictionary<string, string> GameArPrevMode { get; set; } = new();
 
+        // HDR do MENU do monitor (OSD), aprendido por DDC/CI: HardwareId →
+        // "DC:5>0" (código, valor ligado > valor desligado). Com isto o botão de
+        // HDR do Windows liga/desliga o HDR do próprio monitor junto.
+        public Dictionary<string, string> MonitorHdrDdc { get; set; } = new();
+
         // Resolução 1080p para acesso remoto: guarda a nativa para reversão
         public bool RemoteResActive { get; set; }
         public int RemotePrevWidth { get; set; }

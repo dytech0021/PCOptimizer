@@ -927,6 +927,53 @@ namespace PCOptimizer.Services
                 preserveAspect ? SCALING_ASPECT : SCALING_STRETCH);
         }
 
+        // ── VCP genérico (HDR do menu do monitor) ─────────────────────────────
+
+        /// <summary>String de capacidades DDC/CI do monitor ("" se ele não informar).</summary>
+        public static string GetCapabilitiesForIndex(int monitorIndex)
+        {
+            var monitors = GetCachedMonitors();
+            if (monitorIndex < 0 || monitorIndex >= monitors.Count) return "";
+            try
+            {
+                IntPtr h = monitors[monitorIndex].Handle;
+                if (!GetCapabilitiesStringLength(h, out uint len) || len == 0 || len > 65536) return "";
+                var sb = new StringBuilder((int)len + 1);
+                return CapabilitiesRequestAndCapabilitiesReply(h, sb, len) ? sb.ToString() : "";
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>Lê um código VCP. false se o monitor não respondeu.</summary>
+        public static bool TryGetVcpForIndex(int monitorIndex, byte code, out uint value)
+        {
+            value = 0;
+            var monitors = GetCachedMonitors();
+            if (monitorIndex < 0 || monitorIndex >= monitors.Count) return false;
+            try
+            {
+                if (!GetVCPFeatureAndVCPFeatureReply(monitors[monitorIndex].Handle, code,
+                        out _, out uint cur, out _)) return false;
+                value = cur;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Escreve um código VCP; re-enumera e tenta de novo se o handle caducou.</summary>
+        public static bool SetVcpForIndex(int monitorIndex, byte code, uint value)
+        {
+            bool Try()
+            {
+                var monitors = GetCachedMonitors();
+                return monitorIndex >= 0 && monitorIndex < monitors.Count
+                    && SetVCPFeature(monitors[monitorIndex].Handle, code, value);
+            }
+            if (Try()) return true;
+            InvalidateCache();
+            return Try();
+        }
+
         public static bool SetContrastForIndex(int monitorIndex, int percent)
         {
             percent = Math.Clamp(percent, 0, 100);
