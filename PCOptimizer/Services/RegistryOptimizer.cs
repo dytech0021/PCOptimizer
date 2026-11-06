@@ -11,8 +11,10 @@ namespace PCOptimizer.Services
             // Desativar animações desnecessárias
             SetValue(Registry.CurrentUser, @"Control Panel\Desktop\WindowMetrics", "MinAnimate", "0", ref tweaks);
 
-            // Reduzir delay do menu
-            SetValue(Registry.CurrentUser, @"Control Panel\Desktop", "MenuShowDelay", "0", ref tweaks);
+            // Reduzir delay do menu — a não ser que o usuário tenha religado o
+            // atraso no card "Mouse e menus" (aí respeita a escolha dele).
+            if (!SettingsService.Current.KeepMenuShowDelay && MenuDelayService.SetEnabled(false))
+                tweaks++;
 
             // Desativar transparência
             SetValue(Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "EnableTransparency", 0, ref tweaks);

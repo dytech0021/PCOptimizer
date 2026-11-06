@@ -583,6 +583,32 @@
                                 <TextBlock x:Name="TxtKbdStatus" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" TextWrapping="Wrap" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Border>
+                        <!-- Mouse e menus: liga/desliga o que as otimizações mudam -->
+                        <Border Style="{StaticResource PanelStyle}" Margin="0,0,0,14">
+                            <StackPanel>
+                                <TextBlock Text="Mouse e menus" Style="{StaticResource SectionTitleStyle}"/>
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="Precisão aprimorada do ponteiro" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="Ligada: o Windows acelera o cursor quando o mouse anda rápido (padrão do Windows). Desligada: movimento 1:1 com o mouse, o preferido em jogos de tiro."
+                                                   Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="TxtMousePrecisionState" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" x:Name="BtnMousePrecisionToggle" Content="Ativar" Style="{StaticResource ActionButtonStyle}" MinWidth="110" VerticalAlignment="Center" Click="BtnMousePrecisionToggle_Click"/>
+                                </Grid>
+                                <Grid Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="Atraso ao passar o mouse nos menus" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="Tempo que um submenu espera antes de abrir quando o mouse para em cima (ex.: “Novo ›”, “Abrir com ›”). Ligado: 400 ms, o padrão do Windows. Desligado: abre na hora — era o que a otimização “Registro” fazia."
+                                                   Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="TxtMenuDelayState" Text="" Style="{StaticResource StatusTextStyle}" HorizontalAlignment="Left" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" x:Name="BtnMenuDelayToggle" Content="Ativar" Style="{StaticResource ActionButtonStyle}" MinWidth="110" VerticalAlignment="Center" Click="BtnMenuDelayToggle_Click"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">

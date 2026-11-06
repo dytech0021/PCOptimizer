@@ -84,6 +84,10 @@ namespace PCOptimizer.Services
         public bool CoreReserveLowerPriority { get; set; } = true;
         public bool CoreReserveWarningShown { get; set; }
 
+        // Atraso dos menus ao passar o mouse: true = o usuário religou (400 ms)
+        // e a otimização "Registro" não pode zerar de novo.
+        public bool KeepMenuShowDelay { get; set; }
+
         // Painel de CPU: perfil aplicado num plano de energia próprio do app.
         // Persistente de propósito — continua valendo com o programa fechado,
         // até o usuário desativar.
