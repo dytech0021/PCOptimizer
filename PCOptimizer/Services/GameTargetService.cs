@@ -33,6 +33,12 @@ namespace PCOptimizer.Services
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool ProcessIdToSessionId(int pid, out int sessionId);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetProcessAffinityMask(IntPtr h, out UIntPtr processMask, out UIntPtr systemMask);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint GetPriorityClass(IntPtr h);
+
         // Só leitura: nunca pedimos direito de escrita no processo do jogo.
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
         private const uint PROCESS_SYNCHRONIZE               = 0x00100000;
@@ -61,6 +67,24 @@ namespace PCOptimizer.Services
 
             public bool IsAlive =>
                 Handle != IntPtr.Zero && WaitForSingleObject(Handle, 0) != WAIT_OBJECT_0;
+
+            /// <summary>
+            /// Afinidade e prioridade atuais do jogo — SÓ leitura, pelo mesmo handle
+            /// de consulta. Serve para perceber um jogo que nasceu preso.
+            /// </summary>
+            public bool TryReadCpuState(out ulong affinity, out uint priority)
+            {
+                affinity = 0; priority = 0;
+                if (Handle == IntPtr.Zero) return false;
+                try
+                {
+                    if (!GetProcessAffinityMask(Handle, out UIntPtr mask, out _)) return false;
+                    affinity = (ulong)mask;
+                    priority = GetPriorityClass(Handle);
+                    return priority != 0;
+                }
+                catch { return false; }
+            }
 
             public void Dispose()
             {

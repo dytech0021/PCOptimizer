@@ -147,6 +147,9 @@ namespace PCOptimizer.Services
         /// <summary>Contagem para a tela, lida sem esperar o lock (a passada pode demorar).</summary>
         private static int _movedCount;
 
+        /// <summary>Por que desligou sozinho da última vez (mostrado na tela).</summary>
+        private static string? _lastWarning;
+
         public static bool IsActive => _target != null;
         public static string? TargetName => _target?.Name;
         public static event Action? StatusChanged;
@@ -163,7 +166,7 @@ namespace PCOptimizer.Services
             if (l.Hybrid) return "Processador híbrido — use o Game Boost acima";
             if (l.MultiGroup) return "Mais de 64 núcleos lógicos — o recurso não se aplica";
             if (!IsSupported) return CoreReservePolicy.Describe(l.CoreMasks);
-            if (_target == null) return CoreReservePolicy.Describe(l.CoreMasks);
+            if (_target == null) return _lastWarning ?? CoreReservePolicy.Describe(l.CoreMasks);
             int n = Volatile.Read(ref _movedCount);
             return $"Ativo em {_target.Name} — {n} programa(s) nos {CoreReservePolicy.BackgroundCores} últimos núcleos";
         }
@@ -180,6 +183,19 @@ namespace PCOptimizer.Services
                     return "Este processador não se aplica a este modo";
                 }
                 RestoreOrphansFromPreviousRun();
+
+                // Jogo que já nasceu preso (herdou de quem o abriu): ligar só faria
+                // tudo disputar os mesmos poucos núcleos.
+                ulong bg = CoreReservePolicy.BackgroundMask(Layout().CoreMasks);
+                if (target.TryReadCpuState(out ulong aff, out uint prio)
+                    && GameBoostPolicy.GameLooksConfined(aff, prio, bg))
+                {
+                    Logger.Warn($"Núcleos reservados: {target.Name} já está preso (afinidade 0x{aff:X}, prioridade 0x{prio:X}) — não ativado");
+                    target.Dispose();
+                    return GameBoostPolicy.ConfinedGameText;
+                }
+                _lastWarning = null;
+
                 if (_target != null) ReleaseCore("troca de alvo");
 
                 target.Manual = manual;
@@ -240,6 +256,12 @@ namespace PCOptimizer.Services
             if (!gameRunning || !SettingsService.Current.CoreReserveAuto || _target != null || !IsSupported) return;
             var t = GameTargetService.FromForegroundWindow();
             if (t == null) return;
+            if (!GameBoostPolicy.IsPlausibleAutoTarget(t.Name))
+            {
+                Logger.Info($"Núcleos reservados: {t.Name} em tela cheia não é jogo — não ativado");
+                t.Dispose();
+                return;
+            }
             _ = Task.Run(() => ApplyTo(t, manual: false));
         }
 
@@ -256,6 +278,15 @@ namespace PCOptimizer.Services
                     {
                         if (_target == null) { stop = "alvo indisponível"; return; }
                         if (!_target.IsAlive) { stop = "jogo encerrado"; return; }
+                        if (_target.TryReadCpuState(out ulong aff, out uint prio)
+                            && GameBoostPolicy.GameLooksConfined(aff, prio,
+                                   CoreReservePolicy.BackgroundMask(Layout().CoreMasks)))
+                        {
+                            Logger.Warn($"Núcleos reservados: {_target.Name} ficou preso (afinidade 0x{aff:X}, prioridade 0x{prio:X}) — desligando");
+                            _lastWarning = GameBoostPolicy.ConfinedGameText;
+                            stop = "jogo preso nos núcleos de fundo";
+                            return;
+                        }
                         if (DateTime.Now - _startedAt > MaxDuration) { stop = "tempo limite"; return; }
                         added = MoveAll();
                     }
@@ -313,6 +344,8 @@ namespace PCOptimizer.Services
             if (gameName != null && name.Equals(gameName, StringComparison.OrdinalIgnoreCase)) return true;
             if (ProcessIdToSessionId(pid, out int sess) && sess == 0) return true;
             if (ProtectedNames.Contains(name)) return true;
+            // Steam, overlays, voz: trabalham colados no jogo (ver GameBoostPolicy)
+            if (GameBoostPolicy.IsKeepOut(name)) return true;
             var user = SettingsService.Current.GameBoostUserProtected;
             if (user != null && user.Any(u => u.Equals(name, StringComparison.OrdinalIgnoreCase))) return true;
 

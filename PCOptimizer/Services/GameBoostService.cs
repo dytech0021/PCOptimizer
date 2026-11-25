@@ -22,6 +22,9 @@ namespace PCOptimizer.Services
         /// <summary>Um jogo virou zumbi: solta tudo em vez de segurar para sempre.</summary>
         private static readonly TimeSpan MaxDuration = TimeSpan.FromHours(6);
 
+        /// <summary>Por que o turbo desligou sozinho da última vez (mostrado na tela).</summary>
+        private static string? _lastWarning;
+
         public static bool IsActive => _target != null;
         public static string? TargetName => _target?.Name;
         public static int ParkedCount => CoreParkingService.ParkedCount;
@@ -44,7 +47,7 @@ namespace PCOptimizer.Services
                     : $"{CpuTopologyService.Describe()} — precisa de processador híbrido (P + E cores)";
 
             if (_target == null)
-                return $"{CpuTopologyService.Describe()} — pronto para liberar os P-cores";
+                return _lastWarning ?? $"{CpuTopologyService.Describe()} — pronto para liberar os P-cores";
 
             int n = CoreParkingService.ParkedCount;
             return $"Turbo em {_target.Name} — {n} programa(s) nos E-cores";
@@ -73,6 +76,17 @@ namespace PCOptimizer.Services
                 target.Dispose();
                 return "Este processador não tem E-cores para onde mover os programas";
             }
+
+            // Jogo que já nasceu preso nos E-cores ou com prioridade baixa: o
+            // turbo só pioraria — todo mundo disputando os mesmos núcleos.
+            if (target.TryReadCpuState(out ulong aff, out uint prio)
+                && GameBoostPolicy.GameLooksConfined(aff, prio, topo.ECoreMask))
+            {
+                Logger.Warn($"Turbo: {target.Name} já está preso (afinidade 0x{aff:X}, prioridade 0x{prio:X}) — não ativado");
+                target.Dispose();
+                return GameBoostPolicy.ConfinedGameText;
+            }
+            _lastWarning = null;
 
             // Se já havia um alvo, solta antes de trocar
             if (_target != null) ReleaseAll("troca de alvo");
@@ -130,6 +144,12 @@ namespace PCOptimizer.Services
                 if (_target != null) return;  // já ativo
                 var t = GameTargetService.FromForegroundWindow();
                 if (t == null) { Logger.Warn("Turbo: não consegui identificar o jogo"); return; }
+                if (!GameBoostPolicy.IsPlausibleAutoTarget(t.Name))
+                {
+                    Logger.Info($"Turbo: {t.Name} em tela cheia não é jogo — não ativado");
+                    t.Dispose();
+                    return;
+                }
                 _ = Task.Run(() => ApplyTo(t, manual: false));
             }
             // Sair da tela cheia NÃO desliga: alt-tab no meio da partida é normal.
@@ -161,6 +181,13 @@ namespace PCOptimizer.Services
             {
                 if (_target == null) return ("alvo indisponível", 0);
                 if (!_target.IsAlive) return ("jogo encerrado", 0);
+                if (_target.TryReadCpuState(out ulong aff, out uint prio)
+                    && GameBoostPolicy.GameLooksConfined(aff, prio, CpuTopologyService.Get().ECoreMask))
+                {
+                    Logger.Warn($"Turbo: {_target.Name} ficou preso (afinidade 0x{aff:X}, prioridade 0x{prio:X}) — desligando");
+                    _lastWarning = GameBoostPolicy.ConfinedGameText;
+                    return ("jogo preso nos E-cores", 0);
+                }
                 if (DateTime.Now - _startedAt > MaxDuration)
                 {
                     Logger.Warn("Turbo: ativo há mais de 6 h — soltando por segurança");

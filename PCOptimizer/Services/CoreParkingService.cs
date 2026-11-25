@@ -167,6 +167,8 @@ namespace PCOptimizer.Services
             if (ProcessIdToSessionId(pid, out int sess) && sess == 0) return true;
 
             if (ProtectedNames.Contains(name)) return true;
+            // Steam, overlays, voz: trabalham colados no jogo (ver GameBoostPolicy)
+            if (GameBoostPolicy.IsKeepOut(name)) return true;
 
             var userList = SettingsService.Current.GameBoostUserProtected;
             if (userList != null && userList.Any(u =>
